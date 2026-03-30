@@ -1,0 +1,100 @@
+@import "tailwindcss";
+@import "../design-system/tokens/dist/bienbravo.tokens.css";
+
+/* ── POS Touch-First Token Overrides ── */
+@theme {
+  /* Colors (inherit from DS) */
+  --color-bb-primary: var(--bb-color-primary);
+  --color-bb-bg: var(--bb-color-bg);
+  --color-bb-surface: var(--bb-color-surface);
+  --color-bb-surface-2: var(--bb-color-surface-2);
+  --color-bb-text: var(--bb-color-text);
+  --color-bb-muted: var(--bb-color-muted);
+  --color-bb-border: var(--bb-color-border);
+  --color-bb-success: var(--bb-color-success);
+  --color-bb-warning: var(--bb-color-warning);
+  --color-bb-danger: var(--bb-color-danger);
+  --color-bb-info: var(--bb-color-info);
+
+  /* Fonts */
+  --font-bb-ui: var(--bb-typography-font-ui);
+  --font-bb-display: "Barlow Condensed", system-ui, sans-serif;
+  --font-bb-mono: var(--bb-typography-font-mono);
+
+  /* POS-specific: rounder corners for touch-friendly feel */
+  --radius-bb-card: 16px;
+  --radius-bb-control: 12px;
+  --radius-bb-pill: 9999px;
+
+  /* Motion */
+  --duration-bb-fast: var(--bb-motion-duration-fast);
+  --duration-bb-normal: var(--bb-motion-duration-normal);
+  --ease-bb-industrial: var(--bb-motion-ease-industrial);
+}
+
+/* ── POS-Specific Custom Properties ── */
+:root {
+  /* Touch target sizes */
+  --pos-touch-sm: 40px;
+  --pos-touch-md: 48px;
+  --pos-touch-lg: 56px;
+  --pos-touch-xl: 64px;
+
+  /* Control heights (larger than admin) */
+  --pos-control-sm: 40px;
+  --pos-control-md: 48px;
+  --pos-control-lg: 56px;
+
+  /* Input padding (roomier than admin) */
+  --pos-input-py: 12px;
+  --pos-input-px: 16px;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-family: var(--bb-typography-font-ui);
+    font-size: 1.125rem; /* 18px base for touch readability */
+    line-height: var(--bb-typography-leading-normal);
+    color: var(--bb-color-text);
+    background-color: var(--bb-color-bg);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--bb-color-primary);
+    outline-offset: 2px;
+  }
+
+  /* Prevent overscroll bounce on iOS */
+  html, body {
+    overscroll-behavior: none;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  #root {
+    height: 100%;
+    overflow: auto;
+  }
+}
+
+@layer utilities {
+  .touch-target {
+    min-height: var(--pos-touch-md);
+    min-width: var(--pos-touch-md);
+  }
+
+  .touch-target-lg {
+    min-height: var(--pos-touch-lg);
+    min-width: var(--pos-touch-lg);
+  }
+
+  .pos-press {
+    transition: transform var(--bb-motion-duration-fast) var(--bb-motion-ease-industrial);
+  }
+  .pos-press:active {
+    transform: scale(0.97);
+  }
+}

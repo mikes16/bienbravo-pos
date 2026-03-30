@@ -1,0 +1,38 @@
+import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { ShoppingCartIcon, ClockIcon, CalendarIcon, SeatReclineIcon, WalletIcon, AnalyticsIcon } from '@/shared/pos-ui/GoogleIcon.tsx'
+import type { FeatureManifest } from './feature.types.ts'
+import { PosShell } from './PosShell.tsx'
+import { LockPage } from '@/features/auth/index.ts'
+import { HomePage } from '@/features/home/index.ts'
+import { CheckoutPage } from '@/features/checkout/index.ts'
+import { RegisterPage } from '@/features/register/index.ts'
+import { ClockPage } from '@/features/clock/index.ts'
+import { AgendaPage } from '@/features/agenda/index.ts'
+import { WalkInsPage } from '@/features/walkins/index.ts'
+import { MyDayPage } from '@/features/my-day/index.ts'
+
+export const features: FeatureManifest[] = [
+  { id: 'checkout', label: 'Nueva Venta', icon: ShoppingCartIcon, path: '/checkout', permission: 'pos.sale.create', order: 1 },
+  { id: 'agenda', label: 'Mi Agenda', icon: CalendarIcon, path: '/agenda', permission: 'appointments.read', order: 2 },
+  { id: 'walkins', label: 'Walk-ins', icon: SeatReclineIcon, path: '/walkins', permission: 'walkins.manage', order: 3 },
+  { id: 'register', label: 'Caja', icon: WalletIcon, path: '/register', permission: 'pos.register.manage', order: 4 },
+  { id: 'clock', label: 'Reloj', icon: ClockIcon, path: '/clock', permission: 'timeclock.manage', order: 5 },
+  { id: 'my-day', label: 'Mi Día', icon: AnalyticsIcon, path: '/my-day', order: 6 },
+]
+
+export const router = createBrowserRouter([
+  { path: '/', element: <LockPage /> },
+  {
+    element: <PosShell />,
+    children: [
+      { path: '/home', element: <HomePage /> },
+      { path: '/checkout', element: <CheckoutPage /> },
+      { path: '/register', element: <RegisterPage /> },
+      { path: '/clock', element: <ClockPage /> },
+      { path: '/agenda', element: <AgendaPage /> },
+      { path: '/walkins', element: <WalkInsPage /> },
+      { path: '/my-day', element: <MyDayPage /> },
+    ],
+  },
+  { path: '*', element: <Navigate to="/" replace /> },
+])
