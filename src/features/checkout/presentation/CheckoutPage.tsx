@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
+import { useToast } from '@/core/toast/useToast.ts'
 import { useCatalog } from '../application/useCatalog.ts'
 import { useCart } from '../application/useCart.ts'
 import { useCheckout } from '../application/useCheckout.ts'
@@ -10,7 +11,7 @@ import { CatalogView } from './CatalogView.tsx'
 import { CartBar } from './CartBar.tsx'
 import { PaymentView } from './PaymentView.tsx'
 import { SuccessView } from './SuccessView.tsx'
-import type { PaymentMethod } from '../domain/checkout.types.ts'
+import type { CatalogItem, CatalogService, PaymentMethod } from '../domain/checkout.types.ts'
 import type { CustomerResult } from '../data/checkout.repository.ts'
 
 type Step = 'catalog' | 'payment' | 'success'
@@ -32,9 +33,88 @@ export function CheckoutPage() {
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
   const { checkout, walkins, agenda } = useRepositories()
-  const { categories, services, products, combos, stockLevels, loading, error: catalogError } = useCatalog(locationId)
+  const { addToast } = useToast()
+  const staffUserId = viewer?.staff.id ?? null
+  const { categories, services, products, combos, stockLevels, loading, error: catalogError } = useCatalog(locationId, staffUserId)
   const { cart, add, remove, updateQty, setTip, clear, total, lineCount, saleItems } =
     useCart()
+
+  const stockMap = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const sl of stockLevels) m.set(sl.productId, sl.quantity)
+    return m
+  }, [stockLevels])
+
+  const currentProductQty = useCallback(
+    (productId: string) => {
+      let total = 0
+      for (const line of cart.lines) {
+        if (line.catalogItem.kind === 'product' && line.catalogItem.item.id === productId) {
+          total += line.qty
+        }
+      }
+      return total
+    },
+    [cart.lines],
+  )
+
+  // Al agregar un servicio al carrito, materializar sus extras auto-incluidos
+  // como líneas separadas para que cobranza/reporte los reflejen. Si el extra
+  // no está en el catálogo cargado (e.g. no está asignado a esta sucursal), se
+  // omite silenciosamente para evitar crear líneas huérfanas.
+  const handleAdd = useCallback(
+    (item: CatalogItem, qty = 1) => {
+      if (item.kind === 'product') {
+        const stock = stockMap.get(item.item.id)
+        if (stock !== undefined) {
+          const already = currentProductQty(item.item.id)
+          if (already + qty > stock) {
+            addToast(
+              stock <= 0
+                ? `${item.item.name} está agotado en esta sucursal`
+                : `Solo hay ${stock} de ${item.item.name} disponible(s)`,
+              'error',
+            )
+            return
+          }
+        }
+      }
+      add(item, qty)
+      if (item.kind !== 'service') return
+      const svc = item.item
+      if (svc.extras.length === 0) return
+      for (const extra of svc.extras) {
+        const extraCatalogItem = services.find((s) => s.id === extra.serviceId)
+        const fallback: CatalogService = extraCatalogItem ?? {
+          id: extra.serviceId,
+          name: extra.name,
+          priceCents: extra.priceCents,
+          durationMin: extra.durationMin,
+          isAddOn: true,
+          imageUrl: null,
+          categoryId: null,
+          extras: [],
+        }
+        add({ kind: 'service', item: fallback }, qty)
+      }
+    },
+    [add, services, stockMap, currentProductQty, addToast],
+  )
+
+  const handleUpdateQty = useCallback(
+    (lineId: string, nextQty: number) => {
+      const line = cart.lines.find((l) => l.id === lineId)
+      if (line && line.catalogItem.kind === 'product' && nextQty > line.qty) {
+        const stock = stockMap.get(line.catalogItem.item.id)
+        if (stock !== undefined && nextQty > stock) {
+          addToast(`Solo hay ${stock} de ${line.catalogItem.item.name} disponible(s)`, 'error')
+          return
+        }
+      }
+      updateQty(lineId, nextQty)
+    },
+    [cart.lines, stockMap, updateQty, addToast],
+  )
 
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null)
   const [anonymousSelected, setAnonymousSelected] = useState(false)
@@ -74,7 +154,7 @@ export function CheckoutPage() {
   } = useCheckout({
     locationId: locationId ?? '',
     registerSessionId: null,
-    staffUserId: viewer?.staff.id ?? null,
+    staffUserId,
     customerId: selectedCustomer?.id ?? null,
     completeWalkInId,
     completeAppointmentId,
@@ -170,7 +250,7 @@ export function CheckoutPage() {
           target.items.forEach((apptItem) => {
             const service = services.find((s) => s.id === apptItem.serviceId)
             if (!service) return
-            add({ kind: 'service', item: service }, apptItem.qty)
+            handleAdd({ kind: 'service', item: service }, apptItem.qty)
           })
         }
 
@@ -273,7 +353,7 @@ export function CheckoutPage() {
           stockLevels={stockLevels}
           loading={loading}
           error={catalogError}
-          onAdd={add}
+          onAdd={handleAdd}
         />
       </div>
 
@@ -285,7 +365,7 @@ export function CheckoutPage() {
           total={total}
           lineCount={lineCount}
           onRemove={remove}
-          onUpdateQty={updateQty}
+          onUpdateQty={handleUpdateQty}
           onSetTip={setTip}
           onPay={goToPayment}
           payDisabled={Boolean(activeServiceBlockReason)}

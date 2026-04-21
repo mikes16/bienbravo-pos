@@ -2,7 +2,15 @@ import type { AuthRepository } from '@/core/auth/auth.repository.ts'
 import type { PosViewer, PosStaffUser, PosLocation } from '@/core/auth/auth.types.ts'
 import type { Repositories } from '@/core/repositories/registry.ts'
 import type { CheckoutRepository, CustomerResult } from '@/features/checkout/data/checkout.repository.ts'
-import type { CatalogService, CatalogProduct, CreateSaleInput, SaleResult } from '@/features/checkout/domain/checkout.types.ts'
+import type {
+  CatalogCategory,
+  CatalogCombo,
+  CatalogProduct,
+  CatalogService,
+  CreateSaleInput,
+  SaleResult,
+  StockLevel,
+} from '@/features/checkout/domain/checkout.types.ts'
 import type { RegisterRepository } from '@/features/register/data/register.repository.ts'
 import type { Register, RegisterSession, CloseSessionInput } from '@/features/register/domain/register.types.ts'
 import type { ClockRepository, TimeClockEvent, ShiftTemplate } from '@/features/clock/data/clock.repository.ts'
@@ -62,17 +70,29 @@ export class InMemoryAuthRepository implements AuthRepository {
 }
 
 export class InMemoryCheckoutRepository implements CheckoutRepository {
-  async getServices(_locationId: string): Promise<CatalogService[]> {
+  async getCategories(): Promise<CatalogCategory[]> {
+    return []
+  }
+
+  async getServices(_locationId: string, _staffUserId?: string | null): Promise<CatalogService[]> {
     return [
-      { id: 'svc-1', name: 'Corte Clásico', priceCents: 35000, durationMin: 30, isAddOn: false },
-      { id: 'svc-2', name: 'Barba', priceCents: 15000, durationMin: 15, isAddOn: true },
+      { id: 'svc-1', name: 'Corte Clásico', priceCents: 35000, durationMin: 30, isAddOn: false, imageUrl: null, categoryId: null, extras: [] },
+      { id: 'svc-2', name: 'Barba', priceCents: 15000, durationMin: 15, isAddOn: true, imageUrl: null, categoryId: null, extras: [] },
     ]
   }
 
   async getProducts(_locationId: string): Promise<CatalogProduct[]> {
     return [
-      { id: 'prod-1', name: 'Cera para cabello', sku: 'WAX-01', priceCents: 25000, imageUrl: null },
+      { id: 'prod-1', name: 'Cera para cabello', sku: 'WAX-01', priceCents: 25000, imageUrl: null, categoryId: null },
     ]
+  }
+
+  async getCombos(): Promise<CatalogCombo[]> {
+    return []
+  }
+
+  async getStockLevels(_locationId: string): Promise<StockLevel[]> {
+    return []
   }
 
   async createSale(_input: CreateSaleInput): Promise<SaleResult> {

@@ -43,7 +43,7 @@ function PayAppointmentModal({
         customerId: appt.customer?.id ?? null,
         staffUserId,
         completeAppointmentId: appt.id,
-        items: [{ serviceId: null, productId: null, qty: 1, unitPriceCents: appt.totalCents }],
+        items: [{ serviceId: null, productId: null, catalogComboId: null, qty: 1, unitPriceCents: appt.totalCents }],
         tipCents: 0,
         paymentMethod: method as any,
       })

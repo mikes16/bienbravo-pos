@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
 import type { CatalogCategory, CatalogService, CatalogProduct, CatalogCombo, StockLevel } from '../domain/checkout.types.ts'
 
-export function useCatalog(locationId: string | null) {
+export function useCatalog(locationId: string | null, staffUserId?: string | null) {
   const { checkout } = useRepositories()
   const [categories, setCategories] = useState<CatalogCategory[]>([])
   const [services, setServices] = useState<CatalogService[]>([])
@@ -19,7 +19,7 @@ export function useCatalog(locationId: string | null) {
 
     Promise.all([
       checkout.getCategories(),
-      checkout.getServices(locationId),
+      checkout.getServices(locationId, staffUserId ?? null),
       checkout.getProducts(locationId),
       checkout.getCombos(),
       checkout.getStockLevels(locationId),
@@ -33,7 +33,7 @@ export function useCatalog(locationId: string | null) {
       })
       .catch(() => setError('No se pudo cargar el catálogo'))
       .finally(() => setLoading(false))
-  }, [checkout, locationId])
+  }, [checkout, locationId, staffUserId])
 
   return { categories, services, products, combos, stockLevels, loading, error }
 }

@@ -30,6 +30,7 @@ export function CustomerLookup({
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchSeqRef = useRef(0)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   const canCreate = createName.trim().length > 1 && (createEmail.trim().length > 0 || createPhone.trim().length > 0)
@@ -65,13 +66,16 @@ export function CustomerLookup({
   const doSearch = useCallback(
     async (q: string) => {
       if (q.trim().length < 2) { setResults([]); return }
+      const seq = ++searchSeqRef.current
       setSearching(true)
       try {
         const res = await searchFn(q)
+        // Guard against stale responses arriving out-of-order.
+        if (seq !== searchSeqRef.current) return
         setResults(res)
         setOpen(true)
       } finally {
-        setSearching(false)
+        if (seq === searchSeqRef.current) setSearching(false)
       }
     },
     [searchFn],
@@ -80,7 +84,11 @@ export function CustomerLookup({
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => doSearch(query), 350)
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      // Invalidate any in-flight search on unmount/re-run.
+      searchSeqRef.current++
+    }
   }, [query, doSearch])
 
   useEffect(() => {

@@ -71,12 +71,10 @@ export function cartToSaleItems(cart: Cart): SaleItemInput[] {
   const items: SaleItemInput[] = []
   for (const l of cart.lines) {
     if (l.catalogItem.kind === 'combo') {
-      // Expand combo into individual items; split price proportionally later
-      // For now, send entire combo price as a single service-less/product-less line
-      // Backend will treat it as a custom line item
       items.push({
         serviceId: null,
         productId: null,
+        catalogComboId: l.catalogItem.item.id,
         qty: l.qty,
         unitPriceCents: l.unitPriceCents,
       })
@@ -84,6 +82,7 @@ export function cartToSaleItems(cart: Cart): SaleItemInput[] {
       items.push({
         serviceId: l.catalogItem.kind === 'service' ? l.catalogItem.item.id : null,
         productId: l.catalogItem.kind === 'product' ? l.catalogItem.item.id : null,
+        catalogComboId: null,
         qty: l.qty,
         unitPriceCents: l.unitPriceCents,
       })

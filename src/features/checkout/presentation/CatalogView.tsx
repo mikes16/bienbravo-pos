@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useDeferredValue } from 'react'
 import { ScissorsIcon, SearchIcon } from '@/shared/pos-ui/GoogleIcon.tsx'
 import { cn } from '@/shared/lib/cn.ts'
 import { formatMoney } from '@/shared/lib/money.ts'
@@ -25,6 +25,7 @@ interface CatalogViewProps {
 export function CatalogView({ categories, services, products, combos, stockLevels, loading, error, onAdd }: CatalogViewProps) {
   const [tab, setTab] = useState<Tab>('services')
   const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search)
   const [categoryId, setCategoryId] = useState<string | null>(null)
 
   const serviceCategories = useMemo(
@@ -46,7 +47,7 @@ export function CatalogView({ categories, services, products, combos, stockLevel
     return m
   }, [stockLevels])
 
-  const q = search.toLowerCase()
+  const q = deferredSearch.toLowerCase()
 
   const filteredServices = useMemo(() => {
     let list = services
@@ -64,7 +65,7 @@ export function CatalogView({ categories, services, products, combos, stockLevel
 
   const filteredCombos = useMemo(() => {
     let list = combos
-    if (categoryId) list = list.filter((c) => c.categoryId === categoryId)
+    if (categoryId) list = list.filter((c) => c.effectiveCategoryIds.includes(categoryId))
     if (q) list = list.filter((c) => c.name.toLowerCase().includes(q))
     return list
   }, [combos, categoryId, q])
@@ -164,7 +165,7 @@ export function CatalogView({ categories, services, products, combos, stockLevel
               >
                 {s.imageUrl ? (
                   <>
-                    <img src={s.imageUrl} alt={s.name} className="aspect-[4/3] w-full object-cover" />
+                    <img src={s.imageUrl} alt={s.name} loading="lazy" decoding="async" className="aspect-[4/3] w-full object-cover" />
                     <div className="flex w-full flex-col gap-1.5 px-3 pb-3">
                       <span className="text-sm font-bold leading-tight line-clamp-2">{s.name}</span>
                       <div className="flex w-full items-center justify-between">
@@ -221,7 +222,7 @@ export function CatalogView({ categories, services, products, combos, stockLevel
                   return null
                 })()}
                 {p.imageUrl ? (
-                  <img src={p.imageUrl} alt={p.name} className="h-14 w-14 rounded-xl object-cover" />
+                  <img src={p.imageUrl} alt={p.name} loading="lazy" decoding="async" className="h-14 w-14 rounded-xl object-cover" />
                 ) : (
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-bb-surface-2 text-xs font-bold text-bb-muted">
                     IMG
@@ -252,7 +253,7 @@ export function CatalogView({ categories, services, products, combos, stockLevel
                 )}
               >
                 {c.imageUrl ? (
-                  <img src={c.imageUrl} alt={c.name} className="h-14 w-14 rounded-xl object-cover" />
+                  <img src={c.imageUrl} alt={c.name} loading="lazy" decoding="async" className="h-14 w-14 rounded-xl object-cover" />
                 ) : (
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-bb-primary/15">
                     <span className="material-symbols-outlined text-lg text-bb-primary" aria-hidden>deployed_code</span>

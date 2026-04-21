@@ -24,7 +24,7 @@ const CATEGORIES_QUERY = gql`
 `
 
 const SERVICES_QUERY = gql`
-  query PosServices($locationId: ID!) {
+  query PosServices($locationId: ID!, $staffUserId: ID) {
     services(locationId: $locationId) {
       id
       name
@@ -34,6 +34,16 @@ const SERVICES_QUERY = gql`
       isAddOn
       imageUrl
       categoryId
+      pricingFor(locationId: $locationId, staffUserId: $staffUserId) {
+        priceCents
+        durationMin
+        extras {
+          serviceId
+          name
+          priceCents
+          durationMin
+        }
+      }
     }
   }
 `
@@ -72,7 +82,7 @@ const COMBOS_QUERY = gql`
       name
       priceCents
       imageUrl
-      categoryId
+      effectiveCategoryIds
       items {
         serviceId
         productId
@@ -127,7 +137,7 @@ export interface CustomerResult {
 
 export interface CheckoutRepository {
   getCategories(): Promise<CatalogCategory[]>
-  getServices(locationId: string): Promise<CatalogService[]>
+  getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
   getProducts(locationId: string): Promise<CatalogProduct[]>
   getCombos(): Promise<CatalogCombo[]>
   getStockLevels(locationId: string): Promise<StockLevel[]>
@@ -138,6 +148,19 @@ export interface CheckoutRepository {
 
 /* ── Apollo Implementation ── */
 
+interface RawPricingExtra {
+  serviceId: string
+  name: string
+  priceCents: number
+  durationMin: number
+}
+
+interface RawPricing {
+  priceCents: number
+  durationMin: number
+  extras: RawPricingExtra[]
+}
+
 interface RawService {
   id: string
   name: string
@@ -147,6 +170,7 @@ interface RawService {
   isAddOn: boolean
   imageUrl: string | null
   categoryId: string | null
+  pricingFor: RawPricing | null
 }
 
 interface RawProduct {
@@ -173,10 +197,10 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     return data!.catalogCategories
   }
 
-  async getServices(locationId: string): Promise<CatalogService[]> {
+  async getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]> {
     const { data } = await this.#client.query<{ services: RawService[] }>({
       query: SERVICES_QUERY,
-      variables: { locationId },
+      variables: { locationId, staffUserId: staffUserId ?? null },
       fetchPolicy: 'network-only',
     })
     return data!.services
@@ -184,11 +208,14 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       .map((s: RawService) => ({
         id: s.id,
         name: s.name,
-        priceCents: s.basePriceCents,
-        durationMin: s.baseDurationMin,
+        // Precio/duración resueltos por sucursal (y staff si aplica). Fallback a base
+        // si pricingFor no vino por alguna razón (e.g. schema parcial en dev).
+        priceCents: s.pricingFor?.priceCents ?? s.basePriceCents,
+        durationMin: s.pricingFor?.durationMin ?? s.baseDurationMin,
         isAddOn: s.isAddOn,
         imageUrl: s.imageUrl ?? null,
         categoryId: s.categoryId ?? null,
+        extras: s.pricingFor?.extras ?? [],
       }))
   }
 

@@ -8,14 +8,25 @@ export interface CatalogCategory {
   appliesTo: string
 }
 
+export interface ResolvedExtra {
+  serviceId: string
+  name: string
+  priceCents: number
+  durationMin: number
+}
+
 export interface CatalogService {
   id: string
   name: string
+  // Resolved para (locationId, staffUserId actual). Respeta override por sucursal
+  // y excepciones de staff (caso Javi). Los extras NO están sumados aquí — se
+  // muestran como line items separados al agregar al carrito.
   priceCents: number
   durationMin: number
   isAddOn: boolean
   imageUrl: string | null
   categoryId: string | null
+  extras: ResolvedExtra[]
 }
 
 export interface CatalogProduct {
@@ -40,7 +51,7 @@ export interface CatalogCombo {
   name: string
   priceCents: number
   imageUrl: string | null
-  categoryId: string | null
+  effectiveCategoryIds: string[]
   items: CatalogComboItem[]
 }
 
@@ -88,6 +99,7 @@ export interface CreateSaleInput {
 export interface SaleItemInput {
   serviceId: string | null
   productId: string | null
+  catalogComboId: string | null
   qty: number
   unitPriceCents: number
 }
