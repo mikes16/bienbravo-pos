@@ -58,7 +58,6 @@ export interface CatalogCombo {
 export interface StockLevel {
   productId: string
   quantity: number
-  lowStockThreshold: number | null
 }
 
 export type CatalogItem =

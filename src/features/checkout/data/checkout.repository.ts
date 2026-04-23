@@ -70,7 +70,6 @@ const POS_INVENTORY_LEVELS_QUERY = gql`
     posInventoryLevels(locationId: $locationId) {
       productId
       quantity
-      lowStockThreshold
     }
   }
 `
