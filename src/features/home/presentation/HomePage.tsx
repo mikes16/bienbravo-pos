@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { gql } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
+import { graphql } from '@/core/graphql/generated'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
@@ -9,15 +9,15 @@ import type { TimeClockEvent } from '@/features/clock/data/clock.repository.ts'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types.ts'
 import { HomeView, type DashboardData, type DashboardSectionLoading, type RecentActivityEntry } from './HomeView.tsx'
 
-const STAFF_METRICS_TODAY_QUERY = gql`
+const STAFF_METRICS_TODAY_QUERY = graphql(`
   query PosStaffMetricsToday($staffUserId: ID!, $locationId: ID!, $date: String!) {
     staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)
     staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)
     staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)
   }
-`
+`)
 
-const SALES_ACTIVITY_QUERY = gql`
+const SALES_ACTIVITY_QUERY = graphql(`
   query PosSalesActivity($locationId: ID!, $date: String!, $source: SaleSource) {
     listSalesForKPI(locationId: $locationId, date: $date, source: $source) {
       id
@@ -30,7 +30,7 @@ const SALES_ACTIVITY_QUERY = gql`
       customer { id fullName email phone }
     }
   }
-`
+`)
 
 interface HomeSaleActivity {
   id: string
