@@ -1,7 +1,8 @@
-import { gql, type ApolloClient } from '@apollo/client'
+import { type ApolloClient } from '@apollo/client'
+import { graphql } from '@/core/graphql/generated'
 import type { Appointment, AppointmentStatus } from '../domain/agenda.types.ts'
 
-const APPOINTMENTS_QUERY = gql`
+const APPOINTMENTS_QUERY = graphql(`
   query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {
     appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {
       id status salePaymentStatus startAt endAt totalCents
@@ -11,12 +12,12 @@ const APPOINTMENTS_QUERY = gql`
       locationId locationName
     }
   }
-`
+`)
 
-const CHECK_IN = gql`mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }`
-const START_SERVICE = gql`mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }`
-const COMPLETE = gql`mutation Complete($id: ID!) { complete(appointmentId: $id) { id status } }`
-const NO_SHOW = gql`mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }`
+const CHECK_IN = graphql(`mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }`)
+const START_SERVICE = graphql(`mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }`)
+const COMPLETE = graphql(`mutation Complete($id: ID!) { complete(appointmentId: $id) { id status } }`)
+const NO_SHOW = graphql(`mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }`)
 
 export interface AgendaRepository {
   getAppointments(dateFrom: string, dateTo: string, locationId: string | null, status?: AppointmentStatus): Promise<Appointment[]>

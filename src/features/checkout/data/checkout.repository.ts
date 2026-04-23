@@ -1,4 +1,5 @@
-import { gql, type ApolloClient } from '@apollo/client'
+import { type ApolloClient } from '@apollo/client'
+import { graphql } from '@/core/graphql/generated'
 import type {
   CatalogCategory,
   CatalogService,
@@ -11,7 +12,7 @@ import type {
 
 /* ── GraphQL Documents ── */
 
-const CATEGORIES_QUERY = gql`
+const CATEGORIES_QUERY = graphql(`
   query PosCatalogCategories {
     catalogCategories {
       id
@@ -21,9 +22,9 @@ const CATEGORIES_QUERY = gql`
       appliesTo
     }
   }
-`
+`)
 
-const SERVICES_QUERY = gql`
+const SERVICES_QUERY = graphql(`
   query PosServices($locationId: ID!, $staffUserId: ID) {
     services(locationId: $locationId) {
       id
@@ -46,9 +47,9 @@ const SERVICES_QUERY = gql`
       }
     }
   }
-`
+`)
 
-const PRODUCTS_QUERY = gql`
+const PRODUCTS_QUERY = graphql(`
   query PosProducts($locationId: ID!) {
     products(locationId: $locationId) {
       id
@@ -63,18 +64,18 @@ const PRODUCTS_QUERY = gql`
       }
     }
   }
-`
+`)
 
-const POS_INVENTORY_LEVELS_QUERY = gql`
+const POS_INVENTORY_LEVELS_QUERY = graphql(`
   query PosInventoryLevels($locationId: ID!) {
     posInventoryLevels(locationId: $locationId) {
       productId
       quantity
     }
   }
-`
+`)
 
-const COMBOS_QUERY = gql`
+const COMBOS_QUERY = graphql(`
   query PosCatalogCombos {
     catalogCombos(activeOnly: true) {
       id
@@ -92,9 +93,9 @@ const COMBOS_QUERY = gql`
       }
     }
   }
-`
+`)
 
-const SEARCH_CUSTOMERS_QUERY = gql`
+const SEARCH_CUSTOMERS_QUERY = graphql(`
   query PosSearchCustomers($query: String!, $limit: Int) {
     searchCustomers(query: $query, limit: $limit) {
       id
@@ -103,17 +104,17 @@ const SEARCH_CUSTOMERS_QUERY = gql`
       phone
     }
   }
-`
+`)
 
-const FIND_OR_CREATE_CUSTOMER = gql`
+const FIND_OR_CREATE_CUSTOMER = graphql(`
   mutation FindOrCreateCustomer($name: String!, $email: String, $phone: String) {
     findOrCreateCustomer(name: $name, email: $email, phone: $phone) {
       id fullName email phone
     }
   }
-`
+`)
 
-const CREATE_POS_SALE = gql`
+const CREATE_POS_SALE = graphql(`
   mutation CreatePosSale($input: CreatePOSSaleInput!) {
     createPOSSale(input: $input) {
       id
@@ -123,7 +124,7 @@ const CREATE_POS_SALE = gql`
       paidTotalCents
     }
   }
-`
+`)
 
 /* ── Interface ── */
 
