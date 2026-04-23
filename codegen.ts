@@ -12,7 +12,7 @@ const config: CodegenConfig = {
       },
     },
   },
-  ignoreNoDocuments: true,
+  ignoreNoDocuments: false,
 }
 
 export default config
