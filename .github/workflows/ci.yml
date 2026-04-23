@@ -1,0 +1,28 @@
+name: POS CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  build-lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Verify GraphQL codegen is up to date
+        run: |
+          npm run codegen
+          git diff --exit-code schema.graphql src/core/graphql/generated/
+      - run: npm run build
+      # Note: `npm run lint` y `npm test` excluidos de CI por ahora.
+      # - Lint: el baseline del repo tiene 44 errores pre-existentes (mocks
+      #   con params unused). Activar cuando se haga una limpieza aparte.
+      # - Tests: vitest está configurado pero no hay test files todavía;
+      #   `vitest run` sale con exit 1 cuando no encuentra tests. Activar
+      #   cuando se agreguen las primeras pruebas.
