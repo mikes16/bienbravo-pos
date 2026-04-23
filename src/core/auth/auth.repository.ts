@@ -1,9 +1,10 @@
-import { gql, type ApolloClient } from '@apollo/client'
+import { type ApolloClient } from '@apollo/client'
+import { graphql } from '@/core/graphql/generated'
 import type { PosViewer, PosStaffUser, PosLocation, LocationScope } from './auth.types.ts'
 
 /* ── GraphQL Documents ── */
 
-const VIEWER_QUERY = gql`
+const VIEWER_QUERY = graphql(`
   query PosViewer {
     viewer {
       kind
@@ -12,24 +13,24 @@ const VIEWER_QUERY = gql`
       locationScopes { scopeType locationId }
     }
   }
-`
+`)
 
-const LOCATIONS_QUERY = gql`
+const LOCATIONS_QUERY = graphql(`
   query PosPublicLocations {
     posPublicLocations {
       id
       name
     }
   }
-`
+`)
 
-const VERIFY_POS_LOCATION_ACCESS = gql`
+const VERIFY_POS_LOCATION_ACCESS = graphql(`
   mutation VerifyPosLocationAccess($locationId: ID!, $password: String!) {
     verifyPosLocationAccess(locationId: $locationId, password: $password)
   }
-`
+`)
 
-const STAFF_PIN_LOGIN = gql`
+const STAFF_PIN_LOGIN = graphql(`
   mutation StaffPinLogin($email: String!, $pin4: String!) {
     staffPinLogin(email: $email, pin4: $pin4) {
       viewer {
@@ -40,19 +41,19 @@ const STAFF_PIN_LOGIN = gql`
       }
     }
   }
-`
+`)
 
-const BARBERS_QUERY = gql`
+const BARBERS_QUERY = graphql(`
   query PosBarbers($locationId: ID!) {
     barbers(locationId: $locationId) {
       id fullName email phone photoUrl isActive hasPosPin
     }
   }
-`
+`)
 
-const LOGOUT_MUTATION = gql`
+const LOGOUT_MUTATION = graphql(`
   mutation PosLogout { logout }
-`
+`)
 
 /* ── Interface ── */
 

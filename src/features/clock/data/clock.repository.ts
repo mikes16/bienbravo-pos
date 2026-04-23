@@ -1,28 +1,29 @@
-import { gql, type ApolloClient } from '@apollo/client'
+import { type ApolloClient } from '@apollo/client'
+import { graphql } from '@/core/graphql/generated'
 
-const CLOCK_IN = gql`
+const CLOCK_IN = graphql(`
   mutation ClockIn($locationId: ID!) { clockIn(locationId: $locationId) }
-`
+`)
 
-const CLOCK_OUT = gql`
+const CLOCK_OUT = graphql(`
   mutation ClockOut($locationId: ID!) { clockOut(locationId: $locationId) }
-`
+`)
 
-const TIME_CLOCK_EVENTS = gql`
+const TIME_CLOCK_EVENTS = graphql(`
   query TimeClockEvents($staffUserId: ID!, $locationId: ID!, $fromDate: String!, $toDate: String!) {
     timeClockEvents(staffUserId: $staffUserId, locationId: $locationId, fromDate: $fromDate, toDate: $toDate) {
       id type at
     }
   }
-`
+`)
 
-const SHIFT_TEMPLATES = gql`
+const SHIFT_TEMPLATES = graphql(`
   query ShiftTemplates($staffUserId: ID!, $locationId: ID!) {
     shiftTemplates(staffUserId: $staffUserId, locationId: $locationId) {
       id staffUserId locationId dayOfWeek startMin endMin
     }
   }
-`
+`)
 
 export interface TimeClockEvent {
   id: string
