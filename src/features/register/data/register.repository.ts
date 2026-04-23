@@ -1,24 +1,25 @@
-import { gql, type ApolloClient } from '@apollo/client'
+import { type ApolloClient } from '@apollo/client'
+import { graphql } from '@/core/graphql/generated'
 import type { Register, RegisterSession, CloseSessionInput } from '../domain/register.types.ts'
 
-const REGISTERS_QUERY = gql`
+const REGISTERS_QUERY = graphql(`
   query PosRegisters($locationId: ID!) {
     registers(locationId: $locationId) {
       id name isActive locationId
       openSession { id status openedAt expectedCashCents expectedCardCents expectedTransferCents }
     }
   }
-`
+`)
 
-const OPEN_SESSION = gql`
+const OPEN_SESSION = graphql(`
   mutation OpenRegisterSession($registerId: ID!) {
     openRegisterSession(registerId: $registerId) {
       id status openedAt expectedCashCents expectedCardCents expectedTransferCents
     }
   }
-`
+`)
 
-const CLOSE_SESSION = gql`
+const CLOSE_SESSION = graphql(`
   mutation CloseRegisterSession($input: CloseRegisterSessionInput!) {
     closeRegisterSession(input: $input) {
       id status closedAt
@@ -26,7 +27,7 @@ const CLOSE_SESSION = gql`
       expectedCashCents expectedCardCents expectedTransferCents
     }
   }
-`
+`)
 
 export interface RegisterRepository {
   getRegisters(locationId: string): Promise<Register[]>

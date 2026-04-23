@@ -1,0 +1,1700 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+enum AlertSeverity {
+  critical
+  info
+  warning
+}
+
+type Appointment {
+  customer: Customer
+  endAt: DateTime!
+  id: ID!
+  items: [AppointmentItem!]!
+  locationId: ID
+  locationName: String
+  salePaymentStatus: SalePaymentStatus
+  staffUser: StaffUser
+  startAt: DateTime!
+  status: AppointmentStatus!
+  totalCents: Int!
+}
+
+type AppointmentItem {
+  catalogComboId: ID
+  label: String!
+  qty: Int!
+  serviceId: ID
+  unitPriceCents: Int!
+}
+
+enum AppointmentStatus {
+  CANCELLED
+  CHECKED_IN
+  COMPLETED
+  CONFIRMED
+  HOLD
+  IN_SERVICE
+  NO_SHOW
+}
+
+input AssignRoleToStaffInput {
+  endsAt: DateTime
+  locationId: ID
+  locationIds: [ID!]
+  roleId: ID!
+  scopeType: ScopeType!
+  staffUserId: ID!
+  startsAt: DateTime
+}
+
+type AssignWalkInResult {
+  walkIn: WalkIn!
+  warning: String
+}
+
+type AuthResult {
+  viewer: Viewer!
+}
+
+input AvailableSlotsInput {
+  date: String!
+  items: [BookingItemInput!]!
+  locationId: ID!
+  staffUserId: ID
+}
+
+type BarberOnDuty {
+  fullName: String!
+  hasClockedIn: Boolean!
+  nextAppointmentAt: DateTime
+  staffUserId: ID!
+  status: String!
+}
+
+type BlogPost {
+  contentJson: JSON
+  createdAt: DateTime!
+  id: ID!
+  publishedAt: DateTime
+  slug: String!
+  status: String!
+  title: String!
+  updatedAt: DateTime!
+}
+
+enum BookingChannel {
+  MANUAL
+  ONLINE
+}
+
+type BookingDraftResult {
+  amountDueNowCents: Int!
+  appointment: Appointment!
+  currency: String!
+  sale: Sale!
+}
+
+input BookingItemInput {
+  catalogComboId: ID
+  qty: Int = 1
+  serviceId: ID
+}
+
+enum BookingPaymentMode {
+  DEPOSIT
+  FULL
+  NONE
+}
+
+type CancelAppointmentByTokenResult {
+  ok: Boolean!
+  refundAllowed: Boolean!
+}
+
+type CancelAppointmentResult {
+  ok: Boolean!
+  refundAllowed: Boolean!
+}
+
+type CatalogCategory {
+  appliesTo: CategoryAppliesTo!
+  children: [CatalogCategory!]!
+  description: String
+  id: ID!
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean!
+  name: String!
+  parent: CatalogCategory
+  parentId: ID
+  slug: String!
+  sortOrder: Int!
+}
+
+type CatalogCombo {
+  commissionCents: Int!
+  description: String
+  effectiveCategories: [CatalogCategory!]!
+  effectiveCategoryIds: [ID!]!
+  extraCategoryIds: [ID!]!
+  id: ID!
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean!
+  items: [CatalogComboItem!]!
+  locations: [CatalogComboLocation!]!
+  name: String!
+  penaltyCommissionCents: Int!
+  priceCents: Int!
+  slug: String!
+  sortOrder: Int!
+  totalDurationMin(locationId: ID): Int!
+}
+
+type CatalogComboItem {
+  id: ID!
+  productId: ID
+  productName: String
+  qty: Int!
+  serviceId: ID
+  serviceName: String
+  sortOrder: Int!
+}
+
+input CatalogComboItemInput {
+  productId: ID
+  qty: Int
+  serviceId: ID
+  sortOrder: Int
+}
+
+type CatalogComboLocation {
+  comboId: ID!
+  isActive: Boolean!
+  locationId: ID!
+  priceCentsOverride: Int
+}
+
+enum CategoryAppliesTo {
+  ANY
+  COMBO
+  PRODUCT
+  SERVICE
+}
+
+input CloseRegisterSessionInput {
+  countedCardCents: Int!
+  countedCashCents: Int!
+  countedTransferCents: Int!
+  sessionId: ID!
+}
+
+type CloudinaryConfig {
+  cloudName: String!
+}
+
+type CloudinaryUploadSignature {
+  apiKey: String!
+  cloudName: String!
+  folder: String!
+  signature: String!
+  timestamp: Int!
+}
+
+input CreateBlogPostInput {
+  contentJson: JSON
+  slug: String!
+  title: String!
+}
+
+input CreateBookingDraftInput {
+  channel: BookingChannel = ONLINE
+  customerEmail: String!
+  customerFullName: String!
+  customerPhone: String
+  items: [BookingItemInput!]!
+  locationId: ID!
+  staffUserId: ID
+  startAt: DateTime!
+}
+
+input CreateCatalogCategoryInput {
+  appliesTo: CategoryAppliesTo
+  description: String
+  imagePublicId: String
+  imageUrl: String
+  name: String!
+  parentId: ID
+  slug: String!
+  sortOrder: Int
+}
+
+input CreateCatalogComboInput {
+  commissionCents: Int!
+  description: String
+  extraCategoryIds: [ID!]
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean
+  items: [CatalogComboItemInput!]!
+  name: String!
+  penaltyCommissionCents: Int!
+  priceCents: Int!
+  slug: String!
+  sortOrder: Int
+}
+
+input CreateGroupBookingInput {
+  appointments: [GroupBookingAppointmentInput!]!
+  locationId: ID!
+  partyLabel: String
+}
+
+type CreateGroupBookingResult {
+  appointments: [Appointment!]!
+  partyId: ID!
+  sales: [Sale!]!
+}
+
+input CreateLatenessExcuseInput {
+  localDate: String!
+  locationId: ID!
+  reason: String
+  staffUserId: ID!
+}
+
+input CreateLocationBlackoutInput {
+  date: String!
+  label: String!
+  locationId: ID!
+  type: String!
+}
+
+input CreateLocationInput {
+  isActive: Boolean
+  name: String!
+  slug: String!
+  timezone: String
+}
+
+input CreateOrderInput {
+  customerId: ID
+  items: [CreateOrderItemInput!]!
+  pickupLocationId: ID
+  shippingAddress: String
+  source: String
+}
+
+input CreateOrderItemInput {
+  productId: ID!
+  qty: Int!
+  variantId: ID
+}
+
+input CreatePOSSaleInput {
+  completeAppointmentId: ID
+  completeWalkInId: ID
+  customerId: ID
+  items: [POSSaleItemInput!]!
+  locationId: ID!
+  paymentMethod: String
+  registerSessionId: ID
+  staffUserId: ID
+  tipCents: Int
+}
+
+input CreateProductInput {
+  categoryId: ID
+  commissionCents: Int
+  compareAtPriceCents: Int
+  costCents: Int
+  description: String
+  handle: String
+  heightMm: Int
+  hsCode: String
+  imagePublicId: String
+  imageUrl: String
+  lengthMm: Int
+  locationIds: [ID!]!
+  name: String!
+  penaltyCommissionCents: Int
+  productType: String
+  requiresShipping: Boolean
+  seoDescription: String
+  seoTitle: String
+  sku: String
+  status: ProductStatus
+  tags: [String!]
+  taxCode: String
+  taxable: Boolean
+  variants: [CreateProductVariantInput!]
+  vendor: String
+  weightGrams: Int
+  widthMm: Int
+}
+
+input CreateProductVariantInput {
+  barcode: String
+  compareAtPriceCents: Int
+  name: String!
+  option1: String
+  option2: String
+  option3: String
+  priceCents: Int!
+  sku: String
+}
+
+input CreateResourceInput {
+  isActive: Boolean
+  isReservable: Boolean!
+  name: String!
+}
+
+input CreateRoleInput {
+  description: String
+  name: String!
+}
+
+input CreateServiceInput {
+  baseDurationMin: Int!
+  basePriceCents: Int!
+  categoryId: ID
+  commissionCents: Int
+  description: String
+  imagePublicId: String
+  imageUrl: String
+  isAddOn: Boolean
+  locationIds: [ID!]!
+  name: String!
+  penaltyCommissionCents: Int
+}
+
+input CreateShiftOverrideInput {
+  blocks: [ShiftBlockInput!]
+  date: String!
+  endMin: Int
+  locationId: ID!
+  reason: String
+  staffUserId: ID!
+  startMin: Int
+  type: ShiftOverrideType!
+}
+
+input CreateStaffInput {
+  email: String!
+  fullName: String!
+  password: String!
+  phone: String
+  photoPublicId: String
+  photoUrl: String
+  posPin4: String
+}
+
+input CreateStaffMembershipInput {
+  contextRole: StaffContextRole!
+  endsAt: DateTime
+  isPrimary: Boolean
+  locationId: ID!
+  staffUserId: ID!
+  startsAt: DateTime
+}
+
+input CreateStaffVacationInput {
+  endDate: String!
+  label: String!
+  locationId: ID!
+  staffUserId: ID!
+  startDate: String!
+}
+
+input CreateStockLocationInput {
+  locationId: ID
+  name: String!
+  type: StockLocationType!
+}
+
+type Customer {
+  address: String
+  createdAt: DateTime!
+  email: String
+  fullName: String!
+  id: ID!
+  noShowCount: Int!
+  phone: String
+  reputationNote: String
+  reputationScore: Int
+  reputationTag: CustomerReputationTag
+}
+
+input CustomerRegisterInput {
+  email: String!
+  fullName: String!
+  password: String!
+  phone: String
+}
+
+enum CustomerReputationTag {
+  FLAGGED_BY_STAFF
+  FREQUENT_NO_SHOW
+  OCCASIONAL_NO_SHOW
+  RELIABLE
+}
+
+type DailyLocationMetrics {
+  appointmentCount: Int!
+  availableMinutes: Int!
+  cancelLt2hCount: Int!
+  chairReservableMinutes: Int!
+  date: DateTime!
+  id: ID!
+  localDate: String
+  locationId: ID!
+  noShowCount: Int!
+  occupancyMinutes: Int!
+  pendingTotalCents: Int!
+  refundCents: Int!
+  revenuePosCents: Int!
+  revenuePrepayCents: Int!
+  tipsCents: Int!
+}
+
+type DailyStaffMetrics {
+  commissionCents: Int!
+  date: DateTime!
+  id: ID!
+  latenessMinutes: Int!
+  locationId: ID!
+  revenueCents: Int!
+  staffUserId: ID!
+}
+
+type DashboardAlert {
+  code: String!
+  cta: String!
+  locationId: ID
+  locationName: String
+  message: String!
+  meta: JSON
+  severity: AlertSeverity!
+}
+
+input DashboardFiltersInput {
+  dateFrom: String!
+  dateTo: String!
+  locationIds: [ID!]
+}
+
+type DashboardLocationRow {
+  appointmentCount: Int!
+  availableMinutes: Int!
+  cancelLt2hCount: Int!
+  chairReservableMinutes: Int!
+  locationId: ID!
+  locationName: String!
+  noShowCount: Int!
+  occupancyMinutes: Int!
+  pendingTotalCents: Int
+  refundsTotalCents: Int
+  revenuePosCents: Int
+  revenuePrepayCents: Int
+  revenueTotalCents: Int
+  ticketPromedioCents: Int
+  tipsCents: Int
+}
+
+type DashboardSummary {
+  byLocation: [DashboardLocationRow!]!
+  totals: DashboardTotals!
+}
+
+type DashboardTotals {
+  appointmentCount: Int!
+  cancelLt2hCount: Int!
+  cardCents: Int
+  cashCents: Int
+  commissionTotalCents: Int
+  noShowCount: Int!
+  revenueTotalCents: Int
+  transferCents: Int
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+enum DepositType {
+  FIXED
+  PERCENT
+}
+
+input GroupBookingAppointmentInput {
+  customerEmail: String!
+  customerFullName: String!
+  customerPhone: String
+  items: [BookingItemInput!]!
+  staffUserId: ID
+  startAt: DateTime!
+}
+
+type InventoryAlertRow {
+  lowStockThreshold: Int
+  productId: ID!
+  productName: String!
+  productVariantId: ID
+  quantity: Int!
+  stockLocationId: ID!
+  variantName: String
+}
+
+type InventoryLevel {
+  id: ID!
+  product: Product!
+  productId: ID!
+  quantity: Int!
+}
+
+"""Arbitrary JSON value"""
+scalar JSON
+
+type LatenessExcuse {
+  excusedAt: DateTime!
+  excusedByStaffUserId: ID!
+  id: ID!
+  localDate: String!
+  locationId: ID!
+  reason: String
+  staffUserId: ID!
+}
+
+type LatenessOverride {
+  effectiveFrom: DateTime!
+  effectiveTo: DateTime
+  id: ID!
+  locationId: ID
+  minutesLateThreshold: Int
+  staffUserId: ID!
+}
+
+type LatenessRule {
+  defaultMinutesLateThreshold: Int!
+  id: ID!
+  locationId: ID!
+}
+
+type Location {
+  hasPosPassword: Boolean!
+  id: ID!
+  isActive: Boolean!
+  mode: LocationMode!
+  name: String!
+  photoPublicId: String
+  photoUrl: String
+  policies: LocationPolicy
+  resources: [Resource!]!
+  slug: String!
+  timezone: String!
+}
+
+type LocationBlackout {
+  createdAt: DateTime!
+  date: String!
+  id: ID!
+  label: String!
+  locationId: ID!
+  type: String!
+}
+
+type LocationBusinessHour {
+  closeMin: Int!
+  dayIndex: Int!
+  id: ID!
+  isOpen: Boolean!
+  locationId: ID!
+  openMin: Int!
+}
+
+enum LocationMode {
+  BOOKING_FOCUSED
+  HYBRID
+  WALKIN_FOCUSED
+}
+
+type LocationPolicy {
+  bookingBufferAfterMin: Int!
+  bookingBufferBeforeMin: Int!
+  bookingPaymentMode: BookingPaymentMode!
+  cancellationWindowMinutes: Int!
+  depositAmountCents: Int
+  depositMaxCents: Int
+  depositMinCents: Int
+  depositPercentBps: Int
+  depositType: DepositType
+  holdDurationMinutes: Int!
+  lateBufferMinutes: Int!
+  minBookingLeadMinutes: Int!
+  walkinBlockWithinMinutes: Int!
+}
+
+type MessageLog {
+  channel: String!
+  id: ID!
+  meta: JSON
+  recipient: String!
+  sentAt: DateTime
+  status: String!
+  templateCode: String
+}
+
+type MessageTemplate {
+  channel: String!
+  code: String!
+  content: String
+  id: ID!
+  name: String!
+  variables: JSON
+}
+
+type MetafieldDefinition {
+  description: String
+  id: ID!
+  key: String!
+  name: String
+  namespace: String!
+  type: String!
+}
+
+enum MetafieldOwnerType {
+  PRODUCT
+  VARIANT
+}
+
+type MetafieldValue {
+  id: ID!
+  key: String!
+  namespace: String!
+  ownerId: ID!
+  ownerType: MetafieldOwnerType!
+  type: String!
+  value: JSON
+}
+
+type Mutation {
+  addProductImage(productId: ID!, publicId: String!, url: String!): Product!
+  assignPermissionsToRole(permissionKeys: [String!]!, roleId: ID!): Role!
+  assignRoleToStaff(input: AssignRoleToStaffInput!): Boolean!
+  assignWalkIn(staffUserId: ID!, walkInId: ID!): AssignWalkInResult!
+  cancelAppointment(appointmentId: ID!, overridePolicy: Boolean): CancelAppointmentResult!
+  cancelAppointmentByToken(token: String!): CancelAppointmentByTokenResult!
+  cancelOrder(orderId: ID!): Order!
+  checkIn(appointmentId: ID!): Appointment!
+  clearStaffPin(staffUserId: ID!): Boolean!
+  clockIn(locationId: ID!): Boolean!
+  clockOut(locationId: ID!): Boolean!
+  closeRegisterSession(input: CloseRegisterSessionInput!): RegisterSession!
+  complete(appointmentId: ID!): Appointment!
+  completeWalkIn(walkInId: ID!): Boolean!
+  confirmAppointment(appointmentId: ID!): Appointment!
+  createBlogPost(input: CreateBlogPostInput!): BlogPost!
+  createBookingDraft(input: CreateBookingDraftInput!): BookingDraftResult!
+  createCatalogCategory(input: CreateCatalogCategoryInput!): CatalogCategory!
+  createCatalogCombo(input: CreateCatalogComboInput!): CatalogCombo!
+  createCloudinaryUploadSignature(folder: String): CloudinaryUploadSignature!
+  createGroupBooking(input: CreateGroupBookingInput!): CreateGroupBookingResult!
+  createLatenessExcuse(input: CreateLatenessExcuseInput!): LatenessExcuse!
+  createLocation(input: CreateLocationInput!): Location!
+  createLocationBlackout(input: CreateLocationBlackoutInput!): LocationBlackout!
+  createOrder(input: CreateOrderInput!): Order!
+  createOrderPaymentIntent(orderId: ID!): StripePaymentIntentResult!
+  createPOSSale(input: CreatePOSSaleInput!): Sale!
+  createProduct(input: CreateProductInput!): Product!
+  createResource(input: CreateResourceInput!, locationId: ID!): Resource!
+  createRole(input: CreateRoleInput!): Role!
+  createService(input: CreateServiceInput!): Service!
+  createShiftOverride(input: CreateShiftOverrideInput!): ShiftOverride!
+  createStaff(input: CreateStaffInput!): StaffUser!
+  createStaffMembership(input: CreateStaffMembershipInput!): StaffMembership!
+  createStaffPhotoUploadSignature: CloudinaryUploadSignature!
+  createStaffVacation(input: CreateStaffVacationInput!): StaffVacation!
+  createStockLocation(input: CreateStockLocationInput!): StockLocation!
+  createStripePaymentIntent(saleId: ID!): StripePaymentIntentResult!
+  createWalkIn(customerEmail: String, customerId: ID, customerName: String, customerPhone: String, locationId: ID!): WalkIn!
+  customerLogin(email: String!, password: String!): AuthResult!
+  customerRegister(input: CustomerRegisterInput!): AuthResult!
+  deactivateProduct(id: ID!): Product!
+  deactivateService(id: ID!): Service!
+  deactivateStaff(id: ID!): StaffUser!
+  deleteBlogPost(id: ID!): Boolean!
+  deleteCatalogCategory(id: ID!): Boolean!
+  deleteCatalogCombo(id: ID!): Boolean!
+  deleteLatenessExcuse(id: ID!): Boolean!
+  deleteLatenessOverride(id: ID!): Boolean!
+  deleteLocationBlackout(id: ID!): Boolean!
+  deleteMetafieldValue(id: ID!): Boolean!
+  deleteRole(id: ID!): Boolean!
+  deleteService(id: ID!): Service!
+  deleteShiftOverride(id: ID!): Boolean!
+  deleteStaffMembership(id: ID!): Boolean!
+  deleteStaffServicePrice(serviceId: ID!, staffUserId: ID!): Boolean!
+  deleteStaffVacation(id: ID!): Boolean!
+  dropWalkIn(reason: String, walkInId: ID!): Boolean!
+  findOrCreateCustomer(email: String, name: String!, phone: String): Customer
+  fulfillOrder(orderId: ID!, stockLocationId: ID!): Order!
+  inventoryAdjust(delta: Int!, productId: ID!, reason: String, stockLocationId: ID!): InventoryLevel!
+  inventoryTransfer(fromStockLocationId: ID!, productId: ID!, qty: Int!, toStockLocationId: ID!): Boolean!
+  logout: Boolean!
+  noShow(appointmentId: ID!): Appointment!
+  openRegisterSession(registerId: ID!): RegisterSession!
+  publishBlogPost(id: ID!): BlogPost!
+  recalcReportingMetrics(dateFrom: String!, dateTo: String!): Boolean!
+  refundApprove(refundId: ID!): Boolean!
+  refundRequest(amountCents: Int!, reason: String, saleId: ID!): String!
+  removeProductImage(imageId: ID!, productId: ID!): Product!
+  reorderProductImages(imageIdsInOrder: [ID!]!, productId: ID!): Product!
+  reorderWalkIn(afterWalkInId: ID, walkInId: ID!): Boolean!
+  replaceShiftTemplatesBatch(input: ReplaceShiftTemplatesBatchInput!): [ShiftTemplate!]!
+  replaceShiftTemplatesForWeek(input: ReplaceShiftTemplatesForWeekInput!): [ShiftTemplate!]!
+  requestAppointmentManageLink(appointmentId: ID!, email: String!): String!
+  rescheduleAppointment(appointmentId: ID!, newStartAt: DateTime!, overridePolicy: Boolean): RescheduleAppointmentResult!
+  rescheduleAppointmentByToken(newStartAt: DateTime!, token: String!): RescheduleAppointmentByTokenResult!
+  resetLocationBusinessHours(locationId: ID!): [LocationBusinessHour!]!
+  runPayout(periodEnd: DateTime!, periodStart: DateTime!): PayoutRun!
+  setPosLocationPassword(locationId: ID!, password: String!): Boolean!
+  setStaffPassword(password: String!, staffUserId: ID!): Boolean!
+  setStaffPin(pin4: String!, staffUserId: ID!): Boolean!
+  staffLogin(email: String!, password: String!): AuthResult!
+  staffPinLogin(email: String!, pin4: String!): AuthResult!
+  startService(appointmentId: ID!): Appointment!
+  unassignRoleFromStaff(staffUserId: ID!): Boolean!
+  updateBlogPost(id: ID!, input: UpdateBlogPostInput!): BlogPost!
+  updateCatalogCategory(id: ID!, input: UpdateCatalogCategoryInput!): CatalogCategory!
+  updateCatalogCombo(id: ID!, input: UpdateCatalogComboInput!): CatalogCombo!
+  updateCustomerReputation(customerId: ID!, reputationNote: String, reputationTag: CustomerReputationTag): Customer!
+  updateLocation(id: ID!, input: UpdateLocationInput!): Location!
+  updateLocationPolicy(input: UpdateLocationPolicyInput!, locationId: ID!): LocationPolicy!
+  updateProduct(id: ID!, input: UpdateProductInput!): Product!
+  updateResource(id: ID!, input: UpdateResourceInput!): Resource!
+  updateRole(id: ID!, input: UpdateRoleInput!): Role!
+  updateService(id: ID!, input: UpdateServiceInput!): Service!
+  updateShiftOverride(id: ID!, input: UpdateShiftOverrideInput!): ShiftOverride!
+  updateStaff(id: ID!, input: UpdateStaffInput!): StaffUser!
+  updateStaffMembership(id: ID!, input: UpdateStaffMembershipInput): StaffMembership!
+  updateStockLocation(id: ID!, input: UpdateStockLocationInput!): StockLocation!
+  upsertCatalogComboLocation(input: UpsertCatalogComboLocationInput!): CatalogComboLocation!
+  upsertLatenessOverride(input: UpsertLatenessOverrideInput!): LatenessOverride!
+  upsertLatenessRule(input: UpsertLatenessRuleInput!, locationId: ID!): LatenessRule!
+  upsertLocationBusinessHour(input: UpsertLocationBusinessHourInput!): LocationBusinessHour!
+  upsertMetafieldDefinition(input: UpsertMetafieldDefinitionInput!): MetafieldDefinition!
+  upsertMetafieldValue(input: UpsertMetafieldValueInput!): MetafieldValue!
+  upsertServiceLocation(input: UpsertServiceLocationInput!): ServiceLocation!
+  upsertShiftTemplate(input: UpsertShiftTemplateInput!): ShiftTemplate!
+  upsertShiftTemplatesForWeek(input: UpsertShiftTemplatesForWeekInput!): [ShiftTemplate!]!
+  upsertStaffServicePrice(input: UpsertStaffServicePriceInput!): StaffServicePrice!
+  verifyPosLocationAccess(locationId: ID!, password: String!): Boolean!
+  voidSale(saleId: ID!): Sale!
+}
+
+type Order {
+  createdAt: DateTime!
+  customer: Customer
+  customerId: ID
+  fulfillmentStatus: String
+  id: ID!
+  items: [OrderItem!]!
+  pickupLocation: Location
+  pickupLocationId: ID
+  shippingAddress: String
+  source: String!
+  status: String!
+  totalCents: Int!
+  updatedAt: DateTime!
+}
+
+type OrderItem {
+  id: ID!
+  product: Product
+  productId: ID!
+  qty: Int!
+  unitPriceCents: Int!
+  variant: ProductVariant
+  variantId: ID
+}
+
+input POSSaleItemInput {
+  catalogComboId: ID
+  productId: ID
+  qty: Int!
+  serviceId: ID
+  unitPriceCents: Int!
+}
+
+type PayoutRun {
+  entries: [PayoutRunEntry!]!
+  id: ID!
+  periodEnd: DateTime!
+  periodStart: DateTime!
+  status: String!
+  totalsJson: JSON
+}
+
+type PayoutRunEntry {
+  amountCents: Int!
+  breakdownJson: JSON
+  id: ID!
+  staffUserId: ID!
+}
+
+type PosPublicLocation {
+  id: ID!
+  name: String!
+}
+
+type Product {
+  categoryId: ID
+  commissionCents: Int
+  compareAtPriceCents: Int
+  costCents: Int
+  description: String
+  handle: String
+  heightMm: Int
+  hsCode: String
+  id: ID!
+  imagePublicId: String
+  imageUrl: String
+  images: [ProductImage!]!
+  isActive: Boolean!
+  lengthMm: Int
+  locationIds: [ID!]!
+  metafields: [MetafieldValue!]!
+  name: String!
+  penaltyCommissionCents: Int
+  productType: String
+  requiresShipping: Boolean!
+  seoDescription: String
+  seoTitle: String
+  sku: String
+  status: ProductStatus!
+  tags: [String!]!
+  taxCode: String
+  taxable: Boolean!
+  variants: [ProductVariant!]!
+  vendor: String
+  weightGrams: Int
+  widthMm: Int
+}
+
+type ProductImage {
+  id: ID!
+  publicId: String!
+  sortOrder: Int!
+  url: String!
+}
+
+enum ProductStatus {
+  ACTIVE
+  ARCHIVED
+  DRAFT
+}
+
+type ProductVariant {
+  barcode: String
+  compareAtPriceCents: Int
+  id: ID!
+  metafields: [MetafieldValue!]!
+  name: String!
+  option1: String
+  option2: String
+  option3: String
+  priceCents: Int!
+  sku: String
+}
+
+type Query {
+  alertsFeed(filters: DashboardFiltersInput!): [DashboardAlert!]!
+  appointment(id: ID!): Appointment
+  appointments(dateFrom: String!, dateTo: String!, locationId: ID, status: AppointmentStatus): [Appointment!]!
+  availableSlots(input: AvailableSlotsInput!): [DateTime!]!
+  barbers(locationId: ID!): [StaffUser!]!
+  blogPost(id: ID!): BlogPost
+  blogPostBySlug(slug: String!): BlogPost
+  blogPosts(limit: Int, offset: Int, publishedOnly: Boolean): [BlogPost!]!
+  catalogCategories(appliesTo: CategoryAppliesTo): [CatalogCategory!]!
+  catalogCategory(id: ID!): CatalogCategory
+  catalogCombo(id: ID!): CatalogCombo
+  catalogCombos(activeOnly: Boolean): [CatalogCombo!]!
+  cloudinaryConfig: CloudinaryConfig!
+  customer(id: ID!): Customer
+  customerAppointments(customerId: ID!, limit: Int): [Appointment!]!
+  customers(limit: Int, offset: Int, query: String): [Customer!]!
+  dailyLocationMetrics(dateFrom: String!, dateTo: String!, locationId: ID): [DailyLocationMetrics!]!
+  dailyStaffMetrics(dateFrom: String!, dateTo: String!, locationId: ID, staffUserId: ID): [DailyStaffMetrics!]!
+  dashboardSummary(filters: DashboardFiltersInput!): DashboardSummary!
+  inventoryLevels(limit: Int, offset: Int, stockLocationId: ID!): [InventoryLevel!]!
+  latenessExcuses(fromDate: String!, locationId: ID, staffUserId: ID, toDate: String!): [LatenessExcuse!]!
+  latenessOverrides(locationId: ID, staffUserId: ID): [LatenessOverride!]!
+  latenessRule(locationId: ID!): LatenessRule
+  listAppointmentsForKPI(date: String!, locationId: ID!, status: AppointmentStatus): [Appointment!]!
+  listInventoryAlerts(locationId: ID): [InventoryAlertRow!]!
+  listSalesForKPI(date: String!, locationId: ID!, source: SaleSource): [Sale!]!
+  liveAgenda(date: String, locationId: ID, windowMinutes: Int): [Appointment!]!
+  location(id: ID!): Location
+  locationBlackouts(fromDate: String, locationId: ID!, toDate: String): [LocationBlackout!]!
+  locationBusinessHours(locationId: ID!): [LocationBusinessHour!]!
+  locationShiftTemplates(locationId: ID!): [ShiftTemplate!]!
+  locations(includeInactive: Boolean): [Location!]!
+  messageLogs(limit: Int): [MessageLog!]!
+  messageTemplates: [MessageTemplate!]!
+  metafieldDefinitions: [MetafieldDefinition!]!
+  metafieldValues(ownerId: ID!, ownerType: MetafieldOwnerType!): [MetafieldValue!]!
+  order(id: ID!): Order
+  orders(limit: Int, offset: Int): [Order!]!
+  payoutRun(id: ID!): PayoutRun
+  payoutRuns(periodEnd: DateTime, periodStart: DateTime): [PayoutRun!]!
+  permissions: [String!]!
+  posInventoryLevels(limit: Int, locationId: ID!): [InventoryLevel!]!
+  posPublicLocations: [PosPublicLocation!]!
+  product(id: ID!): Product
+  products(locationId: ID): [Product!]!
+  realtimeBranchStatus(filters: DashboardFiltersInput!, locationId: ID): [RealtimeBranchStatusRow!]!
+  registerSession(id: ID!): RegisterSession
+  registers(locationId: ID!): [Register!]!
+  reportByDayOfWeek(dateFrom: String!, dateTo: String!, locationId: ID): [ReportDayOfWeekRow!]!
+  reportCompareLocations(dateFrom: String!, dateTo: String!, locationId: ID): [ReportCompareLocationRow!]!
+  reportCompareTwoDays(dateA: String!, dateB: String!, locationId: ID): ReportCompareTwoDays!
+  reportHeatmapByHour(dateFrom: String!, dateTo: String!, locationId: ID): [ReportHeatmapCell!]!
+  reportMonthOverMonth(locationId: ID, month: Int!, year: Int!): ReportMonthOverMonth!
+  reportNoShowRate(dateFrom: String!, dateTo: String!, locationId: ID): ReportNoShowRate!
+  reportRefunds(byDay: Boolean, dateFrom: String!, dateTo: String!, locationId: ID): ReportRefunds!
+  reportRevenueMix(dateFrom: String!, dateTo: String!, locationId: ID): [ReportRevenueMixRow!]!
+  reportStaffPerformance(dateFrom: String!, dateTo: String!, locationId: ID): [ReportStaffPerformanceRow!]!
+  reportWeekOverWeek(dateFrom: String!, locationId: ID): ReportWeekOverWeek!
+  reportsExportCsv(dateFrom: String!, dateTo: String!, type: String!): String!
+  role(id: ID!): Role
+  roles: [Role!]!
+  searchCustomers(limit: Int, query: String!): [Customer!]!
+  service(id: ID!): Service
+  serviceDistribution(filters: DashboardFiltersInput!): [ServiceDistributionRow!]!
+  services(locationId: ID): [Service!]!
+  shiftOverrides(fromDate: String!, locationId: ID!, toDate: String!): [ShiftOverride!]!
+  shiftTemplates(locationId: ID!, staffUserId: ID!): [ShiftTemplate!]!
+  staff(id: ID!): StaffUser
+  staffCommissionToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
+  staffList: [StaffUser!]!
+  staffLocationsWithSchedules(staffUserId: ID!): [StaffLocationScheduleSummary!]!
+  staffMemberships(locationId: ID, staffUserId: ID): [StaffMembership!]!
+  staffProductRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
+  staffRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
+  staffRoleAssignments(staffUserId: ID): [StaffRoleAssignmentRow!]!
+  staffServiceRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
+  staffShiftOverridesAllLocations(fromDate: String!, locationIds: [ID!]!, staffUserIds: [ID!]!, toDate: String!): [ShiftOverride!]!
+  staffShiftTemplatesAllLocations(locationIds: [ID!]!, staffUserIds: [ID!]!): [ShiftTemplate!]!
+  staffVacations(locationId: ID, staffUserId: ID): [StaffVacation!]!
+  stockLocation(id: ID!): StockLocation
+  stockLocations: [StockLocation!]!
+  timeClockEvents(fromDate: String!, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
+  viewer: Viewer!
+  walkIns(locationId: ID!): [WalkIn!]!
+}
+
+type RealtimeBranchStatusRow {
+  barbersOnDuty: [BarberOnDuty!]!
+  inServiceCount: Int!
+  locationId: ID!
+  locationName: String!
+
+  """
+  Horario de operación hoy (minutos desde medianoche). Null si no hay staff con turno.
+  """
+  operatingHoursEndMin: Int
+
+  """
+  Horario de operación hoy (minutos desde medianoche). Null si no hay staff con turno.
+  """
+  operatingHoursStartMin: Int
+  registerOpen: Boolean!
+  reservableChairStatus: String
+  waitingCount: Int!
+}
+
+type Register {
+  id: ID!
+  isActive: Boolean!
+  locationId: ID!
+  name: String!
+  openSession: RegisterSession
+}
+
+type RegisterSession {
+  closedAt: DateTime
+  countedCardCents: Int
+  countedCashCents: Int
+  countedTransferCents: Int
+  expectedCardCents: Int!
+  expectedCashCents: Int!
+  expectedTransferCents: Int!
+  id: ID!
+  openedAt: DateTime!
+  status: RegisterSessionStatus!
+}
+
+enum RegisterSessionStatus {
+  CLOSED
+  OPEN
+}
+
+input ReplaceShiftTemplatesBatchInput {
+  days: [ShiftTemplateDayInput!]!
+  locationId: ID!
+  staffUserId: ID!
+}
+
+input ReplaceShiftTemplatesForWeekInput {
+  blocks: [ShiftBlockInput!]
+  dayOfWeeks: [Int!]!
+  endMin: Int!
+  locationId: ID!
+  staffUserId: ID!
+  startMin: Int!
+}
+
+type ReportCompareLocationRow {
+  appointmentCount: Int!
+  locationId: ID!
+  noShowCount: Int!
+  percentOfTotalRevenue: Float!
+  rank: Int!
+  refundCents: Int!
+  revenuePosCents: Int!
+  revenuePrepayCents: Int!
+  totalRevenueCents: Int!
+}
+
+type ReportCompareTwoDays {
+  dateA: ReportSingleDay!
+  dateB: ReportSingleDay!
+  delta: ReportPeriodTotals!
+}
+
+type ReportDayOfWeekRow {
+  appointmentCount: Int!
+  dayOfWeek: Int!
+  noShowCount: Int!
+  refundCents: Int!
+  revenueCents: Int!
+}
+
+type ReportHeatmapCell {
+  appointmentCount: Int!
+  dayOfWeek: Int!
+  hour: Int!
+  locationId: ID!
+  revenueCents: Int!
+}
+
+type ReportMonthOverMonth {
+  currentMonth: ReportPeriodTotals!
+  delta: ReportPeriodTotals!
+  pctChange: ReportPeriodTotals!
+  previousMonth: ReportPeriodTotals!
+}
+
+type ReportNoShowRate {
+  noShowCount: Int!
+  ratePercent: Float!
+  totalAppointments: Int!
+}
+
+type ReportPeriodTotals {
+  appointmentCount: Int!
+  noShowCount: Int!
+  refundCents: Int!
+  revenueCents: Int!
+}
+
+type ReportRefunds {
+  byDay: [ReportRefundsByDay!]
+  refundCount: Int!
+  totalRefundCents: Int!
+}
+
+type ReportRefundsByDay {
+  date: String!
+  refundCents: Int!
+  refundCount: Int!
+}
+
+type ReportRevenueMixRow {
+  locationId: ID!
+  posPercent: Float!
+  prepayPercent: Float!
+  totalCents: Int!
+  totalPosCents: Int!
+  totalPrepayCents: Int!
+}
+
+type ReportSingleDay {
+  appointmentCount: Int!
+  date: String!
+  noShowCount: Int!
+  refundCents: Int!
+  revenueCents: Int!
+}
+
+type ReportStaffPerformanceRow {
+  locationId: ID!
+  rank: Int!
+  revenueCents: Int!
+  staffName: String
+  staffUserId: ID!
+}
+
+type ReportWeekOverWeek {
+  currentWeek: ReportPeriodTotals!
+  delta: ReportPeriodTotals!
+  pctChange: ReportPeriodTotals!
+  previousWeek: ReportPeriodTotals!
+}
+
+type RescheduleAppointmentByTokenResult {
+  appointment: Appointment
+  ok: Boolean!
+}
+
+type RescheduleAppointmentResult {
+  appointment: Appointment
+  ok: Boolean!
+}
+
+type ResolvedExtra {
+  commissionCents: Int
+  durationMin: Int!
+  name: String!
+  priceCents: Int!
+  serviceId: ID!
+}
+
+type ResolvedServicePricing {
+  commissionCents: Int
+  description: String
+  durationMin: Int!
+  extras: [ResolvedExtra!]!
+  isActive: Boolean!
+  locationId: ID!
+  priceCents: Int!
+  priceFromLocationOverride: Boolean!
+  priceFromStaffOverride: Boolean!
+  serviceId: ID!
+  staffUserId: ID
+  totalDurationMin: Int!
+  totalPriceCents: Int!
+}
+
+type Resource {
+  id: ID!
+  isActive: Boolean!
+  isReservable: Boolean!
+  name: String!
+}
+
+type Role {
+  description: String
+  id: ID!
+  name: String!
+  permissionKeys: [String!]!
+}
+
+type Sale {
+  appointmentId: ID
+  createdAt: DateTime!
+  customer: Customer
+  id: ID!
+  paidTotalCents: Int!
+  paymentStatus: SalePaymentStatus!
+  source: String!
+  status: SaleStatus!
+  subtotalCents: Int!
+  taxTotalCents: Int!
+  totalCents: Int!
+  walkInId: ID
+}
+
+enum SalePaymentStatus {
+  PAID
+  PARTIALLY_PAID
+  REFUNDED
+  UNPAID
+}
+
+enum SaleSource {
+  ADMIN_ADJUSTMENT
+  BOOKING_NO_PAY
+  ONLINE_PREPAY
+  POS
+}
+
+enum SaleStatus {
+  OPEN
+  PAID
+  REFUNDED
+  VOID
+}
+
+enum ScopeType {
+  GLOBAL
+  LOCATION
+  SELF
+}
+
+type Service {
+  baseDurationMin: Int!
+  basePriceCents: Int!
+  categoryId: ID
+  commissionCents: Int
+  description: String
+  id: ID!
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean!
+  isAddOn: Boolean!
+  locationIds: [ID!]!
+  locations: [ServiceLocation!]!
+  name: String!
+  penaltyCommissionCents: Int
+  pricingFor(locationId: ID!, staffUserId: ID): ResolvedServicePricing!
+  staffOverrides: [StaffServicePrice!]!
+}
+
+type ServiceDistributionRow {
+  count: Int!
+  label: String!
+  percentage: Float!
+}
+
+type ServiceLocation {
+  commissionCentsOverride: Int
+  descriptionOverride: String
+  durationMinOverride: Int
+  extraServiceIds: [ID!]!
+  isActive: Boolean!
+  locationId: ID!
+  priceCentsOverride: Int
+  serviceId: ID!
+}
+
+type ShiftBlock {
+  endMin: Int!
+  id: ID!
+  startMin: Int!
+  type: ShiftBlockType!
+}
+
+input ShiftBlockInput {
+  endMin: Int!
+  startMin: Int!
+  type: ShiftBlockType!
+}
+
+enum ShiftBlockType {
+  BREAK
+  LUNCH
+}
+
+type ShiftOverride {
+  blocks: [ShiftOverrideBlock!]
+  date: DateTime!
+  endMin: Int
+  id: ID!
+  locationId: ID!
+  reason: String
+  staffUserId: ID!
+  startMin: Int
+  type: ShiftOverrideType!
+}
+
+type ShiftOverrideBlock {
+  endMin: Int!
+  id: ID!
+  startMin: Int!
+  type: ShiftBlockType!
+}
+
+enum ShiftOverrideType {
+  CUSTOM_HOURS
+  DAY_OFF
+}
+
+type ShiftTemplate {
+  blocks: [ShiftBlock!]!
+  dayOfWeek: Int!
+  endMin: Int!
+  id: ID!
+  locationId: ID!
+  staffUserId: ID!
+  startMin: Int!
+}
+
+input ShiftTemplateDayInput {
+  blocks: [ShiftBlockInput!]
+  dayOfWeek: Int!
+  endMin: Int!
+  startMin: Int!
+}
+
+enum StaffContextRole {
+  ADMIN
+  BARBER
+  FRONTDESK
+  MANAGER
+}
+
+type StaffLocationScheduleSummary {
+  locationId: ID!
+  locationName: String!
+  templateCount: Int!
+}
+
+type StaffMembership {
+  contextRole: StaffContextRole!
+  endsAt: DateTime
+  id: ID!
+  isPrimary: Boolean!
+  location: Location!
+  locationId: ID!
+  staffUser: StaffUser!
+  staffUserId: ID!
+  startsAt: DateTime!
+}
+
+type StaffRoleAssignmentRow {
+  id: ID!
+  locationId: ID
+  roleId: ID!
+  roleName: String!
+  scopeType: ScopeType!
+  staffUserId: ID!
+}
+
+type StaffServicePrice {
+  commissionCentsOverride: Int
+  priceCents: Int!
+  serviceId: ID!
+  staffUserId: ID!
+}
+
+type StaffUser {
+  email: String!
+  fullName: String!
+  hasPosPin: Boolean!
+  id: ID!
+  isActive: Boolean!
+  phone: String
+  photoPublicId: String
+  photoUrl: String
+}
+
+type StaffVacation {
+  createdAt: DateTime!
+  endDate: String!
+  id: ID!
+  label: String!
+  locationId: ID!
+  staffUserId: ID!
+  startDate: String!
+}
+
+type StockLocation {
+  id: ID!
+  locationId: ID
+  name: String!
+  type: StockLocationType!
+}
+
+enum StockLocationType {
+  STORE
+  WAREHOUSE
+}
+
+type StripePaymentIntentResult {
+  amountCents: Int!
+  clientSecret: String!
+  currency: String!
+  paymentIntentId: String!
+  provider: String!
+}
+
+type TimeClockEvent {
+  at: DateTime!
+  id: ID!
+  locationId: ID!
+  staffUserId: ID!
+  type: TimeClockEventType!
+}
+
+enum TimeClockEventType {
+  CLOCK_IN
+  CLOCK_OUT
+}
+
+input UpdateBlogPostInput {
+  contentJson: JSON
+  slug: String
+  title: String
+}
+
+input UpdateCatalogCategoryInput {
+  appliesTo: CategoryAppliesTo
+  description: String
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean
+  name: String
+  parentId: ID
+  slug: String
+  sortOrder: Int
+}
+
+input UpdateCatalogComboInput {
+  commissionCents: Int
+  description: String
+  extraCategoryIds: [ID!]
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean
+  items: [CatalogComboItemInput!]
+  name: String
+  penaltyCommissionCents: Int
+  priceCents: Int
+  slug: String
+  sortOrder: Int
+}
+
+input UpdateLocationInput {
+  isActive: Boolean
+  name: String
+  photoPublicId: String
+  photoUrl: String
+  slug: String
+  timezone: String
+}
+
+input UpdateLocationPolicyInput {
+  bookingBufferAfterMin: Int
+  bookingBufferBeforeMin: Int
+  bookingPaymentMode: BookingPaymentMode
+  cancellationWindowMinutes: Int
+  depositAmountCents: Int
+  depositMaxCents: Int
+  depositMinCents: Int
+  depositPercentBps: Int
+  depositType: DepositType
+  holdDurationMinutes: Int
+  lateBufferMinutes: Int
+  minBookingLeadMinutes: Int
+  walkinBlockWithinMinutes: Int
+}
+
+input UpdateProductInput {
+  categoryId: ID
+  commissionCents: Int
+  compareAtPriceCents: Int
+  costCents: Int
+  description: String
+  handle: String
+  heightMm: Int
+  hsCode: String
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean
+  lengthMm: Int
+  locationIds: [ID!]
+  name: String
+  penaltyCommissionCents: Int
+  productType: String
+  requiresShipping: Boolean
+  seoDescription: String
+  seoTitle: String
+  sku: String
+  status: ProductStatus
+  tags: [String!]
+  taxCode: String
+  taxable: Boolean
+  variants: [CreateProductVariantInput!]
+  vendor: String
+  weightGrams: Int
+  widthMm: Int
+}
+
+input UpdateResourceInput {
+  isActive: Boolean
+  isReservable: Boolean
+  name: String
+}
+
+input UpdateRoleInput {
+  description: String
+  name: String
+}
+
+input UpdateServiceInput {
+  baseDurationMin: Int
+  basePriceCents: Int
+  categoryId: ID
+  commissionCents: Int
+  description: String
+  imagePublicId: String
+  imageUrl: String
+  isActive: Boolean
+  isAddOn: Boolean
+  locationIds: [ID!]
+  name: String
+  penaltyCommissionCents: Int
+}
+
+input UpdateShiftOverrideInput {
+  blocks: [ShiftBlockInput!]
+  endMin: Int
+  reason: String
+  startMin: Int
+}
+
+input UpdateStaffInput {
+  email: String
+  fullName: String
+  isActive: Boolean
+  phone: String
+  photoPublicId: String
+  photoUrl: String
+}
+
+input UpdateStaffMembershipInput {
+  contextRole: StaffContextRole
+  endsAt: DateTime
+  isPrimary: Boolean
+  locationId: ID
+  startsAt: DateTime
+}
+
+input UpdateStockLocationInput {
+  locationId: ID
+  name: String
+  type: StockLocationType
+}
+
+input UpsertCatalogComboLocationInput {
+  comboId: ID!
+  isActive: Boolean
+  locationId: ID!
+  priceCentsOverride: Int
+}
+
+input UpsertLatenessOverrideInput {
+  effectiveFrom: String
+  effectiveTo: String
+  locationId: ID
+  minutesLateThreshold: Int
+  staffUserId: ID!
+}
+
+input UpsertLatenessRuleInput {
+  defaultMinutesLateThreshold: Int!
+}
+
+input UpsertLocationBusinessHourInput {
+  closeMin: Int!
+  dayIndex: Int!
+  isOpen: Boolean!
+  locationId: ID!
+  openMin: Int!
+}
+
+input UpsertMetafieldDefinitionInput {
+  description: String
+  key: String!
+  name: String
+  namespace: String!
+  type: String!
+}
+
+input UpsertMetafieldValueInput {
+  key: String!
+  namespace: String!
+  ownerId: ID!
+  ownerType: MetafieldOwnerType!
+  type: String!
+  value: JSON
+}
+
+input UpsertServiceLocationInput {
+  commissionCentsOverride: Int
+  descriptionOverride: String
+  durationMinOverride: Int
+  extraServiceIds: [ID!]
+  isActive: Boolean
+  locationId: ID!
+  priceCentsOverride: Int
+  serviceId: ID!
+}
+
+input UpsertShiftTemplateInput {
+  blocks: [ShiftBlockInput!]
+  dayOfWeek: Int!
+  endMin: Int!
+  locationId: ID!
+  staffUserId: ID!
+  startMin: Int!
+}
+
+input UpsertShiftTemplatesForWeekInput {
+  blocks: [ShiftBlockInput!]
+  endMin: Int!
+  locationId: ID!
+  staffUserId: ID!
+  startMin: Int!
+}
+
+input UpsertStaffServicePriceInput {
+  commissionCentsOverride: Int
+  priceCents: Int!
+  serviceId: ID!
+  staffUserId: ID!
+}
+
+type Viewer {
+  customer: Customer
+  kind: ViewerKind!
+  locationScopes: [ViewerLocationScope!]!
+  permissions: [String!]!
+  staff: StaffUser
+}
+
+enum ViewerKind {
+  ANON
+  CUSTOMER
+  STAFF
+}
+
+type ViewerLocationScope {
+  locationId: ID
+  scopeType: ScopeType!
+}
+
+type WalkIn {
+  assignedStaffUser: StaffUser
+  createdAt: DateTime!
+  customer: Customer
+  customerEmail: String
+  customerName: String
+  customerPhone: String
+  id: ID!
+  status: WalkInStatus!
+}
+
+enum WalkInStatus {
+  ASSIGNED
+  CANCELLED
+  DONE
+  PENDING
+}

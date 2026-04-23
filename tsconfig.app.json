@@ -26,5 +26,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/core/graphql/generated"],
+  "references": [{ "path": "./tsconfig.generated.json" }]
 }

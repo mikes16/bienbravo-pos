@@ -1,7 +1,8 @@
-import { gql, type ApolloClient } from '@apollo/client'
+import { type ApolloClient } from '@apollo/client'
+import { graphql } from '@/core/graphql/generated'
 import type { WalkIn } from '../domain/walkins.types.ts'
 
-const WALKINS_QUERY = gql`
+const WALKINS_QUERY = graphql(`
   query PosWalkIns($locationId: ID!) {
     walkIns(locationId: $locationId) {
       id status customerName customerPhone customerEmail createdAt
@@ -9,34 +10,34 @@ const WALKINS_QUERY = gql`
       customer { id fullName email phone }
     }
   }
-`
+`)
 
-const CREATE_WALKIN = gql`
+const CREATE_WALKIN = graphql(`
   mutation CreateWalkIn($locationId: ID!, $customerName: String, $customerPhone: String, $customerEmail: String) {
     createWalkIn(locationId: $locationId, customerName: $customerName, customerPhone: $customerPhone, customerEmail: $customerEmail) {
       id status customerName customerPhone customerEmail createdAt
     }
   }
-`
+`)
 
-const ASSIGN_WALKIN = gql`
+const ASSIGN_WALKIN = graphql(`
   mutation AssignWalkIn($walkInId: ID!, $staffUserId: ID!) {
     assignWalkIn(walkInId: $walkInId, staffUserId: $staffUserId) {
       walkIn { id status assignedStaffUser { id fullName } }
       warning
     }
   }
-`
+`)
 
-const COMPLETE_WALKIN = gql`
+const COMPLETE_WALKIN = graphql(`
   mutation CompleteWalkIn($walkInId: ID!) {
     completeWalkIn(walkInId: $walkInId)
   }
-`
+`)
 
-const DROP_WALKIN = gql`
+const DROP_WALKIN = graphql(`
   mutation DropWalkIn($walkInId: ID!, $reason: String) { dropWalkIn(walkInId: $walkInId, reason: $reason) }
-`
+`)
 
 export interface WalkInsRepository {
   getWalkIns(locationId: string): Promise<WalkIn[]>
