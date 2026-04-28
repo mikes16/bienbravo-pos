@@ -12,8 +12,8 @@ const REGISTERS_QUERY = graphql(`
 `)
 
 const OPEN_SESSION = graphql(`
-  mutation OpenRegisterSession($registerId: ID!) {
-    openRegisterSession(registerId: $registerId) {
+  mutation OpenRegisterSession($registerId: ID!, $openingCashCents: Int) {
+    openRegisterSession(registerId: $registerId, openingCashCents: $openingCashCents) {
       id status openedAt expectedCashCents expectedCardCents expectedTransferCents
     }
   }
@@ -31,7 +31,7 @@ const CLOSE_SESSION = graphql(`
 
 export interface RegisterRepository {
   getRegisters(locationId: string): Promise<Register[]>
-  openSession(registerId: string): Promise<RegisterSession>
+  openSession(registerId: string, openingCashCents: number): Promise<RegisterSession>
   closeSession(input: CloseSessionInput): Promise<RegisterSession>
 }
 
@@ -50,10 +50,10 @@ export class ApolloRegisterRepository implements RegisterRepository {
     return data!.registers.filter((r: Register) => r.isActive)
   }
 
-  async openSession(registerId: string): Promise<RegisterSession> {
+  async openSession(registerId: string, openingCashCents: number): Promise<RegisterSession> {
     const { data } = await this.#client.mutate<{ openRegisterSession: RegisterSession }>({
       mutation: OPEN_SESSION,
-      variables: { registerId },
+      variables: { registerId, openingCashCents },
     })
     return data!.openRegisterSession
   }

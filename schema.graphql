@@ -109,6 +109,22 @@ enum BookingPaymentMode {
   NONE
 }
 
+type BulkPriceResult {
+  skipped: [BulkSkipped!]!
+  updated: Int!
+  variantsUpdated: Int!
+}
+
+type BulkProductResult {
+  skipped: [BulkSkipped!]!
+  updated: Int!
+}
+
+type BulkSkipped {
+  id: String!
+  reason: String!
+}
+
 type CancelAppointmentByTokenResult {
   ok: Boolean!
   refundAllowed: Boolean!
@@ -687,6 +703,9 @@ type Mutation {
   assignPermissionsToRole(permissionKeys: [String!]!, roleId: ID!): Role!
   assignRoleToStaff(input: AssignRoleToStaffInput!): Boolean!
   assignWalkIn(staffUserId: ID!, walkInId: ID!): AssignWalkInResult!
+  bulkAdjustPrice(deltaCents: Int, deltaPct: Float, ids: [ID!]!): BulkPriceResult!
+  bulkAssignCategory(categoryId: ID!, ids: [ID!]!): BulkProductResult!
+  bulkUpdateProductStatus(ids: [ID!]!, status: ProductStatus!): BulkProductResult!
   cancelAppointment(appointmentId: ID!, overridePolicy: Boolean): CancelAppointmentResult!
   cancelAppointmentByToken(token: String!): CancelAppointmentByTokenResult!
   cancelOrder(orderId: ID!): Order!
@@ -741,16 +760,18 @@ type Mutation {
   deleteStaffServicePrice(serviceId: ID!, staffUserId: ID!): Boolean!
   deleteStaffVacation(id: ID!): Boolean!
   dropWalkIn(reason: String, walkInId: ID!): Boolean!
+  extendServiceTokenPrevious(additionalHours: Int!): ServiceTokenInfo!
   findOrCreateCustomer(email: String, name: String!, phone: String): Customer
   fulfillOrder(orderId: ID!, stockLocationId: ID!): Order!
   inventoryAdjust(delta: Int!, productId: ID!, reason: String, stockLocationId: ID!): InventoryLevel!
   inventoryTransfer(fromStockLocationId: ID!, productId: ID!, qty: Int!, toStockLocationId: ID!): Boolean!
   logout: Boolean!
   noShow(appointmentId: ID!): Appointment!
-  openRegisterSession(registerId: ID!): RegisterSession!
+  openRegisterSession(openingCashCents: Int, registerId: ID!): RegisterSession!
   publishBlogPost(id: ID!): BlogPost!
   recalcReportingMetrics(dateFrom: String!, dateTo: String!): Boolean!
   refundApprove(refundId: ID!): Boolean!
+  refundReject(reason: String, refundId: ID!): Boolean!
   refundRequest(amountCents: Int!, reason: String, saleId: ID!): String!
   removeProductImage(imageId: ID!, productId: ID!): Product!
   reorderProductImages(imageIdsInOrder: [ID!]!, productId: ID!): Product!
@@ -761,6 +782,7 @@ type Mutation {
   rescheduleAppointment(appointmentId: ID!, newStartAt: DateTime!, overridePolicy: Boolean): RescheduleAppointmentResult!
   rescheduleAppointmentByToken(newStartAt: DateTime!, token: String!): RescheduleAppointmentByTokenResult!
   resetLocationBusinessHours(locationId: ID!): [LocationBusinessHour!]!
+  rotateServiceToken(input: RotateServiceTokenInput!): RotateServiceTokenResult!
   runPayout(periodEnd: DateTime!, periodStart: DateTime!): PayoutRun!
   setPosLocationPassword(locationId: ID!, password: String!): Boolean!
   setStaffPassword(password: String!, staffUserId: ID!): Boolean!
@@ -831,6 +853,13 @@ input POSSaleItemInput {
   unitPriceCents: Int!
 }
 
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+}
+
 type PayoutRun {
   entries: [PayoutRunEntry!]!
   id: ID!
@@ -886,6 +915,17 @@ type Product {
   widthMm: Int
 }
 
+type ProductConnection {
+  edges: [ProductEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ProductEdge {
+  cursor: String!
+  node: Product!
+}
+
 type ProductImage {
   id: ID!
   publicId: String!
@@ -912,7 +952,17 @@ type ProductVariant {
   sku: String
 }
 
+enum ProductsSort {
+  NAME_ASC
+  NAME_DESC
+  PRICE_ASC
+  PRICE_DESC
+  UPDATED_ASC
+  UPDATED_DESC
+}
+
 type Query {
+  activeServiceTokens: [ServiceTokenInfo!]!
   alertsFeed(filters: DashboardFiltersInput!): [DashboardAlert!]!
   appointment(id: ID!): Appointment
   appointments(dateFrom: String!, dateTo: String!, locationId: ID, status: AppointmentStatus): [Appointment!]!
@@ -958,8 +1008,11 @@ type Query {
   posPublicLocations: [PosPublicLocation!]!
   product(id: ID!): Product
   products(locationId: ID): [Product!]!
+  productsPaged(after: String, categoryId: String, first: Int! = 24, search: String, sort: ProductsSort! = UPDATED_DESC, status: ProductStatus): ProductConnection!
   realtimeBranchStatus(filters: DashboardFiltersInput!, locationId: ID): [RealtimeBranchStatusRow!]!
+  refunds(after: String, first: Int! = 24, locationId: ID!, status: RefundStatus): RefundConnection!
   registerSession(id: ID!): RegisterSession
+  registerSessions(after: String, dateFrom: String!, dateTo: String!, first: Int! = 24, locationId: ID!, status: RegisterSessionStatus): RegisterSessionConnection!
   registers(locationId: ID!): [Register!]!
   reportByDayOfWeek(dateFrom: String!, dateTo: String!, locationId: ID): [ReportDayOfWeekRow!]!
   reportCompareLocations(dateFrom: String!, dateTo: String!, locationId: ID): [ReportCompareLocationRow!]!
@@ -1019,6 +1072,37 @@ type RealtimeBranchStatusRow {
   waitingCount: Int!
 }
 
+type Refund {
+  amountCents: Int!
+  approvedAt: DateTime
+  approvedByStaffUserId: ID
+  id: ID!
+  reason: String
+  requestedAt: DateTime!
+  requestedByStaffUserId: ID
+  sale: Sale!
+  saleId: ID!
+  status: RefundStatus!
+}
+
+type RefundConnection {
+  edges: [RefundEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type RefundEdge {
+  cursor: String!
+  node: Refund!
+}
+
+enum RefundStatus {
+  APPROVED
+  COMPLETED
+  REJECTED
+  REQUESTED
+}
+
 type Register {
   id: ID!
   isActive: Boolean!
@@ -1038,6 +1122,17 @@ type RegisterSession {
   id: ID!
   openedAt: DateTime!
   status: RegisterSessionStatus!
+}
+
+type RegisterSessionConnection {
+  edges: [RegisterSessionEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type RegisterSessionEdge {
+  cursor: String!
+  node: RegisterSession!
 }
 
 enum RegisterSessionStatus {
@@ -1206,6 +1301,21 @@ type Role {
   permissionKeys: [String!]!
 }
 
+input RotateServiceTokenInput {
+  """
+  TTL for the outgoing PREVIOUS slot, in hours. Default 168 (7 days). Range: 1–720.
+  """
+  previousTtlHours: Int
+  reason: String
+}
+
+type RotateServiceTokenResult {
+  currentToken: ServiceTokenInfo!
+  plaintext: String!
+  previousRetireAt: DateTime
+  previousToken: ServiceTokenInfo
+}
+
 type Sale {
   appointmentId: ID
   createdAt: DateTime!
@@ -1282,6 +1392,16 @@ type ServiceLocation {
   locationId: ID!
   priceCentsOverride: Int
   serviceId: ID!
+}
+
+type ServiceTokenInfo {
+  createdAt: DateTime!
+  createdBy: ID
+  id: ID!
+  lastUsedAt: DateTime
+  promotedAt: DateTime
+  retireAt: DateTime
+  slot: TokenSlot!
 }
 
 type ShiftBlock {
@@ -1436,6 +1556,11 @@ type TimeClockEvent {
 enum TimeClockEventType {
   CLOCK_IN
   CLOCK_OUT
+}
+
+enum TokenSlot {
+  CURRENT
+  PREVIOUS
 }
 
 input UpdateBlogPostInput {

@@ -17,6 +17,7 @@ import { PosCard, TapButton, StatusPill, SkeletonBlock, SectionHeader, EmptyStat
 
 type View =
   | { kind: 'list' }
+  | { kind: 'open'; reg: Register }
   | { kind: 'close'; reg: Register }
   | { kind: 'summary'; session: RegisterSession; regName: string }
 
@@ -53,6 +54,74 @@ function CounterInput({
         className="w-32 rounded-xl border border-bb-border bg-bb-bg px-4 py-3 text-right text-sm font-bold outline-none focus:border-bb-primary"
       />
     </PosCard>
+  )
+}
+
+/* ── Open form (inline, not modal) ────────────────────────────────────── */
+
+function OpenForm({
+  reg,
+  onBack,
+  onSubmit,
+}: {
+  reg: Register
+  onBack: () => void
+  onSubmit: (openingCashCents: number) => void
+}) {
+  const [amount, setAmount] = useState('')
+  const cents = Math.round(parseFloat(amount || '0') * 100)
+  const valid = amount.trim() !== '' && Number.isFinite(cents) && cents >= 0
+
+  return (
+    <div className="flex h-full flex-col gap-5">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-bb-muted hover:bg-bb-surface"
+        >
+          <ChevronLeftIcon className="h-5 w-5" />
+        </button>
+        <div>
+          <h2 className="text-base font-bold">Abrir Caja — {reg.name}</h2>
+          <p className="text-xs text-bb-muted">Ingresa el fondo inicial de efectivo</p>
+        </div>
+      </div>
+
+      <PosCard className="flex items-center gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bb-surface-2">
+          <CashIcon className="h-5 w-5 text-bb-muted" />
+        </div>
+        <div className="flex-1">
+          <p className="text-xs text-bb-muted">Fondo inicial</p>
+          <p className="text-xs text-bb-muted">Si no hay fondo, deja $0.00</p>
+        </div>
+        <input
+          type="number"
+          inputMode="decimal"
+          autoFocus
+          placeholder="0.00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="w-32 rounded-xl border border-bb-border bg-bb-bg px-4 py-3 text-right text-sm font-bold outline-none focus:border-bb-primary"
+        />
+      </PosCard>
+
+      <div className="mt-auto flex gap-3 pt-4">
+        <TapButton size="lg" variant="ghost" className="flex-1" onClick={onBack}>
+          Cancelar
+        </TapButton>
+        <TapButton
+          size="lg"
+          variant="primary"
+          className="flex-1"
+          disabled={!valid}
+          onClick={() => valid && onSubmit(cents)}
+        >
+          Abrir Caja
+        </TapButton>
+      </div>
+    </div>
   )
 }
 
@@ -237,6 +306,21 @@ export function RegisterPage() {
   const { registers, loading, error, openSession, closeSession } = useRegister(locationId)
   const [view, setView] = useState<View>({ kind: 'list' })
 
+  if (view.kind === 'open') {
+    return (
+      <div className="flex h-full flex-col px-6 py-6">
+        <OpenForm
+          reg={view.reg}
+          onBack={() => setView({ kind: 'list' })}
+          onSubmit={async (openingCashCents) => {
+            await openSession(view.reg.id, openingCashCents)
+            setView({ kind: 'list' })
+          }}
+        />
+      </div>
+    )
+  }
+
   if (view.kind === 'close') {
     return (
       <div className="flex h-full flex-col px-6 py-6">
@@ -316,7 +400,7 @@ export function RegisterPage() {
                     Cerrar
                   </TapButton>
                 ) : (
-                  <TapButton size="md" variant="primary" onClick={() => openSession(reg.id)}>
+                  <TapButton size="md" variant="primary" onClick={() => setView({ kind: 'open', reg })}>
                     Abrir
                   </TapButton>
                 )}
