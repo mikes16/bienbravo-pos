@@ -134,6 +134,25 @@ export enum BookingPaymentMode {
   None = 'NONE'
 }
 
+export type BulkPriceResult = {
+  __typename?: 'BulkPriceResult';
+  skipped: Array<BulkSkipped>;
+  updated: Scalars['Int']['output'];
+  variantsUpdated: Scalars['Int']['output'];
+};
+
+export type BulkProductResult = {
+  __typename?: 'BulkProductResult';
+  skipped: Array<BulkSkipped>;
+  updated: Scalars['Int']['output'];
+};
+
+export type BulkSkipped = {
+  __typename?: 'BulkSkipped';
+  id: Scalars['String']['output'];
+  reason: Scalars['String']['output'];
+};
+
 export type CancelAppointmentByTokenResult = {
   __typename?: 'CancelAppointmentByTokenResult';
   ok: Scalars['Boolean']['output'];
@@ -739,6 +758,9 @@ export type Mutation = {
   assignPermissionsToRole: Role;
   assignRoleToStaff: Scalars['Boolean']['output'];
   assignWalkIn: AssignWalkInResult;
+  bulkAdjustPrice: BulkPriceResult;
+  bulkAssignCategory: BulkProductResult;
+  bulkUpdateProductStatus: BulkProductResult;
   cancelAppointment: CancelAppointmentResult;
   cancelAppointmentByToken: CancelAppointmentByTokenResult;
   cancelOrder: Order;
@@ -793,6 +815,7 @@ export type Mutation = {
   deleteStaffServicePrice: Scalars['Boolean']['output'];
   deleteStaffVacation: Scalars['Boolean']['output'];
   dropWalkIn: Scalars['Boolean']['output'];
+  extendServiceTokenPrevious: ServiceTokenInfo;
   findOrCreateCustomer?: Maybe<Customer>;
   fulfillOrder: Order;
   inventoryAdjust: InventoryLevel;
@@ -803,6 +826,7 @@ export type Mutation = {
   publishBlogPost: BlogPost;
   recalcReportingMetrics: Scalars['Boolean']['output'];
   refundApprove: Scalars['Boolean']['output'];
+  refundReject: Scalars['Boolean']['output'];
   refundRequest: Scalars['String']['output'];
   removeProductImage: Product;
   reorderProductImages: Product;
@@ -813,6 +837,7 @@ export type Mutation = {
   rescheduleAppointment: RescheduleAppointmentResult;
   rescheduleAppointmentByToken: RescheduleAppointmentByTokenResult;
   resetLocationBusinessHours: Array<LocationBusinessHour>;
+  rotateServiceToken: RotateServiceTokenResult;
   runPayout: PayoutRun;
   setPosLocationPassword: Scalars['Boolean']['output'];
   setStaffPassword: Scalars['Boolean']['output'];
@@ -871,6 +896,25 @@ export type MutationAssignRoleToStaffArgs = {
 export type MutationAssignWalkInArgs = {
   staffUserId: Scalars['ID']['input'];
   walkInId: Scalars['ID']['input'];
+};
+
+
+export type MutationBulkAdjustPriceArgs = {
+  deltaCents?: InputMaybe<Scalars['Int']['input']>;
+  deltaPct?: InputMaybe<Scalars['Float']['input']>;
+  ids: Array<Scalars['ID']['input']>;
+};
+
+
+export type MutationBulkAssignCategoryArgs = {
+  categoryId: Scalars['ID']['input'];
+  ids: Array<Scalars['ID']['input']>;
+};
+
+
+export type MutationBulkUpdateProductStatusArgs = {
+  ids: Array<Scalars['ID']['input']>;
+  status: ProductStatus;
 };
 
 
@@ -1148,6 +1192,11 @@ export type MutationDropWalkInArgs = {
 };
 
 
+export type MutationExtendServiceTokenPreviousArgs = {
+  additionalHours: Scalars['Int']['input'];
+};
+
+
 export type MutationFindOrCreateCustomerArgs = {
   email?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
@@ -1183,6 +1232,7 @@ export type MutationNoShowArgs = {
 
 
 export type MutationOpenRegisterSessionArgs = {
+  openingCashCents?: InputMaybe<Scalars['Int']['input']>;
   registerId: Scalars['ID']['input'];
 };
 
@@ -1199,6 +1249,12 @@ export type MutationRecalcReportingMetricsArgs = {
 
 
 export type MutationRefundApproveArgs = {
+  refundId: Scalars['ID']['input'];
+};
+
+
+export type MutationRefundRejectArgs = {
+  reason?: InputMaybe<Scalars['String']['input']>;
   refundId: Scalars['ID']['input'];
 };
 
@@ -1259,6 +1315,11 @@ export type MutationRescheduleAppointmentByTokenArgs = {
 
 export type MutationResetLocationBusinessHoursArgs = {
   locationId: Scalars['ID']['input'];
+};
+
+
+export type MutationRotateServiceTokenArgs = {
+  input: RotateServiceTokenInput;
 };
 
 
@@ -1490,6 +1551,14 @@ export type PosSaleItemInput = {
   unitPriceCents: Scalars['Int']['input'];
 };
 
+export type PageInfo = {
+  __typename?: 'PageInfo';
+  endCursor?: Maybe<Scalars['String']['output']>;
+  hasNextPage: Scalars['Boolean']['output'];
+  hasPreviousPage: Scalars['Boolean']['output'];
+  startCursor?: Maybe<Scalars['String']['output']>;
+};
+
 export type PayoutRun = {
   __typename?: 'PayoutRun';
   entries: Array<PayoutRunEntry>;
@@ -1549,6 +1618,19 @@ export type Product = {
   widthMm?: Maybe<Scalars['Int']['output']>;
 };
 
+export type ProductConnection = {
+  __typename?: 'ProductConnection';
+  edges: Array<ProductEdge>;
+  pageInfo: PageInfo;
+  totalCount: Scalars['Int']['output'];
+};
+
+export type ProductEdge = {
+  __typename?: 'ProductEdge';
+  cursor: Scalars['String']['output'];
+  node: Product;
+};
+
 export type ProductImage = {
   __typename?: 'ProductImage';
   id: Scalars['ID']['output'];
@@ -1577,8 +1659,18 @@ export type ProductVariant = {
   sku?: Maybe<Scalars['String']['output']>;
 };
 
+export enum ProductsSort {
+  NameAsc = 'NAME_ASC',
+  NameDesc = 'NAME_DESC',
+  PriceAsc = 'PRICE_ASC',
+  PriceDesc = 'PRICE_DESC',
+  UpdatedAsc = 'UPDATED_ASC',
+  UpdatedDesc = 'UPDATED_DESC'
+}
+
 export type Query = {
   __typename?: 'Query';
+  activeServiceTokens: Array<ServiceTokenInfo>;
   alertsFeed: Array<DashboardAlert>;
   appointment?: Maybe<Appointment>;
   appointments: Array<Appointment>;
@@ -1624,8 +1716,11 @@ export type Query = {
   posPublicLocations: Array<PosPublicLocation>;
   product?: Maybe<Product>;
   products: Array<Product>;
+  productsPaged: ProductConnection;
   realtimeBranchStatus: Array<RealtimeBranchStatusRow>;
+  refunds: RefundConnection;
   registerSession?: Maybe<RegisterSession>;
+  registerSessions: RegisterSessionConnection;
   registers: Array<Register>;
   reportByDayOfWeek: Array<ReportDayOfWeekRow>;
   reportCompareLocations: Array<ReportCompareLocationRow>;
@@ -1897,14 +1992,42 @@ export type QueryProductsArgs = {
 };
 
 
+export type QueryProductsPagedArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  categoryId?: InputMaybe<Scalars['String']['input']>;
+  first?: Scalars['Int']['input'];
+  search?: InputMaybe<Scalars['String']['input']>;
+  sort?: ProductsSort;
+  status?: InputMaybe<ProductStatus>;
+};
+
+
 export type QueryRealtimeBranchStatusArgs = {
   filters: DashboardFiltersInput;
   locationId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 
+export type QueryRefundsArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  first?: Scalars['Int']['input'];
+  locationId: Scalars['ID']['input'];
+  status?: InputMaybe<RefundStatus>;
+};
+
+
 export type QueryRegisterSessionArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type QueryRegisterSessionsArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  first?: Scalars['Int']['input'];
+  locationId: Scalars['ID']['input'];
+  status?: InputMaybe<RegisterSessionStatus>;
 };
 
 
@@ -2130,6 +2253,40 @@ export type RealtimeBranchStatusRow = {
   waitingCount: Scalars['Int']['output'];
 };
 
+export type Refund = {
+  __typename?: 'Refund';
+  amountCents: Scalars['Int']['output'];
+  approvedAt?: Maybe<Scalars['DateTime']['output']>;
+  approvedByStaffUserId?: Maybe<Scalars['ID']['output']>;
+  id: Scalars['ID']['output'];
+  reason?: Maybe<Scalars['String']['output']>;
+  requestedAt: Scalars['DateTime']['output'];
+  requestedByStaffUserId?: Maybe<Scalars['ID']['output']>;
+  sale: Sale;
+  saleId: Scalars['ID']['output'];
+  status: RefundStatus;
+};
+
+export type RefundConnection = {
+  __typename?: 'RefundConnection';
+  edges: Array<RefundEdge>;
+  pageInfo: PageInfo;
+  totalCount: Scalars['Int']['output'];
+};
+
+export type RefundEdge = {
+  __typename?: 'RefundEdge';
+  cursor: Scalars['String']['output'];
+  node: Refund;
+};
+
+export enum RefundStatus {
+  Approved = 'APPROVED',
+  Completed = 'COMPLETED',
+  Rejected = 'REJECTED',
+  Requested = 'REQUESTED'
+}
+
 export type Register = {
   __typename?: 'Register';
   id: Scalars['ID']['output'];
@@ -2151,6 +2308,19 @@ export type RegisterSession = {
   id: Scalars['ID']['output'];
   openedAt: Scalars['DateTime']['output'];
   status: RegisterSessionStatus;
+};
+
+export type RegisterSessionConnection = {
+  __typename?: 'RegisterSessionConnection';
+  edges: Array<RegisterSessionEdge>;
+  pageInfo: PageInfo;
+  totalCount: Scalars['Int']['output'];
+};
+
+export type RegisterSessionEdge = {
+  __typename?: 'RegisterSessionEdge';
+  cursor: Scalars['String']['output'];
+  node: RegisterSession;
 };
 
 export enum RegisterSessionStatus {
@@ -2338,6 +2508,20 @@ export type Role = {
   permissionKeys: Array<Scalars['String']['output']>;
 };
 
+export type RotateServiceTokenInput = {
+  /** TTL for the outgoing PREVIOUS slot, in hours. Default 168 (7 days). Range: 1–720. */
+  previousTtlHours?: InputMaybe<Scalars['Int']['input']>;
+  reason?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type RotateServiceTokenResult = {
+  __typename?: 'RotateServiceTokenResult';
+  currentToken: ServiceTokenInfo;
+  plaintext: Scalars['String']['output'];
+  previousRetireAt?: Maybe<Scalars['DateTime']['output']>;
+  previousToken?: Maybe<ServiceTokenInfo>;
+};
+
 export type Sale = {
   __typename?: 'Sale';
   appointmentId?: Maybe<Scalars['ID']['output']>;
@@ -2424,6 +2608,17 @@ export type ServiceLocation = {
   locationId: Scalars['ID']['output'];
   priceCentsOverride?: Maybe<Scalars['Int']['output']>;
   serviceId: Scalars['ID']['output'];
+};
+
+export type ServiceTokenInfo = {
+  __typename?: 'ServiceTokenInfo';
+  createdAt: Scalars['DateTime']['output'];
+  createdBy?: Maybe<Scalars['ID']['output']>;
+  id: Scalars['ID']['output'];
+  lastUsedAt?: Maybe<Scalars['DateTime']['output']>;
+  promotedAt?: Maybe<Scalars['DateTime']['output']>;
+  retireAt?: Maybe<Scalars['DateTime']['output']>;
+  slot: TokenSlot;
 };
 
 export type ShiftBlock = {
@@ -2591,6 +2786,11 @@ export type TimeClockEvent = {
 export enum TimeClockEventType {
   ClockIn = 'CLOCK_IN',
   ClockOut = 'CLOCK_OUT'
+}
+
+export enum TokenSlot {
+  Current = 'CURRENT',
+  Previous = 'PREVIOUS'
 }
 
 export type UpdateBlogPostInput = {
@@ -3048,6 +3248,7 @@ export type PosRegistersQuery = { __typename?: 'Query', registers: Array<{ __typ
 
 export type OpenRegisterSessionMutationVariables = Exact<{
   registerId: Scalars['ID']['input'];
+  openingCashCents?: InputMaybe<Scalars['Int']['input']>;
 }>;
 
 
@@ -3127,7 +3328,7 @@ export const ShiftTemplatesDocument = {"kind":"Document","definitions":[{"kind":
 export const PosStaffMetricsTodayDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosStaffMetricsToday"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"date"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffServiceRevenueToday"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}]},{"kind":"Field","name":{"kind":"Name","value":"staffProductRevenueToday"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}]},{"kind":"Field","name":{"kind":"Name","value":"staffCommissionToday"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}]}]}}]} as unknown as DocumentNode<PosStaffMetricsTodayQuery, PosStaffMetricsTodayQueryVariables>;
 export const PosSalesActivityDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosSalesActivity"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"date"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"source"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"SaleSource"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"listSalesForKPI"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}},{"kind":"Argument","name":{"kind":"Name","value":"source"},"value":{"kind":"Variable","name":{"kind":"Name","value":"source"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"paymentStatus"}},{"kind":"Field","name":{"kind":"Name","value":"totalCents"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"appointmentId"}},{"kind":"Field","name":{"kind":"Name","value":"walkInId"}},{"kind":"Field","name":{"kind":"Name","value":"customer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}}]}}]}}]} as unknown as DocumentNode<PosSalesActivityQuery, PosSalesActivityQueryVariables>;
 export const PosRegistersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosRegisters"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"registers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}},{"kind":"Field","name":{"kind":"Name","value":"openSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosRegistersQuery, PosRegistersQueryVariables>;
-export const OpenRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"OpenRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"openRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"registerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<OpenRegisterSessionMutation, OpenRegisterSessionMutationVariables>;
+export const OpenRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"OpenRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"openRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"registerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}}},{"kind":"Argument","name":{"kind":"Name","value":"openingCashCents"},"value":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<OpenRegisterSessionMutation, OpenRegisterSessionMutationVariables>;
 export const CloseRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CloseRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CloseRegisterSessionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"closeRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"closedAt"}},{"kind":"Field","name":{"kind":"Name","value":"countedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedTransferCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<CloseRegisterSessionMutation, CloseRegisterSessionMutationVariables>;
 export const PosWalkInsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosWalkIns"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"walkIns"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"customerName"}},{"kind":"Field","name":{"kind":"Name","value":"customerPhone"}},{"kind":"Field","name":{"kind":"Name","value":"customerEmail"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"assignedStaffUser"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}}]}},{"kind":"Field","name":{"kind":"Name","value":"customer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}}]}}]}}]} as unknown as DocumentNode<PosWalkInsQuery, PosWalkInsQueryVariables>;
 export const CreateWalkInDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateWalkIn"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"customerName"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"customerPhone"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"customerEmail"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createWalkIn"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"customerName"},"value":{"kind":"Variable","name":{"kind":"Name","value":"customerName"}}},{"kind":"Argument","name":{"kind":"Name","value":"customerPhone"},"value":{"kind":"Variable","name":{"kind":"Name","value":"customerPhone"}}},{"kind":"Argument","name":{"kind":"Name","value":"customerEmail"},"value":{"kind":"Variable","name":{"kind":"Name","value":"customerEmail"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"customerName"}},{"kind":"Field","name":{"kind":"Name","value":"customerPhone"}},{"kind":"Field","name":{"kind":"Name","value":"customerEmail"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}}]}}]}}]} as unknown as DocumentNode<CreateWalkInMutation, CreateWalkInMutationVariables>;

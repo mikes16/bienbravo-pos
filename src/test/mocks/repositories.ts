@@ -112,8 +112,8 @@ export class InMemoryRegisterRepository implements RegisterRepository {
   async getRegisters(_locationId: string): Promise<Register[]> {
     return [{ id: 'reg-1', name: 'Caja 1', isActive: true, locationId: 'loc-1', openSession: null }]
   }
-  async openSession(_registerId: string): Promise<RegisterSession> {
-    return { id: 'sess-1', status: 'OPEN', openedAt: new Date().toISOString(), closedAt: null, expectedCashCents: 0, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: null, countedCardCents: null, countedTransferCents: null }
+  async openSession(_registerId: string, openingCashCents: number): Promise<RegisterSession> {
+    return { id: 'sess-1', status: 'OPEN', openedAt: new Date().toISOString(), closedAt: null, expectedCashCents: openingCashCents, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: null, countedCardCents: null, countedTransferCents: null }
   }
   async closeSession(_input: CloseSessionInput): Promise<RegisterSession> {
     return { id: 'sess-1', status: 'CLOSED', openedAt: new Date().toISOString(), closedAt: new Date().toISOString(), expectedCashCents: 0, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: 0, countedCardCents: 0, countedTransferCents: 0 }

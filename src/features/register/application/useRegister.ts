@@ -21,9 +21,9 @@ export function useRegister(locationId: string | null) {
   useEffect(() => { refresh() }, [refresh])
 
   const openSession = useCallback(
-    async (registerId: string) => {
+    async (registerId: string, openingCashCents: number) => {
       try {
-        await register.openSession(registerId)
+        await register.openSession(registerId, openingCashCents)
         refresh()
       } catch {
         setError('No se pudo abrir la sesión')
