@@ -7,6 +7,7 @@ import { useToast } from '@/core/toast/useToast.ts'
 import { useCatalog } from '../application/useCatalog.ts'
 import { useCart } from '../application/useCart.ts'
 import { useCheckout } from '../application/useCheckout.ts'
+import { useActiveRegisterSession } from '../application/useActiveRegisterSession.ts'
 import { CatalogView } from './CatalogView.tsx'
 import { CartBar } from './CartBar.tsx'
 import { PaymentView } from './PaymentView.tsx'
@@ -145,6 +146,12 @@ export function CheckoutPage() {
     setCustomerRequiredError(null)
   }, [])
 
+  // Sale-to-session attribution: by business rule there is at most one OPEN
+  // register session per location, so the active session is unambiguous if
+  // it exists. Without one we block checkout — letting a sale through with
+  // null session id silently breaks the close-out reconciliation.
+  const activeSession = useActiveRegisterSession(locationId ?? null)
+
   const {
     submit,
     submitting,
@@ -153,7 +160,7 @@ export function CheckoutPage() {
     reset: resetSale,
   } = useCheckout({
     locationId: locationId ?? '',
-    registerSessionId: null,
+    registerSessionId: activeSession.sessionId,
     staffUserId,
     customerId: selectedCustomer?.id ?? null,
     completeWalkInId,
@@ -287,8 +294,16 @@ export function CheckoutPage() {
     }
   }
 
+  // No open register session in this location → checkout is blocked at the
+  // door. Two reasons: (a) the API would reject sale-to-session attribution
+  // when no session exists, and (b) reconciliation depends on every cash
+  // sale landing on a session, so silent fallthrough is worse than a hard
+  // stop.
+  const noOpenRegister = activeSession.ready && !activeSession.sessionId
+
   function goToPayment() {
     if (activeServiceBlockReason) return
+    if (noOpenRegister) return
     if (!selectedCustomer && !anonymousSelected) {
       setCustomerRequiredError('Selecciona o crea un cliente. Si la persona no quiere registro, usa “Cobrar anónimo”.')
       return
@@ -334,6 +349,19 @@ export function CheckoutPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mb-4">
           <h1 className="font-bb-display text-xl font-bold">Nueva Venta</h1>
+          {noOpenRegister && (
+            <button
+              type="button"
+              onClick={() => navigate('/register')}
+              className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl bg-bb-danger/10 px-3 py-2.5 text-left text-xs text-bb-danger transition-colors hover:bg-bb-danger/15"
+            >
+              <span>
+                <span className="font-semibold">Abre caja antes de cobrar.</span>{' '}
+                <span className="opacity-90">Sin sesión abierta en esta sucursal el cobro no se puede atribuir.</span>
+              </span>
+              <span className="font-bold uppercase tracking-wider">Ir a Caja →</span>
+            </button>
+          )}
           {activeServiceBlockReason && (
             <p className="mt-2 rounded-xl bg-bb-danger/10 px-3 py-2 text-xs text-bb-danger">
               {activeServiceBlockReason}
@@ -368,8 +396,12 @@ export function CheckoutPage() {
           onUpdateQty={handleUpdateQty}
           onSetTip={setTip}
           onPay={goToPayment}
-          payDisabled={Boolean(activeServiceBlockReason)}
-          payDisabledReason={activeServiceBlockReason}
+          payDisabled={Boolean(activeServiceBlockReason) || noOpenRegister}
+          payDisabledReason={
+            noOpenRegister
+              ? 'Abre caja en esta sucursal antes de cobrar'
+              : activeServiceBlockReason
+          }
           selectedCustomer={selectedCustomer}
           onSelectCustomer={handleSelectCustomer}
           searchCustomers={searchCustomers}
