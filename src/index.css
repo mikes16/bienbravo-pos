@@ -1,69 +1,122 @@
 @import "tailwindcss";
 @import "../design-system/tokens/dist/bienbravo.tokens.css";
 
-/* ── POS Touch-First Token Overrides ── */
+/* ─────────────────────────────────────────────────────────────────────
+ * POS Visual Language tokens (sub-project #0)
+ *
+ * Inherits the shared design-system base tokens, then defines the
+ * editorial layer (--color-bravo / carbon / cuero / leather / bone)
+ * with the same hex values as bienbravo-admin/src/index.css. These
+ * are admin-local today — when they move to the shared DS, this
+ * block becomes a re-export.
+ *
+ * Also defines POS-specific tokens: type scale, touch tiers, spacing,
+ * motion. All sharp corners (no rounded values).
+ * ───────────────────────────────────────────────────────────────────── */
+
 @theme {
-  /* Colors (inherit from DS) */
-  --color-bb-primary: var(--bb-color-primary);
-  --color-bb-bg: var(--bb-color-bg);
-  --color-bb-surface: var(--bb-color-surface);
-  --color-bb-surface-2: var(--bb-color-surface-2);
-  --color-bb-text: var(--bb-color-text);
-  --color-bb-muted: var(--bb-color-muted);
-  --color-bb-border: var(--bb-color-border);
-  --color-bb-success: var(--bb-color-success);
-  --color-bb-warning: var(--bb-color-warning);
-  --color-bb-danger: var(--bb-color-danger);
-  --color-bb-info: var(--bb-color-info);
+  /* ── Editorial color palette (matches admin) ── */
+  --color-bravo: #c41e3a;
+  --color-bravo-muted: #a01830;
+  --color-carbon: #0f0e0e;
+  --color-carbon-elevated: #1a1918;
+  --color-carbon-panel: #252422;
+  --color-cuero-viejo: #2a221f;
+  --color-cuero-viejo-hover: #352c28;
+  --color-leather: #8b7355;
+  --color-leather-muted: #5c4d3d;
+  --color-bone: #e8e4df;
+  --color-bone-muted: #9a958f;
+  --color-success: #6b8a73;
+  --color-warning: #a87a3a;
+  --color-error: #b04a4a;
 
-  /* Fonts */
-  --font-bb-ui: var(--bb-typography-font-ui);
-  --font-bb-display: "Barlow Condensed", system-ui, sans-serif;
-  --font-bb-mono: var(--bb-typography-font-mono);
+  /* ── Legacy --color-bb-* aliases (mapped to editorial values).
+   *    Existing pos-ui v1 components (TapButton, StatusPill, etc.) still
+   *    consume bg-bb-primary, text-bb-text utilities. Aliases keep them
+   *    compiling during the migration window. They get deleted at the end
+   *    of sub-project #10 once all consumers have migrated to v2. ── */
+  --color-bb-primary: var(--color-bravo);
+  --color-bb-bg: var(--color-carbon);
+  --color-bb-surface: var(--color-carbon-elevated);
+  --color-bb-surface-2: var(--color-carbon-panel);
+  --color-bb-text: var(--color-bone);
+  --color-bb-muted: var(--color-bone-muted);
+  --color-bb-border: var(--color-leather-muted);
+  --color-bb-success: var(--color-success);
+  --color-bb-warning: var(--color-warning);
+  --color-bb-danger: var(--color-bravo);
+  --color-bb-info: var(--color-leather);
 
-  /* POS-specific: rounder corners for touch-friendly feel */
-  --radius-bb-card: 16px;
-  --radius-bb-control: 12px;
-  --radius-bb-pill: 9999px;
+  /* ── Fonts (heredados del shared DS pero exportados como tokens POS) ── */
+  --font-pos-ui: "Manrope", system-ui, sans-serif;
+  --font-pos-display: "Barlow Condensed", system-ui, sans-serif;
+  --font-pos-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Motion */
-  --duration-bb-fast: var(--bb-motion-duration-fast);
-  --duration-bb-normal: var(--bb-motion-duration-normal);
-  --ease-bb-industrial: var(--bb-motion-ease-industrial);
+  /* Legacy font aliases — same migration rationale as --color-bb-* above */
+  --font-bb-ui: var(--font-pos-ui);
+  --font-bb-display: var(--font-pos-display);
+  --font-bb-mono: var(--font-pos-mono);
+
+  /* ── Motion (admin durations + easings) ── */
+  --duration-pos-tap: 150ms;
+  --duration-pos-sheet-open: 280ms;
+  --duration-pos-sheet-close: 220ms;
+  --duration-pos-step: 200ms;
+  --duration-pos-toast-in: 240ms;
+  --duration-pos-toast-out: 200ms;
+  --ease-pos-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-pos-step: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── POS-Specific Custom Properties ── */
+/* ── POS-specific custom properties (used via var() in components) ── */
 :root {
-  /* Touch target sizes */
-  --pos-touch-sm: 40px;
-  --pos-touch-md: 48px;
-  --pos-touch-lg: 56px;
-  --pos-touch-xl: 64px;
+  /* Type scale (10 stops) */
+  --pos-text-caption: 13px;
+  --pos-text-eyebrow: 13px;
+  --pos-text-label: 14px;
+  --pos-text-body: 16px;
+  --pos-text-body-lg: 18px;
+  --pos-text-subtitle: 22px;
+  --pos-text-heading: 28px;
+  --pos-text-numeral-s: 36px;
+  --pos-text-numeral-m: 56px;
+  --pos-text-numeral-l: 88px;
 
-  /* Control heights (larger than admin) */
-  --pos-control-sm: 40px;
-  --pos-control-md: 48px;
-  --pos-control-lg: 56px;
+  /* Touch tiers (5 levels) */
+  --pos-touch-min: 40px;
+  --pos-touch-row: 48px;
+  --pos-touch-secondary: 56px;
+  --pos-touch-primary: 64px;
+  --pos-touch-numpad: 72px;
 
-  /* Input padding (roomier than admin) */
-  --pos-input-py: 12px;
-  --pos-input-px: 16px;
+  /* Spacing scale (4px base, 10 stops) */
+  --pos-space-1: 4px;
+  --pos-space-2: 8px;
+  --pos-space-3: 12px;
+  --pos-space-4: 16px;
+  --pos-space-5: 20px;
+  --pos-space-6: 24px;
+  --pos-space-8: 32px;
+  --pos-space-10: 40px;
+  --pos-space-14: 56px;
+  --pos-space-20: 80px;
 }
 
 @layer base {
   :root {
     color-scheme: dark;
-    font-family: var(--bb-typography-font-ui);
-    font-size: 1.125rem; /* 18px base for touch readability */
-    line-height: var(--bb-typography-leading-normal);
-    color: var(--bb-color-text);
-    background-color: var(--bb-color-bg);
+    font-family: var(--font-pos-ui);
+    font-size: var(--pos-text-body);
+    line-height: 1.5;
+    color: var(--color-bone);
+    background-color: var(--color-carbon);
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
   }
 
   *:focus-visible {
-    outline: 2px solid var(--bb-color-primary);
+    outline: 2px solid var(--color-bravo);
     outline-offset: 2px;
   }
 
@@ -80,21 +133,25 @@
   }
 }
 
-@layer utilities {
-  .touch-target {
-    min-height: var(--pos-touch-md);
-    min-width: var(--pos-touch-md);
-  }
+/* ── Animation keyframes ── */
+@keyframes pos-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
 
-  .touch-target-lg {
-    min-height: var(--pos-touch-lg);
-    min-width: var(--pos-touch-lg);
-  }
+@keyframes pos-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
 
-  .pos-press {
-    transition: transform var(--bb-motion-duration-fast) var(--bb-motion-ease-industrial);
-  }
-  .pos-press:active {
-    transform: scale(0.97);
+@keyframes pos-sheet-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

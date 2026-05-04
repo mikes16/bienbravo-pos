@@ -10,6 +10,7 @@ import { ClockPage } from '@/features/clock/index.ts'
 import { AgendaPage } from '@/features/agenda/index.ts'
 import { WalkInsPage } from '@/features/walkins/index.ts'
 import { MyDayPage } from '@/features/my-day/index.ts'
+import { HelloPosPage } from '@/features/_dev/HelloPosPage'
 
 export const features: FeatureManifest[] = [
   { id: 'checkout', label: 'Nueva Venta', icon: ShoppingCartIcon, path: '/checkout', permission: 'pos.sale.create', order: 1 },
@@ -34,5 +35,6 @@ export const router = createBrowserRouter([
       { path: '/my-day', element: <MyDayPage /> },
     ],
   },
+  { path: '/dev/hello-pos', element: <HelloPosPage /> },
   { path: '*', element: <Navigate to="/" replace /> },
 ])
