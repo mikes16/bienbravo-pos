@@ -837,6 +837,7 @@ export type Mutation = {
   rescheduleAppointment: RescheduleAppointmentResult;
   rescheduleAppointmentByToken: RescheduleAppointmentByTokenResult;
   resetLocationBusinessHours: Array<LocationBusinessHour>;
+  resetPosPinAttempts: Scalars['Boolean']['output'];
   rotateServiceToken: RotateServiceTokenResult;
   runPayout: PayoutRun;
   setPosLocationPassword: Scalars['Boolean']['output'];
@@ -1318,6 +1319,11 @@ export type MutationResetLocationBusinessHoursArgs = {
 };
 
 
+export type MutationResetPosPinAttemptsArgs = {
+  staffUserId: Scalars['ID']['input'];
+};
+
+
 export type MutationRotateServiceTokenArgs = {
   input: RotateServiceTokenInput;
 };
@@ -1577,6 +1583,14 @@ export type PayoutRunEntry = {
   staffUserId: Scalars['ID']['output'];
 };
 
+export type PosPinLockoutStatus = {
+  __typename?: 'PosPinLockoutStatus';
+  /** Remaining attempts before next lockout. 8 if not in failure state. */
+  attemptsRemaining: Scalars['Int']['output'];
+  /** Null if not currently locked. */
+  lockedUntil?: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type PosPublicLocation = {
   __typename?: 'PosPublicLocation';
   id: Scalars['ID']['output'];
@@ -1687,6 +1701,7 @@ export type Query = {
   customer?: Maybe<Customer>;
   customerAppointments: Array<Appointment>;
   customers: Array<Customer>;
+  customersCount: Scalars['Int']['output'];
   dailyLocationMetrics: Array<DailyLocationMetrics>;
   dailyStaffMetrics: Array<DailyStaffMetrics>;
   dashboardSummary: DashboardSummary;
@@ -1713,6 +1728,7 @@ export type Query = {
   payoutRuns: Array<PayoutRun>;
   permissions: Array<Scalars['String']['output']>;
   posInventoryLevels: Array<InventoryLevel>;
+  posPinLockoutStatus: PosPinLockoutStatus;
   posPublicLocations: Array<PosPublicLocation>;
   product?: Maybe<Product>;
   products: Array<Product>;
@@ -1840,6 +1856,11 @@ export type QueryCustomerAppointmentsArgs = {
 export type QueryCustomersArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
+  query?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryCustomersCountArgs = {
   query?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -1979,6 +2000,11 @@ export type QueryPayoutRunsArgs = {
 export type QueryPosInventoryLevelsArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   locationId: Scalars['ID']['input'];
+};
+
+
+export type QueryPosPinLockoutStatusArgs = {
+  email: Scalars['String']['input'];
 };
 
 
@@ -2739,6 +2765,8 @@ export type StaffUser = {
   phone?: Maybe<Scalars['String']['output']>;
   photoPublicId?: Maybe<Scalars['String']['output']>;
   photoUrl?: Maybe<Scalars['String']['output']>;
+  pinAttempts: Scalars['Int']['output'];
+  pinLockedUntil?: Maybe<Scalars['DateTime']['output']>;
 };
 
 export type StaffVacation = {

@@ -782,6 +782,7 @@ type Mutation {
   rescheduleAppointment(appointmentId: ID!, newStartAt: DateTime!, overridePolicy: Boolean): RescheduleAppointmentResult!
   rescheduleAppointmentByToken(newStartAt: DateTime!, token: String!): RescheduleAppointmentByTokenResult!
   resetLocationBusinessHours(locationId: ID!): [LocationBusinessHour!]!
+  resetPosPinAttempts(staffUserId: ID!): Boolean!
   rotateServiceToken(input: RotateServiceTokenInput!): RotateServiceTokenResult!
   runPayout(periodEnd: DateTime!, periodStart: DateTime!): PayoutRun!
   setPosLocationPassword(locationId: ID!, password: String!): Boolean!
@@ -874,6 +875,14 @@ type PayoutRunEntry {
   breakdownJson: JSON
   id: ID!
   staffUserId: ID!
+}
+
+type PosPinLockoutStatus {
+  """Remaining attempts before next lockout. 8 if not in failure state."""
+  attemptsRemaining: Int!
+
+  """Null if not currently locked."""
+  lockedUntil: DateTime
 }
 
 type PosPublicLocation {
@@ -979,6 +988,7 @@ type Query {
   customer(id: ID!): Customer
   customerAppointments(customerId: ID!, limit: Int): [Appointment!]!
   customers(limit: Int, offset: Int, query: String): [Customer!]!
+  customersCount(query: String): Int!
   dailyLocationMetrics(dateFrom: String!, dateTo: String!, locationId: ID): [DailyLocationMetrics!]!
   dailyStaffMetrics(dateFrom: String!, dateTo: String!, locationId: ID, staffUserId: ID): [DailyStaffMetrics!]!
   dashboardSummary(filters: DashboardFiltersInput!): DashboardSummary!
@@ -1005,6 +1015,7 @@ type Query {
   payoutRuns(periodEnd: DateTime, periodStart: DateTime): [PayoutRun!]!
   permissions: [String!]!
   posInventoryLevels(limit: Int, locationId: ID!): [InventoryLevel!]!
+  posPinLockoutStatus(email: String!): PosPinLockoutStatus!
   posPublicLocations: [PosPublicLocation!]!
   product(id: ID!): Product
   products(locationId: ID): [Product!]!
@@ -1513,6 +1524,8 @@ type StaffUser {
   phone: String
   photoPublicId: String
   photoUrl: String
+  pinAttempts: Int!
+  pinLockedUntil: DateTime
 }
 
 type StaffVacation {
