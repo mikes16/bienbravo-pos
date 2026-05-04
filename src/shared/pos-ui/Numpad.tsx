@@ -78,7 +78,7 @@ function NumpadButton({ onClick, children, ...rest }: NumpadButtonProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        'flex h-[var(--pos-touch-numpad)] items-center justify-center',
+        'flex h-[var(--pos-touch-numpad)] w-[var(--pos-touch-numpad)] items-center justify-center',
         'border border-[var(--color-leather-muted)] bg-[var(--color-cuero-viejo)]',
         'font-[var(--font-pos-display)] text-[30px] font-extrabold text-[var(--color-bone)]',
         'transition-colors duration-[var(--duration-pos-tap)]',
