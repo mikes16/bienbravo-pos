@@ -37,3 +37,6 @@ Thumbs.db
 # misc
 *.pem
 *.local
+
+# brainstorming companion
+/.superpowers
