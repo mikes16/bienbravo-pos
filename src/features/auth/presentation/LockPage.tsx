@@ -185,9 +185,7 @@ export function LockPage() {
     <BarberSelectorView
       barbers={barbers}
       loading={loading}
-      error={error}
       onSelect={setSelectedBarber}
-      locationName={locations.find((l) => l.id === locationId)?.name ?? null}
       onChangeLocation={() => {
         setSelectedBarber(null)
         setPendingLocation(null)
