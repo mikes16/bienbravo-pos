@@ -1,197 +1,233 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
-import { useLocation } from '@/core/location/useLocation.ts'
-import { usePosAuth } from '@/core/auth/usePosAuth.ts'
-import type { PosStaffUser, PosLocation } from '@/core/auth/auth.types.ts'
-import { BarberSelectorView } from './BarberSelectorView.tsx'
-import { PinPadView } from './PinPadView.tsx'
+import { useRepositories } from '@/core/repositories/RepositoryProvider'
+import { useLocation } from '@/core/location/useLocation'
+import { usePosAuth } from '@/core/auth/usePosAuth'
+import { PinLoginException } from '@/core/auth/auth.types'
+import { LockShell } from './LockShell'
+import { PairingView } from './PairingView'
+import { BarberSelectorView } from './BarberSelectorView'
+import { PinEntryView } from './PinEntryView'
+import { LockoutView } from './LockoutView'
+import { NoPinMessageView } from './NoPinMessageView'
+import { useLockState } from './useLockState'
 
 export function LockPage() {
   const navigate = useNavigate()
   const { auth } = useRepositories()
-  const { locationId, setLocationId } = useLocation()
+  const { setLocationId } = useLocation()
   const { pinLogin, isAuthenticated, isLocked } = usePosAuth()
+  const { state, setState, actions } = useLockState()
 
-  const [barbers, setBarbers] = useState<PosStaffUser[]>([])
-  const [locations, setLocations] = useState<PosLocation[]>([])
-  const [pendingLocation, setPendingLocation] = useState<PosLocation | null>(null)
-  const [locationPassword, setLocationPassword] = useState('')
-  const [verifyingLocation, setVerifyingLocation] = useState(false)
-  const [selectedBarber, setSelectedBarber] = useState<PosStaffUser | null>(null)
-  const [selectingLocation, setSelectingLocation] = useState(true)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // Per-attempt counter to force PinKeypad remount on each wrong PIN.
+  // Without this, PinKeypad keeps its internal `digits` state across attempts.
+  const attemptRef = useRef(0)
+  const [attemptCount, setAttemptCount] = useState(0)
 
+  // 1) Initial state decision based on viewer + localStorage
   useEffect(() => {
-    if (!isAuthenticated || isLocked) return
-    navigate('/home', { replace: true })
-  }, [isAuthenticated, isLocked, navigate])
-
-  useEffect(() => {
-    if (!selectingLocation) return
-    setLoading(true)
-    setError(null)
-    auth
-      .getLocations()
-      .then(setLocations)
-      .catch(() => setError('No se pudieron cargar las sucursales'))
-      .finally(() => setLoading(false))
-  }, [auth, selectingLocation])
-
-  useEffect(() => {
-    if (!locationId || selectingLocation) {
-      setBarbers([])
-      setLoading(false)
+    if (state.kind !== 'INITIAL_LOAD') return
+    if (isAuthenticated && !isLocked) {
+      navigate('/home', { replace: true })
       return
     }
+    const storedLocationId = actions.getStoredLocationId()
+    if (!storedLocationId) {
+      setState({ kind: 'PAIRING', locations: [], loading: true })
+      return
+    }
+    setState({ kind: 'BARBER_SELECTOR', locationId: storedLocationId, barbers: [], loading: true })
+  }, [state.kind, isAuthenticated, isLocked, navigate, setState, actions])
 
-    setLoading(true)
-    setError(null)
+  // 2) Fetch locations when entering PAIRING (loading=true)
+  const pairingLoading = state.kind === 'PAIRING' ? state.loading : null
+  useEffect(() => {
+    if (state.kind !== 'PAIRING' || !state.loading) return
+    let cancelled = false
+    auth
+      .getLocations()
+      .then((locs) => {
+        if (cancelled) return
+        setState({ kind: 'PAIRING', locations: locs, loading: false })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setState({ kind: 'PAIRING', locations: [], loading: false })
+      })
+    return () => {
+      cancelled = true
+    }
+    // pairingLoading captures both `kind === 'PAIRING'` and `loading` — avoids
+    // re-running when unrelated fields of the union change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairingLoading, auth, setState])
+
+  // 3) Fetch barbers when entering BARBER_SELECTOR (loading=true)
+  const barberSelectorLocationId = state.kind === 'BARBER_SELECTOR' ? state.locationId : null
+  const barberSelectorLoading = state.kind === 'BARBER_SELECTOR' ? state.loading : null
+  useEffect(() => {
+    if (state.kind !== 'BARBER_SELECTOR' || !state.loading) return
+    const locationId = state.locationId
+    let cancelled = false
     auth
       .getBarbers(locationId)
-      .then(setBarbers)
-      .catch(() => setError('No se pudo cargar el equipo'))
-      .finally(() => setLoading(false))
-  }, [auth, locationId, selectingLocation])
+      .then((bs) => {
+        if (cancelled) return
+        const lastBarberId = actions.getLastBarberId()
+        if (lastBarberId) {
+          const lastBarber = bs.find((b) => b.id === lastBarberId)
+          if (lastBarber && lastBarber.hasPosPin) {
+            const now = new Date()
+            if (lastBarber.pinLockedUntil && lastBarber.pinLockedUntil > now) {
+              setState({ kind: 'LOCKED_OUT', locationId, barber: lastBarber, lockedUntil: lastBarber.pinLockedUntil })
+              return
+            }
+            setState({ kind: 'PIN_ENTRY', locationId, barber: lastBarber, error: null })
+            return
+          }
+          actions.forgetLastBarber()
+        }
+        setState({ kind: 'BARBER_SELECTOR', locationId, barbers: bs, loading: false })
+      })
+      .catch(() => {
+        if (cancelled) return
+        actions.unpair()
+      })
+    return () => {
+      cancelled = true
+    }
+    // barberSelectorLocationId + barberSelectorLoading fully capture the trigger conditions
+    // without re-running when other union members change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [barberSelectorLocationId, barberSelectorLoading, auth, setState, actions])
 
-  async function handleLocationAccessSubmit() {
-    if (!pendingLocation || !locationPassword.trim()) return
-    setVerifyingLocation(true)
-    setError(null)
-    try {
-      const ok = await auth.verifyLocationAccess(pendingLocation.id, locationPassword.trim())
-      if (!ok) {
-        setError('Contraseña de sucursal incorrecta')
-        return
+  // 4) PIN submit handler
+  const handlePinSubmit = useCallback(
+    async (pin: string) => {
+      if (state.kind !== 'PIN_ENTRY') return
+      const barber = state.barber
+      const locationId = state.locationId
+      try {
+        await pinLogin(barber.email, pin)
+        actions.rememberLastBarber(barber.id)
+        // Navigation happens via the isAuthenticated effect below
+      } catch (e) {
+        attemptRef.current += 1
+        setAttemptCount(attemptRef.current)
+        if (e instanceof PinLoginException) {
+          if (e.detail.code === 'INVALID_PIN') {
+            setState({
+              kind: 'PIN_ENTRY',
+              locationId,
+              barber,
+              error: `PIN incorrecto · ${e.detail.attemptsRemaining} intentos restantes`,
+            })
+          } else if (e.detail.code === 'PIN_LOCKED_OUT') {
+            setState({ kind: 'LOCKED_OUT', locationId, barber, lockedUntil: e.detail.lockedUntil })
+          } else {
+            setState({
+              kind: 'PIN_ENTRY',
+              locationId,
+              barber,
+              error: 'Sin conexión, vuelve a intentar',
+            })
+          }
+        }
       }
-      setLocationId(pendingLocation.id)
-      setSelectingLocation(false)
-      setLocationPassword('')
-      setPendingLocation(null)
-    } catch {
-      setError('No se pudo validar la sucursal')
-    } finally {
-      setVerifyingLocation(false)
-    }
-  }
-
-  async function handlePinSubmit(pin: string) {
-    if (!selectedBarber) return
-    setError(null)
-    try {
-      await pinLogin(selectedBarber.email, pin)
-    } catch {
-      setError('PIN incorrecto')
-    }
-  }
-
-  if (selectingLocation) {
-    return (
-      <div className="flex min-h-full flex-col items-center justify-center gap-8 px-6 py-10">
-        <div className="text-center">
-          <h1 className="font-bb-display text-3xl font-bold tracking-tight">Bien Bravo</h1>
-          <p className="mt-2 text-bb-muted">Selecciona sucursal</p>
-        </div>
-
-        {error && (
-          <p className="rounded-2xl bg-bb-danger/10 px-4 py-3 text-sm text-bb-danger">{error}</p>
-        )}
-
-        {loading ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-14 w-64 animate-pulse rounded-2xl bg-bb-surface" />
-            ))}
-          </div>
-        ) : (
-          <>
-            {locations.length > 0 && !pendingLocation ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {locations.map((loc) => (
-                  <button
-                    key={loc.id}
-                    type="button"
-                    onClick={() => {
-                      setPendingLocation(loc)
-                      setError(null)
-                    }}
-                    className="w-64 rounded-2xl bg-bb-surface px-5 py-4 text-left font-semibold hover:bg-bb-surface-2 active:scale-[0.97]"
-                  >
-                    {loc.name}
-                  </button>
-                ))}
-              </div>
-            ) : pendingLocation ? (
-              <div className="w-full max-w-sm space-y-3">
-                <p className="text-sm text-bb-muted">
-                  Sucursal: <span className="font-semibold text-bb-text">{pendingLocation.name}</span>
-                </p>
-                <input
-                  type="password"
-                  value={locationPassword}
-                  onChange={(e) => setLocationPassword(e.target.value)}
-                  placeholder="Contraseña de sucursal"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleLocationAccessSubmit()
-                  }}
-                  className="w-full rounded-xl border border-bb-border bg-bb-surface px-4 py-3 text-sm outline-none focus:border-bb-primary"
-                />
-                <button
-                  type="button"
-                  disabled={!locationPassword.trim() || verifyingLocation}
-                  onClick={() => void handleLocationAccessSubmit()}
-                  className="w-full rounded-2xl bg-bb-primary px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {verifyingLocation ? 'Validando...' : 'Continuar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingLocation(null)
-                    setLocationPassword('')
-                    setError(null)
-                  }}
-                  className="w-full rounded-2xl bg-bb-surface px-5 py-3 text-sm font-semibold text-bb-text"
-                >
-                  Cambiar sucursal
-                </button>
-              </div>
-            ) : (
-              <p className="text-sm text-bb-muted">No hay sucursales activas disponibles.</p>
-            )}
-          </>
-        )}
-      </div>
-    )
-  }
-
-  if (selectedBarber) {
-    return (
-      <PinPadView
-        staffName={selectedBarber.fullName}
-        photoUrl={selectedBarber.photoUrl}
-        error={error}
-        onSubmit={handlePinSubmit}
-        onBack={() => {
-          setSelectedBarber(null)
-          setError(null)
-        }}
-      />
-    )
-  }
-
-  return (
-    <BarberSelectorView
-      barbers={barbers}
-      loading={loading}
-      onSelect={setSelectedBarber}
-      onChangeLocation={() => {
-        setSelectedBarber(null)
-        setPendingLocation(null)
-        setLocationPassword('')
-        setSelectingLocation(true)
-      }}
-    />
+    },
+    [state, pinLogin, actions, setState],
   )
+
+  // 5) On successful auth, navigate to home
+  useEffect(() => {
+    if (isAuthenticated && !isLocked) {
+      navigate('/home', { replace: true })
+    }
+  }, [isAuthenticated, isLocked, navigate])
+
+  // 6) Render based on state.kind
+  if (state.kind === 'INITIAL_LOAD') {
+    return null
+  }
+
+  if (state.kind === 'PAIRING') {
+    return (
+      <LockShell>
+        <PairingView
+          locations={state.locations}
+          loading={state.loading}
+          onPair={async (locationId, password) => {
+            const ok = await auth.verifyLocationAccess(locationId, password)
+            if (!ok) return false
+            setLocationId(locationId)
+            actions.setLocationPaired(locationId)
+            setState({ kind: 'BARBER_SELECTOR', locationId, barbers: [], loading: true })
+            return true
+          }}
+        />
+      </LockShell>
+    )
+  }
+
+  if (state.kind === 'BARBER_SELECTOR') {
+    return (
+      <LockShell>
+        <BarberSelectorView
+          barbers={state.barbers}
+          loading={state.loading}
+          onSelect={(b) => actions.selectBarber(b)}
+          onChangeLocation={() => actions.unpair()}
+        />
+      </LockShell>
+    )
+  }
+
+  if (state.kind === 'PIN_ENTRY') {
+    return (
+      <LockShell>
+        <PinEntryView
+          key={`${state.barber.id}-${attemptCount}`}
+          staffName={state.barber.fullName}
+          photoUrl={state.barber.photoUrl}
+          error={state.error}
+          onSubmit={handlePinSubmit}
+          onBack={() => actions.backToSelector()}
+        />
+      </LockShell>
+    )
+  }
+
+  if (state.kind === 'LOCKED_OUT') {
+    return (
+      <LockShell>
+        <LockoutView
+          staffName={state.barber.fullName}
+          photoUrl={state.barber.photoUrl}
+          lockedUntil={state.lockedUntil}
+          onUnlocked={() => {
+            setState({ kind: 'PIN_ENTRY', locationId: state.locationId, barber: state.barber, error: null })
+          }}
+          onBack={() => actions.backToSelector()}
+          onPoll={async () => {
+            const status = await auth.getPinLockoutStatus(state.barber.email)
+            return status.lockedUntil
+          }}
+        />
+      </LockShell>
+    )
+  }
+
+  if (state.kind === 'NO_PIN_MESSAGE') {
+    return (
+      <LockShell>
+        <NoPinMessageView
+          staffName={state.barber.fullName}
+          photoUrl={state.barber.photoUrl}
+          onBack={() => actions.backToSelector()}
+        />
+      </LockShell>
+    )
+  }
+
+  return null
 }
