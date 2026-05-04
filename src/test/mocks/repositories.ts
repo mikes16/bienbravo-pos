@@ -27,6 +27,8 @@ export const MOCK_STAFF: PosStaffUser = {
   photoUrl: null,
   isActive: true,
   hasPosPin: true,
+  pinAttempts: 0,
+  pinLockedUntil: null,
 }
 
 export const MOCK_VIEWER: PosViewer = {
@@ -66,6 +68,10 @@ export class InMemoryAuthRepository implements AuthRepository {
 
   async verifyLocationAccess(_locationId: string, _password: string): Promise<boolean> {
     return true
+  }
+
+  async getPinLockoutStatus(_email: string): Promise<{ lockedUntil: Date | null; attemptsRemaining: number }> {
+    return { lockedUntil: null, attemptsRemaining: 8 }
   }
 }
 
