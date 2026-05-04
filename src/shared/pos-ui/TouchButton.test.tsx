@@ -22,13 +22,13 @@ describe('TouchButton', () => {
     const btn = screen.getByRole('button')
     // primary = bg-bravo, height 64px
     expect(btn.className).toContain('bg-[var(--color-bravo)]')
-    expect(btn.className).toContain('h-[var(--pos-touch-primary)]')
+    expect(btn.className).toContain('min-h-[var(--pos-touch-primary)]')
   })
 
   it('applies secondary variant + size when requested', () => {
     render(<TouchButton variant="secondary" size="secondary" onClick={() => {}}>Editar</TouchButton>)
     const btn = screen.getByRole('button')
-    expect(btn.className).toContain('h-[var(--pos-touch-secondary)]')
+    expect(btn.className).toContain('min-h-[var(--pos-touch-secondary)]')
     expect(btn.className).toContain('border-[var(--color-leather-muted)]')
   })
 

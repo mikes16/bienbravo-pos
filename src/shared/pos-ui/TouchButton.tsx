@@ -12,20 +12,20 @@ interface TouchButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    'bg-[var(--color-bravo)] text-white hover:bg-[var(--color-bravo-muted)] focus-visible:bg-[var(--color-bravo-muted)]',
+    'bg-[var(--color-bravo)] text-white hover:bg-[var(--color-bravo-muted)]',
   secondary:
-    'bg-transparent border border-[var(--color-leather-muted)] text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)] focus-visible:bg-[var(--color-cuero-viejo)]',
+    'bg-transparent border border-[var(--color-leather-muted)] text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)]',
   ghost:
-    'bg-transparent text-[var(--color-bone-muted)] hover:text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)] focus-visible:bg-[var(--color-cuero-viejo)]',
+    'bg-transparent text-[var(--color-bone-muted)] hover:text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)]',
   danger:
     'bg-transparent border border-[var(--color-bravo)]/50 text-[var(--color-bravo)] hover:bg-[var(--color-bravo)]/10',
 }
 
 const sizeClasses: Record<Size, string> = {
-  min: 'h-[var(--pos-touch-min)] px-4 text-[14px] font-medium',
-  row: 'h-[var(--pos-touch-row)] px-5 text-[14px] font-medium',
-  secondary: 'h-[var(--pos-touch-secondary)] px-6 text-[16px] font-medium',
-  primary: 'h-[var(--pos-touch-primary)] px-7 text-[17px] font-bold',
+  min: 'min-h-[var(--pos-touch-min)] px-4 py-2 text-[14px] font-medium',
+  row: 'min-h-[var(--pos-touch-row)] px-5 py-2 text-[14px] font-medium',
+  secondary: 'min-h-[var(--pos-touch-secondary)] px-6 py-3 text-[16px] font-medium',
+  primary: 'min-h-[var(--pos-touch-primary)] px-7 py-3 text-[17px] font-bold',
 }
 
 /**
@@ -47,7 +47,6 @@ export function TouchButton({
       disabled={disabled}
       className={cn(
         'inline-flex items-center justify-center transition-colors duration-[var(--duration-pos-tap)]',
-        'focus-visible:outline-none',
         'disabled:cursor-not-allowed disabled:opacity-50',
         variantClasses[variant],
         sizeClasses[size],
