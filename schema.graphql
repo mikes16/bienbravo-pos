@@ -877,6 +877,12 @@ type PayoutRunEntry {
   staffUserId: ID!
 }
 
+type PosCajaStatusHome {
+  accumulatedCents: Int
+  isOpen: Boolean!
+  openedAt: DateTime
+}
+
 type PosPinLockoutStatus {
   """Remaining attempts before next lockout. 8 if not in failure state."""
   attemptsRemaining: Int!
@@ -1014,6 +1020,7 @@ type Query {
   payoutRun(id: ID!): PayoutRun
   payoutRuns(periodEnd: DateTime, periodStart: DateTime): [PayoutRun!]!
   permissions: [String!]!
+  posCajaStatusHome(locationId: ID!): PosCajaStatusHome!
   posInventoryLevels(limit: Int, locationId: ID!): [InventoryLevel!]!
   posPinLockoutStatus(email: String!): PosPinLockoutStatus!
   posPublicLocations: [PosPublicLocation!]!

@@ -1583,6 +1583,13 @@ export type PayoutRunEntry = {
   staffUserId: Scalars['ID']['output'];
 };
 
+export type PosCajaStatusHome = {
+  __typename?: 'PosCajaStatusHome';
+  accumulatedCents?: Maybe<Scalars['Int']['output']>;
+  isOpen: Scalars['Boolean']['output'];
+  openedAt?: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type PosPinLockoutStatus = {
   __typename?: 'PosPinLockoutStatus';
   /** Remaining attempts before next lockout. 8 if not in failure state. */
@@ -1727,6 +1734,7 @@ export type Query = {
   payoutRun?: Maybe<PayoutRun>;
   payoutRuns: Array<PayoutRun>;
   permissions: Array<Scalars['String']['output']>;
+  posCajaStatusHome: PosCajaStatusHome;
   posInventoryLevels: Array<InventoryLevel>;
   posPinLockoutStatus: PosPinLockoutStatus;
   posPublicLocations: Array<PosPublicLocation>;
@@ -1994,6 +2002,11 @@ export type QueryPayoutRunArgs = {
 export type QueryPayoutRunsArgs = {
   periodEnd?: InputMaybe<Scalars['DateTime']['input']>;
   periodStart?: InputMaybe<Scalars['DateTime']['input']>;
+};
+
+
+export type QueryPosCajaStatusHomeArgs = {
+  locationId: Scalars['ID']['input'];
 };
 
 
