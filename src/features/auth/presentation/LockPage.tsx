@@ -63,27 +63,31 @@ export function LockPage() {
   // 3) Fetch barbers when entering BARBER_SELECTOR (loading=true)
   const barberSelectorLocationId = state.kind === 'BARBER_SELECTOR' ? state.locationId : null
   const barberSelectorLoading = state.kind === 'BARBER_SELECTOR' ? state.loading : null
+  const barberSelectorSkipMemory = state.kind === 'BARBER_SELECTOR' ? state.skipMemory ?? false : false
   useEffect(() => {
     if (state.kind !== 'BARBER_SELECTOR' || !state.loading) return
     const locationId = state.locationId
+    const skipMemory = state.skipMemory ?? false
     let cancelled = false
     auth
       .getBarbers(locationId)
       .then((bs) => {
         if (cancelled) return
-        const lastBarberId = actions.getLastBarberId()
-        if (lastBarberId) {
-          const lastBarber = bs.find((b) => b.id === lastBarberId)
-          if (lastBarber && lastBarber.hasPosPin) {
-            const now = new Date()
-            if (lastBarber.pinLockedUntil && lastBarber.pinLockedUntil > now) {
-              setState({ kind: 'LOCKED_OUT', locationId, barber: lastBarber, lockedUntil: lastBarber.pinLockedUntil })
+        if (!skipMemory) {
+          const lastBarberId = actions.getLastBarberId()
+          if (lastBarberId) {
+            const lastBarber = bs.find((b) => b.id === lastBarberId)
+            if (lastBarber && lastBarber.hasPosPin) {
+              const now = new Date()
+              if (lastBarber.pinLockedUntil && lastBarber.pinLockedUntil > now) {
+                setState({ kind: 'LOCKED_OUT', locationId, barber: lastBarber, lockedUntil: lastBarber.pinLockedUntil })
+                return
+              }
+              setState({ kind: 'PIN_ENTRY', locationId, barber: lastBarber, error: null })
               return
             }
-            setState({ kind: 'PIN_ENTRY', locationId, barber: lastBarber, error: null })
-            return
+            actions.forgetLastBarber()
           }
-          actions.forgetLastBarber()
         }
         setState({ kind: 'BARBER_SELECTOR', locationId, barbers: bs, loading: false })
       })
@@ -94,9 +98,9 @@ export function LockPage() {
     return () => {
       cancelled = true
     }
-    // barberSelectorLocationId + barberSelectorLoading fully capture the trigger conditions
-    // without re-running when other union members change.
-  }, [barberSelectorLocationId, barberSelectorLoading, auth, setState, actions])
+    // barberSelectorLocationId + barberSelectorLoading + barberSelectorSkipMemory fully capture
+    // the trigger conditions without re-running when other union members change.
+  }, [barberSelectorLocationId, barberSelectorLoading, barberSelectorSkipMemory, auth, setState, actions])
 
   // 4) PIN submit handler
   const handlePinSubmit = useCallback(
@@ -120,6 +124,13 @@ export function LockPage() {
             })
           } else if (e.detail.code === 'PIN_LOCKED_OUT') {
             setState({ kind: 'LOCKED_OUT', locationId, barber, lockedUntil: e.detail.lockedUntil })
+          } else if (e.detail.code === 'TOO_MANY_REQUESTS') {
+            setState({
+              kind: 'PIN_ENTRY',
+              locationId,
+              barber,
+              error: 'Demasiados intentos. Espera 15 minutos.',
+            })
           } else {
             setState({
               kind: 'PIN_ENTRY',

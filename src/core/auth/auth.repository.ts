@@ -170,6 +170,9 @@ export class ApolloAuthRepository implements AuthRepository {
           const lockedUntil = typeof ext?.lockedUntil === 'string' ? new Date(ext.lockedUntil) : new Date()
           throw new PinLoginException({ code: 'PIN_LOCKED_OUT', lockedUntil })
         }
+        if (code === 'TOO_MANY_REQUESTS') {
+          throw new PinLoginException({ code: 'TOO_MANY_REQUESTS' })
+        }
       }
       throw new PinLoginException({ code: 'UNKNOWN' })
     }

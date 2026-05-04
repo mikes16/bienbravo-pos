@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { PinKeypad, TouchButton } from '@/shared/pos-ui'
 
 interface PinEntryViewProps {
@@ -27,6 +27,12 @@ export function PinEntryView({
   onBack,
 }: PinEntryViewProps) {
   const initials = useMemo(() => getInitials(staffName), [staffName])
+  const [submitting, setSubmitting] = useState(false)
+
+  function handleComplete(pin: string) {
+    setSubmitting(true)
+    onSubmit(pin)
+  }
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-8">
@@ -46,17 +52,19 @@ export function PinEntryView({
           {staffName}
         </p>
         <p className="text-[var(--pos-text-label)] text-[var(--color-bone-muted)]">
-          Ingresa tu PIN
+          {submitting ? 'Validando…' : 'Ingresa tu PIN'}
         </p>
       </div>
 
-      <PinKeypad length={4} onComplete={onSubmit} />
+      <div className={submitting ? 'pointer-events-none opacity-50 transition-opacity' : 'transition-opacity'}>
+        <PinKeypad length={4} onComplete={handleComplete} />
+      </div>
 
       {error && (
         <p className="text-[var(--pos-text-label)] text-[var(--color-bravo)]">{error}</p>
       )}
 
-      <TouchButton variant="ghost" size="row" onClick={onBack}>
+      <TouchButton variant="ghost" size="row" onClick={onBack} disabled={submitting}>
         Otro barbero
       </TouchButton>
     </div>

@@ -19,6 +19,7 @@ export type PinLoginError =
   | { code: 'INVALID_PIN'; attemptsRemaining: number }
   | { code: 'PIN_LOCKED_OUT'; lockedUntil: Date }
   | { code: 'INVALID_CREDENTIALS' }
+  | { code: 'TOO_MANY_REQUESTS' }
   | { code: 'UNKNOWN' }
 
 export class PinLoginException extends Error {

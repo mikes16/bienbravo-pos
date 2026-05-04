@@ -7,7 +7,7 @@ const KEY_LAST_BARBER = 'bb-pos-last-barber-id'
 export type LockState =
   | { kind: 'INITIAL_LOAD' }
   | { kind: 'PAIRING'; locations: PosLocation[]; loading: boolean }
-  | { kind: 'BARBER_SELECTOR'; locationId: string; barbers: PosStaffUser[]; loading: boolean }
+  | { kind: 'BARBER_SELECTOR'; locationId: string; barbers: PosStaffUser[]; loading: boolean; skipMemory?: boolean }
   | { kind: 'PIN_ENTRY'; locationId: string; barber: PosStaffUser; error: string | null }
   | { kind: 'LOCKED_OUT'; locationId: string; barber: PosStaffUser; lockedUntil: Date }
   | { kind: 'NO_PIN_MESSAGE'; locationId: string; barber: PosStaffUser }
@@ -87,7 +87,7 @@ export function useLockState(initial: LockState = { kind: 'INITIAL_LOAD' }) {
   const backToSelector = useCallback(() => {
     setState((prev) => {
       const locationId = 'locationId' in prev ? prev.locationId : ''
-      return { kind: 'BARBER_SELECTOR', locationId, barbers: [], loading: true }
+      return { kind: 'BARBER_SELECTOR', locationId, barbers: [], loading: true, skipMemory: true }
     })
   }, [])
 

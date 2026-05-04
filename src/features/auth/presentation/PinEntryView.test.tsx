@@ -78,4 +78,23 @@ describe('PinEntryView', () => {
     const img = screen.getByRole('img')
     expect(img).toHaveAttribute('src', 'https://example.com/j.jpg')
   })
+
+  it('shows "Validando…" and disables back after PIN is complete', async () => {
+    const user = userEvent.setup()
+    render(
+      <PinEntryView
+        staffName="Juan"
+        photoUrl={null}
+        error={null}
+        onSubmit={() => {}}
+        onBack={() => {}}
+      />,
+    )
+    expect(screen.getByText(/ingresa tu pin/i)).toBeInTheDocument()
+    for (const d of ['1', '2', '3', '4']) {
+      await user.click(screen.getByRole('button', { name: d }))
+    }
+    expect(await screen.findByText(/validando/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /otro barbero/i })).toBeDisabled()
+  })
 })

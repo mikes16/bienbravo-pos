@@ -44,10 +44,18 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setViewer(null)
       setIsLocked(false)
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('bb-pos-last-barber-id')
+      }
     }
   }, [auth])
 
-  const lock = useCallback(() => setIsLocked(true), [])
+  const lock = useCallback(() => {
+    setIsLocked(true)
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('bb-pos-last-barber-id')
+    }
+  }, [])
   const unlock = useCallback(() => setIsLocked(false), [])
 
   return (
