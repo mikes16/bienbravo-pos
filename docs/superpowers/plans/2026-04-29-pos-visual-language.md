@@ -331,13 +331,13 @@ describe('TouchButton', () => {
     const btn = screen.getByRole('button')
     // primary = bg-bravo, height 64px
     expect(btn.className).toContain('bg-[var(--color-bravo)]')
-    expect(btn.className).toContain('h-[var(--pos-touch-primary)]')
+    expect(btn.className).toContain('min-h-[var(--pos-touch-primary)]')
   })
 
   it('applies secondary variant + size when requested', () => {
     render(<TouchButton variant="secondary" size="secondary" onClick={() => {}}>Editar</TouchButton>)
     const btn = screen.getByRole('button')
-    expect(btn.className).toContain('h-[var(--pos-touch-secondary)]')
+    expect(btn.className).toContain('min-h-[var(--pos-touch-secondary)]')
     expect(btn.className).toContain('border-[var(--color-leather-muted)]')
   })
 
@@ -378,20 +378,20 @@ interface TouchButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    'bg-[var(--color-bravo)] text-white hover:bg-[var(--color-bravo-muted)] focus-visible:bg-[var(--color-bravo-muted)]',
+    'bg-[var(--color-bravo)] text-white hover:bg-[var(--color-bravo-muted)]',
   secondary:
-    'bg-transparent border border-[var(--color-leather-muted)] text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)] focus-visible:bg-[var(--color-cuero-viejo)]',
+    'bg-transparent border border-[var(--color-leather-muted)] text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)]',
   ghost:
-    'bg-transparent text-[var(--color-bone-muted)] hover:text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)] focus-visible:bg-[var(--color-cuero-viejo)]',
+    'bg-transparent text-[var(--color-bone-muted)] hover:text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)]',
   danger:
     'bg-transparent border border-[var(--color-bravo)]/50 text-[var(--color-bravo)] hover:bg-[var(--color-bravo)]/10',
 }
 
 const sizeClasses: Record<Size, string> = {
-  min: 'h-[var(--pos-touch-min)] px-4 text-[14px] font-medium',
-  row: 'h-[var(--pos-touch-row)] px-5 text-[14px] font-medium',
-  secondary: 'h-[var(--pos-touch-secondary)] px-6 text-[16px] font-medium',
-  primary: 'h-[var(--pos-touch-primary)] px-7 text-[17px] font-bold',
+  min: 'min-h-[var(--pos-touch-min)] px-4 py-2 text-[14px] font-medium',
+  row: 'min-h-[var(--pos-touch-row)] px-5 py-2 text-[14px] font-medium',
+  secondary: 'min-h-[var(--pos-touch-secondary)] px-6 py-3 text-[16px] font-medium',
+  primary: 'min-h-[var(--pos-touch-primary)] px-7 py-3 text-[17px] font-bold',
 }
 
 /**
@@ -413,7 +413,6 @@ export function TouchButton({
       disabled={disabled}
       className={cn(
         'inline-flex items-center justify-center transition-colors duration-[var(--duration-pos-tap)]',
-        'focus-visible:outline-none',
         'disabled:cursor-not-allowed disabled:opacity-50',
         variantClasses[variant],
         sizeClasses[size],
@@ -426,6 +425,8 @@ export function TouchButton({
   )
 }
 ```
+
+The global `*:focus-visible { outline: 2px solid var(--color-bravo); outline-offset: 2px; }` from `src/index.css` (Task 1) applies uniformly to every TouchButton — no per-variant override needed. WCAG 2.4.7 satisfied for all 4 variants.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -552,7 +553,7 @@ export function TileButton({
         'flex aspect-square w-full flex-col items-center justify-center gap-1 px-3 py-3',
         'border bg-[var(--color-cuero-viejo)] text-[var(--color-bone)]',
         'transition-colors duration-[var(--duration-pos-tap)]',
-        'hover:bg-[var(--color-cuero-viejo-hover)] focus-visible:outline-none',
+        'hover:bg-[var(--color-cuero-viejo-hover)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         selected
           ? 'border-[var(--color-bravo)] bg-[var(--color-cuero-viejo-hover)]'
@@ -1040,7 +1041,7 @@ function NumpadButton({ onClick, children, ...rest }: NumpadButtonProps) {
         'border border-[var(--color-leather-muted)] bg-[var(--color-cuero-viejo)]',
         'font-[var(--font-pos-display)] text-[30px] font-extrabold text-[var(--color-bone)]',
         'transition-colors duration-[var(--duration-pos-tap)]',
-        'hover:bg-[var(--color-cuero-viejo-hover)] focus-visible:outline-none focus-visible:bg-[var(--color-cuero-viejo-hover)]',
+        'hover:bg-[var(--color-cuero-viejo-hover)]',
         'active:bg-[var(--color-cuero-viejo-hover)]',
       )}
       {...rest}
