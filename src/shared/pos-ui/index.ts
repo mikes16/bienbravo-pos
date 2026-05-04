@@ -1,3 +1,4 @@
+// Existing v1 components — kept until consumers migrate in sub-projects #1-10
 export { PosCard } from './PosCard.tsx'
 export { TapButton } from './TapButton.tsx'
 export { StatusPill } from './StatusPill.tsx'
@@ -5,3 +6,17 @@ export { SkeletonBlock } from './SkeletonBlock.tsx'
 export { EmptyState } from './EmptyState.tsx'
 export { KanbanColumn } from './KanbanColumn.tsx'
 export { SectionHeader } from './SectionHeader.tsx'
+
+// Foundation v2 components — sub-project #0
+export { TouchButton } from './TouchButton.tsx'
+export { TileGrid } from './TileGrid.tsx'
+export { TileButton } from './TileButton.tsx'
+export { MoneyDisplay } from './MoneyDisplay.tsx'
+export { EmptyStateV2 } from './EmptyStateV2.tsx'
+export { Numpad } from './Numpad.tsx'
+export type { NumpadKey } from './Numpad.tsx'
+export { PinKeypad } from './PinKeypad.tsx'
+export { MoneyInput } from './MoneyInput.tsx'
+export { StepBar } from './StepBar.tsx'
+export { WizardShell } from './WizardShell.tsx'
+export { SuccessSplash } from './SuccessSplash.tsx'
