@@ -2,8 +2,8 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
-import { createMockRepositories, MOCK_STAFF, InMemoryAuthRepository } from '@/test/mocks/repositories'
-import type { PosStaffUser, PosLocation } from '@/core/auth/auth.types'
+import { createMockRepositories, MOCK_STAFF, MOCK_VIEWER, InMemoryAuthRepository } from '@/test/mocks/repositories'
+import type { PosStaffUser, PosLocation, PosViewer } from '@/core/auth/auth.types'
 import { PinLoginException } from '@/core/auth/auth.types'
 import { LockPage } from './LockPage'
 
@@ -116,6 +116,37 @@ describe('LockPage state machine', () => {
     }
     // Countdown timer should appear (LockoutView)
     expect(await screen.findByText(/0:[0-5]\d|1:00/)).toBeInTheDocument()
+  })
+
+  it('shows error and remounts keypad on INVALID_PIN', async () => {
+    let attempts = 0
+    class InvalidPinAuth extends TestAuthRepo {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      override async pinLogin(_email: string, _pin: string): Promise<PosViewer> {
+        attempts++
+        if (attempts === 1) {
+          throw new PinLoginException({ code: 'INVALID_PIN', attemptsRemaining: 7 })
+        }
+        return MOCK_VIEWER
+      }
+    }
+    window.localStorage.setItem('bb-pos-location-id', 'loc1')
+    window.localStorage.setItem('bb-pos-last-barber-id', 'b1')
+    const user = userEvent.setup()
+    renderWithProviders(<LockPage />, { repos: { ...createMockRepositories(), auth: new InvalidPinAuth() } })
+    await screen.findByText(/ingresa tu pin/i)
+    for (const d of ['1', '2', '3', '4']) {
+      await user.click(screen.getByRole('button', { name: d }))
+    }
+    expect(await screen.findByText(/7 intentos/i)).toBeInTheDocument()
+    // Keypad should still be mounted and accept input after the error.
+    // Because the key prop changed (attemptCount bumped), internal digit state was reset.
+    // Enter a second PIN — this time pinLogin succeeds, so no new error appears.
+    for (const d of ['1', '2', '3', '4']) {
+      await user.click(screen.getByRole('button', { name: d }))
+    }
+    // Both attempts were made
+    expect(attempts).toBe(2)
   })
 
   it('transitions to NO_PIN_MESSAGE for barber without PIN', async () => {

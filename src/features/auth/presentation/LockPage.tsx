@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
@@ -21,7 +21,6 @@ export function LockPage() {
 
   // Per-attempt counter to force PinKeypad remount on each wrong PIN.
   // Without this, PinKeypad keeps its internal `digits` state across attempts.
-  const attemptRef = useRef(0)
   const [attemptCount, setAttemptCount] = useState(0)
 
   // 1) Initial state decision based on viewer + localStorage
@@ -59,7 +58,6 @@ export function LockPage() {
     }
     // pairingLoading captures both `kind === 'PAIRING'` and `loading` — avoids
     // re-running when unrelated fields of the union change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pairingLoading, auth, setState])
 
   // 3) Fetch barbers when entering BARBER_SELECTOR (loading=true)
@@ -91,14 +89,13 @@ export function LockPage() {
       })
       .catch(() => {
         if (cancelled) return
-        actions.unpair()
+        setState({ kind: 'BARBER_SELECTOR', locationId, barbers: [], loading: false })
       })
     return () => {
       cancelled = true
     }
     // barberSelectorLocationId + barberSelectorLoading fully capture the trigger conditions
     // without re-running when other union members change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [barberSelectorLocationId, barberSelectorLoading, auth, setState, actions])
 
   // 4) PIN submit handler
@@ -112,8 +109,7 @@ export function LockPage() {
         actions.rememberLastBarber(barber.id)
         // Navigation happens via the isAuthenticated effect below
       } catch (e) {
-        attemptRef.current += 1
-        setAttemptCount(attemptRef.current)
+        setAttemptCount(c => c + 1)
         if (e instanceof PinLoginException) {
           if (e.detail.code === 'INVALID_PIN') {
             setState({
@@ -132,6 +128,13 @@ export function LockPage() {
               error: 'Sin conexión, vuelve a intentar',
             })
           }
+        } else {
+          setState({
+            kind: 'PIN_ENTRY',
+            locationId,
+            barber,
+            error: 'Sin conexión, vuelve a intentar',
+          })
         }
       }
     },
