@@ -4,8 +4,6 @@ import { LockIcon } from '@/shared/pos-ui/GoogleIcon.tsx'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 
-/* ── Live clock hook ─────────────────────────────────────────────────── */
-
 function useLiveClock() {
   const [now, setNow] = useState(new Date())
   useEffect(() => {
@@ -14,8 +12,6 @@ function useLiveClock() {
   }, [])
   return now
 }
-
-/* ── Shell ────────────────────────────────────────────────────────────── */
 
 export function PosShell() {
   const { viewer, lock, isLocked, loading } = usePosAuth()
@@ -37,29 +33,33 @@ export function PosShell() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* ── Top bar ─────────────────────────────────────────────── */}
-      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-bb-border bg-bb-surface px-4">
-        {/* Left: brand + location */}
+      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4">
         <div className="flex items-center gap-3">
-          <span className="font-bb-display text-base font-bold tracking-tight">BIEN BRAVO</span>
+          <span className="font-[var(--font-pos-display)] text-[var(--pos-text-body)] font-bold tracking-[0.06em] text-[var(--color-bone)]">
+            BIENBRAVO
+          </span>
           {locationId && (
-            <span className="text-xs text-bb-muted">Sucursal activa</span>
+            <span className="text-[var(--pos-text-caption)] text-[var(--color-bone-muted)]">
+              Sucursal activa
+            </span>
           )}
-          <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-bold text-green-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+          <span className="flex items-center gap-1.5 border border-[var(--color-success)]/40 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-success)]">
+            <span aria-hidden className="h-1.5 w-1.5 bg-[var(--color-success)]" />
             ONLINE
           </span>
         </div>
 
-        {/* Right: clock, caja, user */}
         <div className="flex items-center gap-4">
           <div className="text-right">
-            <p className="text-sm font-bold tabular-nums">{timeStr}</p>
-            <p className="text-[10px] uppercase text-bb-muted">{dateStr}</p>
+            <p className="text-[var(--pos-text-label)] font-bold tabular-nums text-[var(--color-bone)]">
+              {timeStr}
+            </p>
+            <p className="text-[var(--pos-text-caption)] uppercase text-[var(--color-bone-muted)]">
+              {dateStr}
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Avatar */}
             {viewer?.staff.photoUrl ? (
               <img
                 src={viewer.staff.photoUrl}
@@ -67,16 +67,15 @@ export function PosShell() {
                 className="h-8 w-8 rounded-full object-cover"
               />
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bb-surface-2 text-xs font-bold text-bb-muted">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-cuero-viejo)] text-[var(--pos-text-caption)] font-bold text-[var(--color-bone-muted)]">
                 {initials}
               </div>
             )}
 
-            {/* Lock button */}
             <button
               type="button"
               onClick={lock}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-bb-muted hover:bg-bb-surface-2 hover:text-bb-text"
+              className="flex h-10 w-10 items-center justify-center text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)] hover:text-[var(--color-bone)]"
               aria-label="Bloquear sesión"
             >
               <LockIcon className="h-4 w-4" />
@@ -85,7 +84,6 @@ export function PosShell() {
         </div>
       </header>
 
-      {/* ── Page content ────────────────────────────────────────── */}
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>

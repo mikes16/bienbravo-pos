@@ -1,0 +1,64 @@
+import { useMemo } from 'react'
+import { PinKeypad, TouchButton } from '@/shared/pos-ui'
+
+interface PinEntryViewProps {
+  staffName: string
+  photoUrl: string | null
+  error: string | null
+  onSubmit: (pin: string) => void
+  onBack: () => void
+}
+
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .toUpperCase()
+}
+
+export function PinEntryView({
+  staffName,
+  photoUrl,
+  error,
+  onSubmit,
+  onBack,
+}: PinEntryViewProps) {
+  const initials = useMemo(() => getInitials(staffName), [staffName])
+
+  return (
+    <div className="flex w-full max-w-md flex-col items-center gap-8">
+      <div className="flex flex-col items-center gap-3">
+        {photoUrl ? (
+          <img
+            src={photoUrl}
+            alt={staffName}
+            className="h-24 w-24 rounded-full object-cover bg-[var(--color-cuero-viejo)]"
+          />
+        ) : (
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[var(--color-cuero-viejo)] font-[var(--font-pos-display)] text-[28px] font-extrabold text-[var(--color-bone)]">
+            {initials}
+          </div>
+        )}
+        <p className="text-[var(--pos-text-subtitle)] font-bold text-[var(--color-bone)]">
+          {staffName}
+        </p>
+        <p className="text-[var(--pos-text-label)] text-[var(--color-bone-muted)]">
+          Ingresa tu PIN
+        </p>
+      </div>
+
+      <PinKeypad length={4} onComplete={onSubmit} />
+
+      {error && (
+        <p className="text-[var(--pos-text-label)] text-[var(--color-bravo)]">{error}</p>
+      )}
+
+      <TouchButton variant="ghost" size="row" onClick={onBack}>
+        Otro barbero
+      </TouchButton>
+    </div>
+  )
+}

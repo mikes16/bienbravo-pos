@@ -3,6 +3,7 @@ import type { PosViewer, AuthState } from './auth.types.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
 
 export interface PosAuthContextValue extends AuthState {
+  pinLockedUntil: Date | null
   pinLogin: (email: string, pin4: string) => Promise<void>
   logout: () => Promise<void>
   lock: () => void
@@ -56,6 +57,7 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: viewer !== null,
         isLocked,
         loading,
+        pinLockedUntil: viewer?.staff?.pinLockedUntil ?? null,
         pinLogin,
         logout,
         lock,

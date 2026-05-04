@@ -1,6 +1,29 @@
 import { type ApolloClient } from '@apollo/client'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { graphql } from '@/core/graphql/generated'
-import type { PosViewer, PosStaffUser, PosLocation, LocationScope } from './auth.types.ts'
+import {
+  type PosViewer,
+  type PosStaffUser,
+  type PosLocation,
+  type LocationScope,
+  type PosPinLockoutStatus,
+  PinLoginException,
+} from './auth.types.ts'
+
+/* ── Raw API shapes ── */
+
+type RawStaff = {
+  id: string; fullName: string; email: string
+  phone: string | null; photoUrl: string | null
+  isActive: boolean; hasPosPin: boolean
+  pinAttempts: number; pinLockedUntil: string | null
+}
+
+type RawViewer = {
+  kind: string; staff: RawStaff | null
+  permissions: string[]
+  locationScopes: { scopeType: string; locationId: string | null }[]
+}
 
 /* ── GraphQL Documents ── */
 
@@ -8,7 +31,10 @@ const VIEWER_QUERY = graphql(`
   query PosViewer {
     viewer {
       kind
-      staff { id fullName email phone photoUrl isActive hasPosPin }
+      staff {
+        id fullName email phone photoUrl isActive hasPosPin
+        pinAttempts pinLockedUntil
+      }
       permissions
       locationScopes { scopeType locationId }
     }
@@ -35,7 +61,10 @@ const STAFF_PIN_LOGIN = graphql(`
     staffPinLogin(email: $email, pin4: $pin4) {
       viewer {
         kind
-        staff { id fullName email phone photoUrl isActive hasPosPin }
+        staff {
+          id fullName email phone photoUrl isActive hasPosPin
+          pinAttempts pinLockedUntil
+        }
         permissions
         locationScopes { scopeType locationId }
       }
@@ -47,6 +76,16 @@ const BARBERS_QUERY = graphql(`
   query PosBarbers($locationId: ID!) {
     barbers(locationId: $locationId) {
       id fullName email phone photoUrl isActive hasPosPin
+      pinAttempts pinLockedUntil
+    }
+  }
+`)
+
+const POS_PIN_LOCKOUT_STATUS = graphql(`
+  query PosPinLockoutStatus($email: String!) {
+    posPinLockoutStatus(email: $email) {
+      lockedUntil
+      attemptsRemaining
     }
   }
 `)
@@ -64,20 +103,30 @@ export interface AuthRepository {
   getBarbers(locationId: string): Promise<PosStaffUser[]>
   getLocations(): Promise<PosLocation[]>
   verifyLocationAccess(locationId: string, password: string): Promise<boolean>
+  getPinLockoutStatus(email: string): Promise<PosPinLockoutStatus>
 }
 
 /* ── Apollo Implementation ── */
 
-function mapViewer(data: {
-  kind: string
-  staff: PosStaffUser | null
-  permissions: string[]
-  locationScopes: { scopeType: string; locationId: string | null }[]
-}): PosViewer | null {
+function mapStaff(s: RawStaff): PosStaffUser {
+  return {
+    id: s.id,
+    fullName: s.fullName,
+    email: s.email,
+    phone: s.phone,
+    photoUrl: s.photoUrl,
+    isActive: s.isActive,
+    hasPosPin: s.hasPosPin,
+    pinAttempts: s.pinAttempts,
+    pinLockedUntil: s.pinLockedUntil ? new Date(s.pinLockedUntil) : null,
+  }
+}
+
+function mapViewer(data: RawViewer): PosViewer | null {
   if (data.kind !== 'STAFF' || !data.staff) return null
   return {
     kind: 'STAFF',
-    staff: data.staff,
+    staff: mapStaff(data.staff),
     permissions: data.permissions ?? [],
     locationScopes: (data.locationScopes ?? []).map((s) => ({
       scopeType: s.scopeType as LocationScope['scopeType'],
@@ -93,7 +142,7 @@ export class ApolloAuthRepository implements AuthRepository {
   }
 
   async getViewer(): Promise<PosViewer | null> {
-    const { data } = await this.#client.query<{ viewer: Parameters<typeof mapViewer>[0] }>({
+    const { data } = await this.#client.query<{ viewer: RawViewer }>({
       query: VIEWER_QUERY,
       fetchPolicy: 'network-only',
     })
@@ -101,14 +150,31 @@ export class ApolloAuthRepository implements AuthRepository {
   }
 
   async pinLogin(email: string, pin4: string): Promise<PosViewer> {
-    const { data } = await this.#client.mutate<{
-      staffPinLogin: { viewer: Parameters<typeof mapViewer>[0] }
-    }>({
-      mutation: STAFF_PIN_LOGIN,
-      variables: { email, pin4 },
-    })
-    const viewer = mapViewer(data!.staffPinLogin.viewer)
-    if (!viewer) throw new Error('Credenciales inválidas')
+    let result
+    try {
+      result = await this.#client.mutate<{
+        staffPinLogin: { viewer: RawViewer }
+      }>({
+        mutation: STAFF_PIN_LOGIN,
+        variables: { email, pin4 },
+      })
+    } catch (e) {
+      if (CombinedGraphQLErrors.is(e)) {
+        const ext = e.errors[0]?.extensions
+        const code = typeof ext?.code === 'string' ? ext.code : undefined
+        if (code === 'INVALID_PIN') {
+          const attemptsRemaining = typeof ext?.attemptsRemaining === 'number' ? ext.attemptsRemaining : 0
+          throw new PinLoginException({ code: 'INVALID_PIN', attemptsRemaining })
+        }
+        if (code === 'PIN_LOCKED_OUT') {
+          const lockedUntil = typeof ext?.lockedUntil === 'string' ? new Date(ext.lockedUntil) : new Date()
+          throw new PinLoginException({ code: 'PIN_LOCKED_OUT', lockedUntil })
+        }
+      }
+      throw new PinLoginException({ code: 'UNKNOWN' })
+    }
+    const viewer = mapViewer(result.data!.staffPinLogin.viewer)
+    if (!viewer) throw new PinLoginException({ code: 'INVALID_CREDENTIALS' })
     return viewer
   }
 
@@ -117,12 +183,12 @@ export class ApolloAuthRepository implements AuthRepository {
   }
 
   async getBarbers(locationId: string): Promise<PosStaffUser[]> {
-    const { data } = await this.#client.query<{ barbers: PosStaffUser[] }>({
+    const { data } = await this.#client.query<{ barbers: RawStaff[] }>({
       query: BARBERS_QUERY,
       variables: { locationId },
       fetchPolicy: 'network-only',
     })
-    return data!.barbers.filter((b: PosStaffUser) => b.isActive)
+    return data!.barbers.filter((b) => b.isActive).map(mapStaff)
   }
 
   async getLocations(): Promise<PosLocation[]> {
@@ -139,5 +205,21 @@ export class ApolloAuthRepository implements AuthRepository {
       variables: { locationId, password },
     })
     return data!.verifyPosLocationAccess
+  }
+
+  async getPinLockoutStatus(email: string): Promise<PosPinLockoutStatus> {
+    const { data } = await this.#client.query<{
+      posPinLockoutStatus: { lockedUntil: string | null; attemptsRemaining: number }
+    }>({
+      query: POS_PIN_LOCKOUT_STATUS,
+      variables: { email },
+      fetchPolicy: 'no-cache',
+    })
+    return {
+      lockedUntil: data!.posPinLockoutStatus.lockedUntil
+        ? new Date(data!.posPinLockoutStatus.lockedUntil)
+        : null,
+      attemptsRemaining: data!.posPinLockoutStatus.attemptsRemaining,
+    }
   }
 }

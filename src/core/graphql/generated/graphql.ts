@@ -837,6 +837,7 @@ export type Mutation = {
   rescheduleAppointment: RescheduleAppointmentResult;
   rescheduleAppointmentByToken: RescheduleAppointmentByTokenResult;
   resetLocationBusinessHours: Array<LocationBusinessHour>;
+  resetPosPinAttempts: Scalars['Boolean']['output'];
   rotateServiceToken: RotateServiceTokenResult;
   runPayout: PayoutRun;
   setPosLocationPassword: Scalars['Boolean']['output'];
@@ -1318,6 +1319,11 @@ export type MutationResetLocationBusinessHoursArgs = {
 };
 
 
+export type MutationResetPosPinAttemptsArgs = {
+  staffUserId: Scalars['ID']['input'];
+};
+
+
 export type MutationRotateServiceTokenArgs = {
   input: RotateServiceTokenInput;
 };
@@ -1577,6 +1583,14 @@ export type PayoutRunEntry = {
   staffUserId: Scalars['ID']['output'];
 };
 
+export type PosPinLockoutStatus = {
+  __typename?: 'PosPinLockoutStatus';
+  /** Remaining attempts before next lockout. 8 if not in failure state. */
+  attemptsRemaining: Scalars['Int']['output'];
+  /** Null if not currently locked. */
+  lockedUntil?: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type PosPublicLocation = {
   __typename?: 'PosPublicLocation';
   id: Scalars['ID']['output'];
@@ -1687,6 +1701,7 @@ export type Query = {
   customer?: Maybe<Customer>;
   customerAppointments: Array<Appointment>;
   customers: Array<Customer>;
+  customersCount: Scalars['Int']['output'];
   dailyLocationMetrics: Array<DailyLocationMetrics>;
   dailyStaffMetrics: Array<DailyStaffMetrics>;
   dashboardSummary: DashboardSummary;
@@ -1713,6 +1728,7 @@ export type Query = {
   payoutRuns: Array<PayoutRun>;
   permissions: Array<Scalars['String']['output']>;
   posInventoryLevels: Array<InventoryLevel>;
+  posPinLockoutStatus: PosPinLockoutStatus;
   posPublicLocations: Array<PosPublicLocation>;
   product?: Maybe<Product>;
   products: Array<Product>;
@@ -1840,6 +1856,11 @@ export type QueryCustomerAppointmentsArgs = {
 export type QueryCustomersArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
+  query?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryCustomersCountArgs = {
   query?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -1979,6 +2000,11 @@ export type QueryPayoutRunsArgs = {
 export type QueryPosInventoryLevelsArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   locationId: Scalars['ID']['input'];
+};
+
+
+export type QueryPosPinLockoutStatusArgs = {
+  email: Scalars['String']['input'];
 };
 
 
@@ -2739,6 +2765,8 @@ export type StaffUser = {
   phone?: Maybe<Scalars['String']['output']>;
   photoPublicId?: Maybe<Scalars['String']['output']>;
   photoUrl?: Maybe<Scalars['String']['output']>;
+  pinAttempts: Scalars['Int']['output'];
+  pinLockedUntil?: Maybe<Scalars['DateTime']['output']>;
 };
 
 export type StaffVacation = {
@@ -3060,7 +3088,7 @@ export enum WalkInStatus {
 export type PosViewerQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type PosViewerQuery = { __typename?: 'Query', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } };
+export type PosViewerQuery = { __typename?: 'Query', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: any | null } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } };
 
 export type PosPublicLocationsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -3081,14 +3109,21 @@ export type StaffPinLoginMutationVariables = Exact<{
 }>;
 
 
-export type StaffPinLoginMutation = { __typename?: 'Mutation', staffPinLogin: { __typename?: 'AuthResult', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } } };
+export type StaffPinLoginMutation = { __typename?: 'Mutation', staffPinLogin: { __typename?: 'AuthResult', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: any | null } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } } };
 
 export type PosBarbersQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
 
 
-export type PosBarbersQuery = { __typename?: 'Query', barbers: Array<{ __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean }> };
+export type PosBarbersQuery = { __typename?: 'Query', barbers: Array<{ __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: any | null }> };
+
+export type PosPinLockoutStatusQueryVariables = Exact<{
+  email: Scalars['String']['input'];
+}>;
+
+
+export type PosPinLockoutStatusQuery = { __typename?: 'Query', posPinLockoutStatus: { __typename?: 'PosPinLockoutStatus', lockedUntil?: any | null, attemptsRemaining: number } };
 
 export type PosLogoutMutationVariables = Exact<{ [key: string]: never; }>;
 
@@ -3302,11 +3337,12 @@ export type DropWalkInMutationVariables = Exact<{
 export type DropWalkInMutation = { __typename?: 'Mutation', dropWalkIn: boolean };
 
 
-export const PosViewerDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosViewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"viewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"staff"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"hasPosPin"}}]}},{"kind":"Field","name":{"kind":"Name","value":"permissions"}},{"kind":"Field","name":{"kind":"Name","value":"locationScopes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"scopeType"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}}]}}]}}]}}]} as unknown as DocumentNode<PosViewerQuery, PosViewerQueryVariables>;
+export const PosViewerDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosViewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"viewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"staff"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"hasPosPin"}},{"kind":"Field","name":{"kind":"Name","value":"pinAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"pinLockedUntil"}}]}},{"kind":"Field","name":{"kind":"Name","value":"permissions"}},{"kind":"Field","name":{"kind":"Name","value":"locationScopes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"scopeType"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}}]}}]}}]}}]} as unknown as DocumentNode<PosViewerQuery, PosViewerQueryVariables>;
 export const PosPublicLocationsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosPublicLocations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"posPublicLocations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]} as unknown as DocumentNode<PosPublicLocationsQuery, PosPublicLocationsQueryVariables>;
 export const VerifyPosLocationAccessDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"VerifyPosLocationAccess"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"password"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"verifyPosLocationAccess"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"password"},"value":{"kind":"Variable","name":{"kind":"Name","value":"password"}}}]}]}}]} as unknown as DocumentNode<VerifyPosLocationAccessMutation, VerifyPosLocationAccessMutationVariables>;
-export const StaffPinLoginDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StaffPinLogin"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"email"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pin4"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffPinLogin"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"email"},"value":{"kind":"Variable","name":{"kind":"Name","value":"email"}}},{"kind":"Argument","name":{"kind":"Name","value":"pin4"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pin4"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"viewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"staff"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"hasPosPin"}}]}},{"kind":"Field","name":{"kind":"Name","value":"permissions"}},{"kind":"Field","name":{"kind":"Name","value":"locationScopes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"scopeType"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}}]}}]}}]}}]}}]} as unknown as DocumentNode<StaffPinLoginMutation, StaffPinLoginMutationVariables>;
-export const PosBarbersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosBarbers"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"barbers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"hasPosPin"}}]}}]}}]} as unknown as DocumentNode<PosBarbersQuery, PosBarbersQueryVariables>;
+export const StaffPinLoginDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StaffPinLogin"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"email"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pin4"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffPinLogin"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"email"},"value":{"kind":"Variable","name":{"kind":"Name","value":"email"}}},{"kind":"Argument","name":{"kind":"Name","value":"pin4"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pin4"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"viewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"staff"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"hasPosPin"}},{"kind":"Field","name":{"kind":"Name","value":"pinAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"pinLockedUntil"}}]}},{"kind":"Field","name":{"kind":"Name","value":"permissions"}},{"kind":"Field","name":{"kind":"Name","value":"locationScopes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"scopeType"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}}]}}]}}]}}]}}]} as unknown as DocumentNode<StaffPinLoginMutation, StaffPinLoginMutationVariables>;
+export const PosBarbersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosBarbers"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"barbers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"hasPosPin"}},{"kind":"Field","name":{"kind":"Name","value":"pinAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"pinLockedUntil"}}]}}]}}]} as unknown as DocumentNode<PosBarbersQuery, PosBarbersQueryVariables>;
+export const PosPinLockoutStatusDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosPinLockoutStatus"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"email"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"posPinLockoutStatus"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"email"},"value":{"kind":"Variable","name":{"kind":"Name","value":"email"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"lockedUntil"}},{"kind":"Field","name":{"kind":"Name","value":"attemptsRemaining"}}]}}]}}]} as unknown as DocumentNode<PosPinLockoutStatusQuery, PosPinLockoutStatusQueryVariables>;
 export const PosLogoutDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PosLogout"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"logout"}}]}}]} as unknown as DocumentNode<PosLogoutMutation, PosLogoutMutationVariables>;
 export const PosAppointmentsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosAppointments"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"dateFrom"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"dateTo"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"status"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"AppointmentStatus"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"appointments"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"dateFrom"},"value":{"kind":"Variable","name":{"kind":"Name","value":"dateFrom"}}},{"kind":"Argument","name":{"kind":"Name","value":"dateTo"},"value":{"kind":"Variable","name":{"kind":"Name","value":"dateTo"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"status"},"value":{"kind":"Variable","name":{"kind":"Name","value":"status"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"salePaymentStatus"}},{"kind":"Field","name":{"kind":"Name","value":"startAt"}},{"kind":"Field","name":{"kind":"Name","value":"endAt"}},{"kind":"Field","name":{"kind":"Name","value":"totalCents"}},{"kind":"Field","name":{"kind":"Name","value":"customer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}},{"kind":"Field","name":{"kind":"Name","value":"staffUser"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}}]}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"serviceId"}},{"kind":"Field","name":{"kind":"Name","value":"qty"}},{"kind":"Field","name":{"kind":"Name","value":"unitPriceCents"}}]}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}},{"kind":"Field","name":{"kind":"Name","value":"locationName"}}]}}]}}]} as unknown as DocumentNode<PosAppointmentsQuery, PosAppointmentsQueryVariables>;
 export const CheckInDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CheckIn"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"checkIn"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"appointmentId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<CheckInMutation, CheckInMutationVariables>;

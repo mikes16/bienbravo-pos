@@ -6,6 +6,28 @@ export interface PosStaffUser {
   photoUrl: string | null
   isActive: boolean
   hasPosPin: boolean
+  pinAttempts: number
+  pinLockedUntil: Date | null
+}
+
+export interface PosPinLockoutStatus {
+  lockedUntil: Date | null
+  attemptsRemaining: number
+}
+
+export type PinLoginError =
+  | { code: 'INVALID_PIN'; attemptsRemaining: number }
+  | { code: 'PIN_LOCKED_OUT'; lockedUntil: Date }
+  | { code: 'INVALID_CREDENTIALS' }
+  | { code: 'UNKNOWN' }
+
+export class PinLoginException extends Error {
+  readonly detail: PinLoginError
+  constructor(detail: PinLoginError) {
+    super(detail.code)
+    this.detail = detail
+    this.name = 'PinLoginException'
+  }
 }
 
 export interface PosLocation {

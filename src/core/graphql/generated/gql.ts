@@ -14,11 +14,12 @@ import type { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-
  * Learn more about it here: https://the-guild.dev/graphql/codegen/plugins/presets/preset-client#reducing-bundle-size
  */
 type Documents = {
-    "\n  query PosViewer {\n    viewer {\n      kind\n      staff { id fullName email phone photoUrl isActive hasPosPin }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n": typeof types.PosViewerDocument,
+    "\n  query PosViewer {\n    viewer {\n      kind\n      staff {\n        id fullName email phone photoUrl isActive hasPosPin\n        pinAttempts pinLockedUntil\n      }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n": typeof types.PosViewerDocument,
     "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n    }\n  }\n": typeof types.PosPublicLocationsDocument,
     "\n  mutation VerifyPosLocationAccess($locationId: ID!, $password: String!) {\n    verifyPosLocationAccess(locationId: $locationId, password: $password)\n  }\n": typeof types.VerifyPosLocationAccessDocument,
-    "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff { id fullName email phone photoUrl isActive hasPosPin }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n": typeof types.StaffPinLoginDocument,
-    "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n    }\n  }\n": typeof types.PosBarbersDocument,
+    "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff {\n          id fullName email phone photoUrl isActive hasPosPin\n          pinAttempts pinLockedUntil\n        }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n": typeof types.StaffPinLoginDocument,
+    "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n      pinAttempts pinLockedUntil\n    }\n  }\n": typeof types.PosBarbersDocument,
+    "\n  query PosPinLockoutStatus($email: String!) {\n    posPinLockoutStatus(email: $email) {\n      lockedUntil\n      attemptsRemaining\n    }\n  }\n": typeof types.PosPinLockoutStatusDocument,
     "\n  mutation PosLogout { logout }\n": typeof types.PosLogoutDocument,
     "\n  query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {\n    appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {\n      id status salePaymentStatus startAt endAt totalCents\n      customer { id fullName phone }\n      staffUser { id fullName }\n      items { label serviceId qty unitPriceCents }\n      locationId locationName\n    }\n  }\n": typeof types.PosAppointmentsDocument,
     "mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }": typeof types.CheckInDocument,
@@ -49,11 +50,12 @@ type Documents = {
     "\n  mutation DropWalkIn($walkInId: ID!, $reason: String) { dropWalkIn(walkInId: $walkInId, reason: $reason) }\n": typeof types.DropWalkInDocument,
 };
 const documents: Documents = {
-    "\n  query PosViewer {\n    viewer {\n      kind\n      staff { id fullName email phone photoUrl isActive hasPosPin }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n": types.PosViewerDocument,
+    "\n  query PosViewer {\n    viewer {\n      kind\n      staff {\n        id fullName email phone photoUrl isActive hasPosPin\n        pinAttempts pinLockedUntil\n      }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n": types.PosViewerDocument,
     "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n    }\n  }\n": types.PosPublicLocationsDocument,
     "\n  mutation VerifyPosLocationAccess($locationId: ID!, $password: String!) {\n    verifyPosLocationAccess(locationId: $locationId, password: $password)\n  }\n": types.VerifyPosLocationAccessDocument,
-    "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff { id fullName email phone photoUrl isActive hasPosPin }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n": types.StaffPinLoginDocument,
-    "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n    }\n  }\n": types.PosBarbersDocument,
+    "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff {\n          id fullName email phone photoUrl isActive hasPosPin\n          pinAttempts pinLockedUntil\n        }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n": types.StaffPinLoginDocument,
+    "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n      pinAttempts pinLockedUntil\n    }\n  }\n": types.PosBarbersDocument,
+    "\n  query PosPinLockoutStatus($email: String!) {\n    posPinLockoutStatus(email: $email) {\n      lockedUntil\n      attemptsRemaining\n    }\n  }\n": types.PosPinLockoutStatusDocument,
     "\n  mutation PosLogout { logout }\n": types.PosLogoutDocument,
     "\n  query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {\n    appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {\n      id status salePaymentStatus startAt endAt totalCents\n      customer { id fullName phone }\n      staffUser { id fullName }\n      items { label serviceId qty unitPriceCents }\n      locationId locationName\n    }\n  }\n": types.PosAppointmentsDocument,
     "mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }": types.CheckInDocument,
@@ -101,7 +103,7 @@ export function graphql(source: string): unknown;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query PosViewer {\n    viewer {\n      kind\n      staff { id fullName email phone photoUrl isActive hasPosPin }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n"): (typeof documents)["\n  query PosViewer {\n    viewer {\n      kind\n      staff { id fullName email phone photoUrl isActive hasPosPin }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n"];
+export function graphql(source: "\n  query PosViewer {\n    viewer {\n      kind\n      staff {\n        id fullName email phone photoUrl isActive hasPosPin\n        pinAttempts pinLockedUntil\n      }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n"): (typeof documents)["\n  query PosViewer {\n    viewer {\n      kind\n      staff {\n        id fullName email phone photoUrl isActive hasPosPin\n        pinAttempts pinLockedUntil\n      }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
@@ -113,11 +115,15 @@ export function graphql(source: "\n  mutation VerifyPosLocationAccess($locationI
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff { id fullName email phone photoUrl isActive hasPosPin }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff { id fullName email phone photoUrl isActive hasPosPin }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n"];
+export function graphql(source: "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff {\n          id fullName email phone photoUrl isActive hasPosPin\n          pinAttempts pinLockedUntil\n        }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff {\n          id fullName email phone photoUrl isActive hasPosPin\n          pinAttempts pinLockedUntil\n        }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n    }\n  }\n"): (typeof documents)["\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n    }\n  }\n"];
+export function graphql(source: "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n      pinAttempts pinLockedUntil\n    }\n  }\n"): (typeof documents)["\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl isActive hasPosPin\n      pinAttempts pinLockedUntil\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query PosPinLockoutStatus($email: String!) {\n    posPinLockoutStatus(email: $email) {\n      lockedUntil\n      attemptsRemaining\n    }\n  }\n"): (typeof documents)["\n  query PosPinLockoutStatus($email: String!) {\n    posPinLockoutStatus(email: $email) {\n      lockedUntil\n      attemptsRemaining\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
