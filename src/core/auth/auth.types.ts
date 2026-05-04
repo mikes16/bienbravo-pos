@@ -26,6 +26,7 @@ export class PinLoginException extends Error {
   constructor(detail: PinLoginError) {
     super(detail.code)
     this.detail = detail
+    this.name = 'PinLoginException'
   }
 }
 

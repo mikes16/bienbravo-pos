@@ -1,5 +1,5 @@
 import type { AuthRepository } from '@/core/auth/auth.repository.ts'
-import type { PosViewer, PosStaffUser, PosLocation } from '@/core/auth/auth.types.ts'
+import type { PosViewer, PosStaffUser, PosLocation, PosPinLockoutStatus } from '@/core/auth/auth.types.ts'
 import type { Repositories } from '@/core/repositories/registry.ts'
 import type { CheckoutRepository, CustomerResult } from '@/features/checkout/data/checkout.repository.ts'
 import type {
@@ -70,7 +70,7 @@ export class InMemoryAuthRepository implements AuthRepository {
     return true
   }
 
-  async getPinLockoutStatus(_email: string): Promise<{ lockedUntil: Date | null; attemptsRemaining: number }> {
+  async getPinLockoutStatus(_email: string): Promise<PosPinLockoutStatus> {
     return { lockedUntil: null, attemptsRemaining: 8 }
   }
 }

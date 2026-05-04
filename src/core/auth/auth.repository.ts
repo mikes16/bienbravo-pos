@@ -1,4 +1,5 @@
 import { type ApolloClient } from '@apollo/client'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { graphql } from '@/core/graphql/generated'
 import {
   type PosViewer,
@@ -8,6 +9,21 @@ import {
   type PosPinLockoutStatus,
   PinLoginException,
 } from './auth.types.ts'
+
+/* ── Raw API shapes ── */
+
+type RawStaff = {
+  id: string; fullName: string; email: string
+  phone: string | null; photoUrl: string | null
+  isActive: boolean; hasPosPin: boolean
+  pinAttempts: number; pinLockedUntil: string | null
+}
+
+type RawViewer = {
+  kind: string; staff: RawStaff | null
+  permissions: string[]
+  locationScopes: { scopeType: string; locationId: string | null }[]
+}
 
 /* ── GraphQL Documents ── */
 
@@ -92,17 +108,7 @@ export interface AuthRepository {
 
 /* ── Apollo Implementation ── */
 
-function mapStaff(s: {
-  id: string
-  fullName: string
-  email: string
-  phone: string | null
-  photoUrl: string | null
-  isActive: boolean
-  hasPosPin: boolean
-  pinAttempts: number
-  pinLockedUntil: string | null
-}): PosStaffUser {
+function mapStaff(s: RawStaff): PosStaffUser {
   return {
     id: s.id,
     fullName: s.fullName,
@@ -116,12 +122,7 @@ function mapStaff(s: {
   }
 }
 
-function mapViewer(data: {
-  kind: string
-  staff: Parameters<typeof mapStaff>[0] | null
-  permissions: string[]
-  locationScopes: { scopeType: string; locationId: string | null }[]
-}): PosViewer | null {
+function mapViewer(data: RawViewer): PosViewer | null {
   if (data.kind !== 'STAFF' || !data.staff) return null
   return {
     kind: 'STAFF',
@@ -141,7 +142,7 @@ export class ApolloAuthRepository implements AuthRepository {
   }
 
   async getViewer(): Promise<PosViewer | null> {
-    const { data } = await this.#client.query<{ viewer: Parameters<typeof mapViewer>[0] }>({
+    const { data } = await this.#client.query<{ viewer: RawViewer }>({
       query: VIEWER_QUERY,
       fetchPolicy: 'network-only',
     })
@@ -149,38 +150,32 @@ export class ApolloAuthRepository implements AuthRepository {
   }
 
   async pinLogin(email: string, pin4: string): Promise<PosViewer> {
+    let result
     try {
-      const { data } = await this.#client.mutate<{
-        staffPinLogin: { viewer: Parameters<typeof mapViewer>[0] }
+      result = await this.#client.mutate<{
+        staffPinLogin: { viewer: RawViewer }
       }>({
         mutation: STAFF_PIN_LOGIN,
         variables: { email, pin4 },
       })
-      const viewer = mapViewer(data!.staffPinLogin.viewer)
-      if (!viewer) throw new PinLoginException({ code: 'INVALID_CREDENTIALS' })
-      return viewer
     } catch (e) {
-      const apollo = e as { graphQLErrors?: Array<{ extensions?: Record<string, unknown> }> }
-      const ext = apollo.graphQLErrors?.[0]?.extensions
-      if (!ext) {
-        if (e instanceof PinLoginException) throw e
-        throw new PinLoginException({ code: 'UNKNOWN' })
-      }
-      const code = ext.code as string | undefined
-      if (code === 'INVALID_PIN') {
-        throw new PinLoginException({
-          code: 'INVALID_PIN',
-          attemptsRemaining: (ext.attemptsRemaining as number) ?? 0,
-        })
-      }
-      if (code === 'PIN_LOCKED_OUT') {
-        throw new PinLoginException({
-          code: 'PIN_LOCKED_OUT',
-          lockedUntil: new Date(ext.lockedUntil as string),
-        })
+      if (CombinedGraphQLErrors.is(e)) {
+        const ext = e.errors[0]?.extensions
+        const code = typeof ext?.code === 'string' ? ext.code : undefined
+        if (code === 'INVALID_PIN') {
+          const attemptsRemaining = typeof ext?.attemptsRemaining === 'number' ? ext.attemptsRemaining : 0
+          throw new PinLoginException({ code: 'INVALID_PIN', attemptsRemaining })
+        }
+        if (code === 'PIN_LOCKED_OUT') {
+          const lockedUntil = typeof ext?.lockedUntil === 'string' ? new Date(ext.lockedUntil) : new Date()
+          throw new PinLoginException({ code: 'PIN_LOCKED_OUT', lockedUntil })
+        }
       }
       throw new PinLoginException({ code: 'UNKNOWN' })
     }
+    const viewer = mapViewer(result.data!.staffPinLogin.viewer)
+    if (!viewer) throw new PinLoginException({ code: 'INVALID_CREDENTIALS' })
+    return viewer
   }
 
   async logout(): Promise<void> {
@@ -188,7 +183,7 @@ export class ApolloAuthRepository implements AuthRepository {
   }
 
   async getBarbers(locationId: string): Promise<PosStaffUser[]> {
-    const { data } = await this.#client.query<{ barbers: Parameters<typeof mapStaff>[0][] }>({
+    const { data } = await this.#client.query<{ barbers: RawStaff[] }>({
       query: BARBERS_QUERY,
       variables: { locationId },
       fetchPolicy: 'network-only',
@@ -218,7 +213,7 @@ export class ApolloAuthRepository implements AuthRepository {
     }>({
       query: POS_PIN_LOCKOUT_STATUS,
       variables: { email },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'no-cache',
     })
     return {
       lockedUntil: data!.posPinLockoutStatus.lockedUntil
