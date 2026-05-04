@@ -75,4 +75,16 @@ describe('PairingView', () => {
     render(<PairingView locations={[]} loading={true} onPair={async () => true} />)
     expect(screen.getByText(/cargando/i)).toBeInTheDocument()
   })
+
+  it('shows error when onPair throws', async () => {
+    const user = userEvent.setup()
+    const onPair = vi.fn(async () => { throw new Error('network') })
+    render(
+      <PairingView locations={SAMPLE_LOCATIONS} loading={false} onPair={onPair} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Centro' }))
+    await user.type(screen.getByPlaceholderText('Contraseña de sucursal'), 'whatever')
+    await user.click(screen.getByRole('button', { name: 'Continuar' }))
+    expect(await screen.findByText(/no se pudo validar/i)).toBeInTheDocument()
+  })
 })

@@ -29,6 +29,8 @@ export function PairingView({ locations, loading, onPair }: PairingViewProps) {
     try {
       const ok = await onPair(selected.id, password.trim())
       if (!ok) setError('Contraseña incorrecta')
+    } catch {
+      setError('No se pudo validar. Intenta de nuevo.')
     } finally {
       setSubmitting(false)
     }
@@ -47,6 +49,7 @@ export function PairingView({ locations, loading, onPair }: PairingViewProps) {
             setPassword(e.target.value)
             setError(null)
           }}
+          aria-label="Contraseña de sucursal"
           placeholder="Contraseña de sucursal"
           autoFocus
           onKeyDown={(e) => {
