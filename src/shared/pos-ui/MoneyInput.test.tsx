@@ -42,11 +42,8 @@ describe('MoneyInput', () => {
     expect(onChange).toHaveBeenLastCalledWith(12)
   })
 
-  it('ignores decimal key (cents are implicit by digit position)', async () => {
-    const onChange = vi.fn()
-    const user = userEvent.setup()
-    render(<MoneyInput cents={0} onChange={onChange} />)
-    await user.click(screen.getByRole('button', { name: '.' }))
-    expect(onChange).not.toHaveBeenCalled()
+  it('does not render decimal key (cents are implicit by digit position)', () => {
+    render(<MoneyInput cents={0} onChange={() => {}} />)
+    expect(screen.queryByRole('button', { name: '.' })).not.toBeInTheDocument()
   })
 })

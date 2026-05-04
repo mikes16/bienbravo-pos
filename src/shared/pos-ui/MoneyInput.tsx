@@ -33,7 +33,7 @@ export function MoneyInput({ cents, onChange, className }: MoneyInputProps) {
   return (
     <div className={cn('flex flex-col items-center gap-8', className)}>
       <MoneyDisplay cents={cents} size="L" />
-      <Numpad onKey={handleKey} />
+      <Numpad onKey={handleKey} allowDecimal={false} />
     </div>
   )
 }
