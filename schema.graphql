@@ -762,6 +762,7 @@ type Mutation {
   dropWalkIn(reason: String, walkInId: ID!): Boolean!
   extendServiceTokenPrevious(additionalHours: Int!): ServiceTokenInfo!
   findOrCreateCustomer(email: String, name: String!, phone: String): Customer
+  findOrCreateMostradorCustomer: Customer!
   fulfillOrder(orderId: ID!, stockLocationId: ID!): Order!
   inventoryAdjust(delta: Int!, productId: ID!, reason: String, stockLocationId: ID!): InventoryLevel!
   inventoryTransfer(fromStockLocationId: ID!, productId: ID!, qty: Int!, toStockLocationId: ID!): Boolean!
@@ -851,6 +852,7 @@ input POSSaleItemInput {
   productId: ID
   qty: Int!
   serviceId: ID
+  staffUserId: ID
   unitPriceCents: Int!
 }
 
@@ -1339,6 +1341,7 @@ type Sale {
   createdAt: DateTime!
   customer: Customer
   id: ID!
+  items: [SaleItem!]!
   paidTotalCents: Int!
   paymentStatus: SalePaymentStatus!
   source: String!
@@ -1347,6 +1350,26 @@ type Sale {
   taxTotalCents: Int!
   totalCents: Int!
   walkInId: ID
+}
+
+type SaleItem {
+  catalogComboId: ID
+  id: ID!
+  itemType: SaleItemType!
+  productId: ID
+  qty: Int!
+  serviceId: ID
+  staffUser: StaffUser
+  staffUserId: ID
+  taxAmountCents: Int!
+  totalCents: Int!
+  unitPriceCents: Int!
+}
+
+enum SaleItemType {
+  PRODUCT
+  SERVICE
+  TIP
 }
 
 enum SalePaymentStatus {
