@@ -4,7 +4,7 @@ import { formatMoney } from '@/shared/lib/money'
 
 interface DenominationCounterProps {
   amountLabel: string
-  subtotal: number              // pesos (e.g., 1000 for $1,000)
+  subtotalCents: number              // cents (e.g., 100000 for $1,000)
   count?: number
   onCountChange?: (next: number) => void
   isLumpSum?: boolean
@@ -15,7 +15,7 @@ interface DenominationCounterProps {
 
 export function DenominationCounter({
   amountLabel,
-  subtotal,
+  subtotalCents,
   count = 0,
   onCountChange,
   isLumpSum,
@@ -31,7 +31,6 @@ export function DenominationCounter({
   }, [lumpSumCents])
 
   const hasCount = isLumpSum ? lumpSumCents > 0 : count > 0
-  const subtotalCents = subtotal * 100
 
   return (
     <div
@@ -63,9 +62,12 @@ export function DenominationCounter({
               min={0}
               value={lumpSumDisplay}
               onChange={(e) => {
-                const pesos = Math.max(0, Number(e.target.value || '0'))
-                setLumpSumDisplay(pesos)
-                onLumpSumChange?.(pesos * 100)
+                const raw = e.target.value
+                setLumpSumDisplay(raw === '' ? 0 : Math.max(0, Number(raw) || 0))
+                if (raw !== '') {
+                  const pesos = Math.max(0, Number(raw) || 0)
+                  onLumpSumChange?.(pesos * 100)
+                }
               }}
               className="w-20 bg-transparent text-right text-[16px] font-bold tabular-nums text-[var(--color-bone)] outline-none"
             />
@@ -77,9 +79,9 @@ export function DenominationCounter({
             type="button"
             onClick={() => onCountChange?.(Math.max(0, count - 1))}
             disabled={count === 0}
-            aria-label="−"
+            aria-label="Disminuir cantidad"
             className={cn(
-              'flex h-10 w-10 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[20px] font-bold transition-colors',
+              'flex h-11 w-11 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[20px] font-bold transition-colors',
               count === 0
                 ? 'cursor-not-allowed text-[var(--color-leather-muted)]'
                 : 'cursor-pointer text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)] hover:text-[var(--color-bone)]',
@@ -98,8 +100,8 @@ export function DenominationCounter({
           <button
             type="button"
             onClick={() => onCountChange?.(count + 1)}
-            aria-label="+"
-            className="flex h-10 w-10 cursor-pointer items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[20px] font-bold text-[var(--color-bone-muted)] transition-colors hover:bg-[var(--color-cuero-viejo)] hover:text-[var(--color-bone)]"
+            aria-label="Aumentar cantidad"
+            className="flex h-11 w-11 cursor-pointer items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[20px] font-bold text-[var(--color-bone-muted)] transition-colors hover:bg-[var(--color-cuero-viejo)] hover:text-[var(--color-bone)]"
           >
             +
           </button>

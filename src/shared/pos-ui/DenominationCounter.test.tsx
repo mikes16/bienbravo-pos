@@ -6,7 +6,7 @@ import { DenominationCounter } from './DenominationCounter'
 describe('DenominationCounter', () => {
   it('renders amount label and subtotal', () => {
     render(
-      <DenominationCounter amountLabel="$500" count={2} subtotal={1000} onCountChange={() => {}} />,
+      <DenominationCounter amountLabel="$500" count={2} subtotalCents={100000} onCountChange={() => {}} />,
     )
     expect(screen.getByText('$500')).toBeInTheDocument()
     expect(screen.getByText('$1,000')).toBeInTheDocument()
@@ -14,7 +14,7 @@ describe('DenominationCounter', () => {
 
   it('renders count when greater than 0', () => {
     render(
-      <DenominationCounter amountLabel="$200" count={5} subtotal={1000} onCountChange={() => {}} />,
+      <DenominationCounter amountLabel="$200" count={5} subtotalCents={100000} onCountChange={() => {}} />,
     )
     expect(screen.getByText('5')).toBeInTheDocument()
   })
@@ -23,9 +23,9 @@ describe('DenominationCounter', () => {
     const onCountChange = vi.fn()
     const user = userEvent.setup()
     render(
-      <DenominationCounter amountLabel="$100" count={3} subtotal={300} onCountChange={onCountChange} />,
+      <DenominationCounter amountLabel="$100" count={3} subtotalCents={30000} onCountChange={onCountChange} />,
     )
-    await user.click(screen.getByRole('button', { name: /\+/ }))
+    await user.click(screen.getByRole('button', { name: /aumentar/i }))
     expect(onCountChange).toHaveBeenCalledWith(4)
   })
 
@@ -33,9 +33,9 @@ describe('DenominationCounter', () => {
     const onCountChange = vi.fn()
     const user = userEvent.setup()
     render(
-      <DenominationCounter amountLabel="$100" count={3} subtotal={300} onCountChange={onCountChange} />,
+      <DenominationCounter amountLabel="$100" count={3} subtotalCents={30000} onCountChange={onCountChange} />,
     )
-    await user.click(screen.getByRole('button', { name: /−|-/ }))
+    await user.click(screen.getByRole('button', { name: /disminuir/i }))
     expect(onCountChange).toHaveBeenCalledWith(2)
   })
 
@@ -43,9 +43,9 @@ describe('DenominationCounter', () => {
     const onCountChange = vi.fn()
     const user = userEvent.setup()
     render(
-      <DenominationCounter amountLabel="$50" count={0} subtotal={0} onCountChange={onCountChange} />,
+      <DenominationCounter amountLabel="$50" count={0} subtotalCents={0} onCountChange={onCountChange} />,
     )
-    const minus = screen.getByRole('button', { name: /−|-/ })
+    const minus = screen.getByRole('button', { name: /disminuir/i })
     expect(minus).toBeDisabled()
     await user.click(minus)
     expect(onCountChange).not.toHaveBeenCalled()
@@ -53,11 +53,11 @@ describe('DenominationCounter', () => {
 
   it('renders with hasCount visual class when count > 0', () => {
     const { container, rerender } = render(
-      <DenominationCounter amountLabel="$100" count={0} subtotal={0} onCountChange={() => {}} />,
+      <DenominationCounter amountLabel="$100" count={0} subtotalCents={0} onCountChange={() => {}} />,
     )
     expect((container.firstChild as HTMLElement)?.className).not.toMatch(/bravo/)
     rerender(
-      <DenominationCounter amountLabel="$100" count={2} subtotal={200} onCountChange={() => {}} />,
+      <DenominationCounter amountLabel="$100" count={2} subtotalCents={20000} onCountChange={() => {}} />,
     )
     expect((container.firstChild as HTMLElement)?.className).toMatch(/bravo/)
   })
@@ -68,7 +68,7 @@ describe('DenominationCounter', () => {
     render(
       <DenominationCounter
         amountLabel="MONEDAS"
-        subtotal={40}
+        subtotalCents={4000}
         isLumpSum
         lumpSumCents={4000}
         onLumpSumChange={onLumpSumChange}
@@ -80,5 +80,22 @@ describe('DenominationCounter', () => {
     await user.clear(input)
     await user.type(input, '60')
     expect(onLumpSumChange).toHaveBeenLastCalledWith(6000)
+  })
+
+  it('does not call onLumpSumChange when input is cleared', async () => {
+    const onLumpSumChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <DenominationCounter
+        amountLabel="MONEDAS"
+        subtotalCents={4000}
+        isLumpSum
+        lumpSumCents={4000}
+        onLumpSumChange={onLumpSumChange}
+      />,
+    )
+    const input = screen.getByRole('spinbutton')
+    await user.clear(input)
+    expect(onLumpSumChange).not.toHaveBeenCalled()
   })
 })
