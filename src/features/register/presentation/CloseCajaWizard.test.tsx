@@ -89,4 +89,20 @@ describe('CloseCajaWizard', () => {
       expect(repos.register.closeSession).toHaveBeenCalled()
     })
   })
+
+  it('SIGUIENTE is disabled on step 1 when neither digital channel is confirmed', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...makeRepos(), auth: new TestAuthRepo() },
+    })
+    // Advance from step 0 to step 1
+    await screen.findByText(/cuenta el efectivo/i)
+    await user.click(screen.getByRole('button', { name: /siguiente/i }))
+    // We're now on step 1 (confirma totales digitales)
+    await screen.findByText(/confirma los totales digitales/i)
+    // The wizard CTA should now be disabled because both digitals are unconfirmed
+    const cta = screen.getByRole('button', { name: /revisar/i })
+    expect(cta).toBeDisabled()
+  })
 })

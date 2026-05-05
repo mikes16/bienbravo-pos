@@ -14,12 +14,13 @@ const ZERO_COUNTS: CashCounts = {
   d500: 0, d200: 0, d100: 0, d50: 0, d20: 0, coinsCents: 0,
 }
 const PENDING_DIGITAL: DigitalCounted = { cardCents: null, transferCents: null }
+const SUCCESS_REDIRECT_DELAY_MS = 2000
 const STEPS = ['Contar efectivo', 'Tarjeta · Stripe', 'Cerrar']
 
 export function CloseCajaWizard() {
   const navigate = useNavigate()
   const { locationId } = useLocation()
-  const { registers, refresh, closeSession } = useRegister(locationId)
+  const { registers, closeSession } = useRegister(locationId)
 
   const session = useMemo<RegisterSession | null>(
     () => registers.find((r) => r.openSession)?.openSession ?? null,
@@ -42,7 +43,7 @@ export function CloseCajaWizard() {
 
   useEffect(() => {
     if (!successOpen) return
-    const t = setTimeout(() => navigate('/hoy'), 2000)
+    const t = setTimeout(() => navigate('/hoy'), SUCCESS_REDIRECT_DELAY_MS)
     return () => clearTimeout(t)
   }, [successOpen, navigate])
 
@@ -55,8 +56,10 @@ export function CloseCajaWizard() {
   }
   const counted = {
     cashCents: totalCountedCents(counts),
-    cardCents: digital.cardCents ?? expected.cardCents,
-    transferCents: digital.transferCents ?? expected.transferCents,
+    // canAdvance at step 1 enforces non-null; fallback to 0 (not expected)
+    // surfaces any breach as a large diff rather than silently passing.
+    cardCents: digital.cardCents ?? 0,
+    transferCents: digital.transferCents ?? 0,
   }
   const totalDiff =
     (counted.cashCents - expected.cashCents) +
@@ -86,7 +89,7 @@ export function CloseCajaWizard() {
         countedTransferCents: counted.transferCents,
       })
       setSuccessOpen(true)
-      refresh()
+      // useRegister.closeSession already calls refresh() internally
     } catch (e) {
       setError((e as { message?: string }).message ?? 'No se pudo cerrar la caja.')
       setSubmitting(false)
