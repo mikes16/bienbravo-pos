@@ -1,1 +1,3 @@
-export { RegisterPage } from './presentation/RegisterPage.tsx'
+export { CajaPage } from './presentation/CajaPage'
+export { OpenCajaPage } from './presentation/OpenCajaPage'
+export { CloseCajaWizard } from './presentation/CloseCajaWizard'
