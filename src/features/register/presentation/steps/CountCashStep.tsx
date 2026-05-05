@@ -1,6 +1,6 @@
 import { DenominationCounter } from '@/shared/pos-ui'
 import { formatMoney } from '@/shared/lib/money'
-import { type CashCounts, totalCountedCents } from '../../lib/cashCounts'
+import { type CashCounts, totalCountedCents } from '@/shared/cash/cashCounts'
 
 export type { CashCounts }
 
