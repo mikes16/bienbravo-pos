@@ -12,6 +12,51 @@ import type {
 
 /* ── GraphQL Documents ── */
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const FIND_OR_CREATE_MOSTRADOR_CUSTOMER = graphql(`
+  mutation PosFindOrCreateMostradorCustomer {
+    findOrCreateMostradorCustomer {
+      id
+      fullName
+    }
+  }
+`) as any
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const BARBERS_QUERY = graphql(`
+  query PosCheckoutBarbers($locationId: ID!) {
+    barbers(locationId: $locationId) {
+      id
+      fullName
+      photoUrl
+    }
+  }
+`) as any
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CUSTOMER_QUERY = graphql(`
+  query PosCustomer($id: ID!) {
+    customer(id: $id) {
+      id
+      fullName
+      email
+      phone
+    }
+  }
+`) as any
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const WALKINS_FOR_LOOKUP_QUERY = graphql(`
+  query PosWalkInsForLookup($locationId: ID!) {
+    walkIns(locationId: $locationId) {
+      id
+      status
+      assignedStaffUser { id fullName }
+      customer { id fullName email phone }
+    }
+  }
+`) as any
+
 const CATEGORIES_QUERY = graphql(`
   query PosCatalogCategories {
     catalogCategories {
@@ -135,6 +180,19 @@ export interface CustomerResult {
   phone: string | null
 }
 
+export interface BarberResult {
+  id: string
+  fullName: string
+  photoUrl: string | null
+}
+
+export interface WalkInLite {
+  id: string
+  status: string
+  assignedStaffUser: { id: string; fullName: string } | null
+  customer: CustomerResult | null
+}
+
 export interface CheckoutRepository {
   getCategories(): Promise<CatalogCategory[]>
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
@@ -144,6 +202,10 @@ export interface CheckoutRepository {
   createSale(input: CreateSaleInput): Promise<SaleResult>
   searchCustomers(query: string, limit?: number): Promise<CustomerResult[]>
   findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult | null>
+  findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }>
+  getBarbers(locationId: string): Promise<BarberResult[]>
+  getCustomer(id: string): Promise<CustomerResult | null>
+  getWalkIn(walkInId: string, locationId: string): Promise<WalkInLite | null>
 }
 
 /* ── Apollo Implementation ── */
@@ -293,5 +355,40 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       },
     })
     return data!.createPOSSale
+  }
+
+  async findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }> {
+    const { data } = await this.#client.mutate({ mutation: FIND_OR_CREATE_MOSTRADOR_CUSTOMER })
+    const result = (data as { findOrCreateMostradorCustomer?: { id: string; fullName: string } } | null)?.findOrCreateMostradorCustomer
+    if (!result) throw new Error('Mostrador customer not returned')
+    return result
+  }
+
+  async getBarbers(locationId: string): Promise<BarberResult[]> {
+    const { data } = await this.#client.query({
+      query: BARBERS_QUERY,
+      variables: { locationId },
+      fetchPolicy: 'cache-first',
+    })
+    return (data as { barbers: BarberResult[] }).barbers
+  }
+
+  async getCustomer(id: string): Promise<CustomerResult | null> {
+    const { data } = await this.#client.query({
+      query: CUSTOMER_QUERY,
+      variables: { id },
+      fetchPolicy: 'network-only',
+    })
+    return (data as { customer: CustomerResult | null }).customer ?? null
+  }
+
+  async getWalkIn(walkInId: string, locationId: string): Promise<WalkInLite | null> {
+    const { data } = await this.#client.query({
+      query: WALKINS_FOR_LOOKUP_QUERY,
+      variables: { locationId },
+      fetchPolicy: 'network-only',
+    })
+    const list = (data as { walkIns: WalkInLite[] }).walkIns
+    return list.find((w) => w.id === walkInId) ?? null
   }
 }

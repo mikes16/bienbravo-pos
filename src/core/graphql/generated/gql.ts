@@ -26,6 +26,10 @@ type Documents = {
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": typeof types.StartServiceDocument,
     "mutation Complete($id: ID!) { complete(appointmentId: $id) { id status } }": typeof types.CompleteDocument,
     "mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }": typeof types.NoShowDocument,
+    "\n  mutation PosFindOrCreateMostradorCustomer {\n    findOrCreateMostradorCustomer {\n      id\n      fullName\n    }\n  }\n": typeof types.PosFindOrCreateMostradorCustomerDocument,
+    "\n  query PosCheckoutBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n    }\n  }\n": typeof types.PosCheckoutBarbersDocument,
+    "\n  query PosCustomer($id: ID!) {\n    customer(id: $id) {\n      id\n      fullName\n      email\n      phone\n    }\n  }\n": typeof types.PosCustomerDocument,
+    "\n  query PosWalkInsForLookup($locationId: ID!) {\n    walkIns(locationId: $locationId) {\n      id\n      status\n      assignedStaffUser { id fullName }\n      customer { id fullName email phone }\n    }\n  }\n": typeof types.PosWalkInsForLookupDocument,
     "\n  query PosCatalogCategories {\n    catalogCategories {\n      id\n      name\n      slug\n      sortOrder\n      appliesTo\n    }\n  }\n": typeof types.PosCatalogCategoriesDocument,
     "\n  query PosServices($locationId: ID!, $staffUserId: ID) {\n    services(locationId: $locationId) {\n      id\n      name\n      basePriceCents\n      baseDurationMin\n      isActive\n      isAddOn\n      imageUrl\n      categoryId\n      pricingFor(locationId: $locationId, staffUserId: $staffUserId) {\n        priceCents\n        durationMin\n        extras {\n          serviceId\n          name\n          priceCents\n          durationMin\n        }\n      }\n    }\n  }\n": typeof types.PosServicesDocument,
     "\n  query PosProducts($locationId: ID!) {\n    products(locationId: $locationId) {\n      id\n      name\n      sku\n      imageUrl\n      categoryId\n      isActive\n      variants {\n        id\n        priceCents\n      }\n    }\n  }\n": typeof types.PosProductsDocument,
@@ -40,8 +44,6 @@ type Documents = {
     "\n  query ShiftTemplates($staffUserId: ID!, $locationId: ID!) {\n    shiftTemplates(staffUserId: $staffUserId, locationId: $locationId) {\n      id staffUserId locationId dayOfWeek startMin endMin\n    }\n  }\n": typeof types.ShiftTemplatesDocument,
     "\n  query PosHomeCommission($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n": typeof types.PosHomeCommissionDocument,
     "\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n": typeof types.PosHomeCajaStatusDocument,
-    "\n  query PosStaffMetricsToday($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n": typeof types.PosStaffMetricsTodayDocument,
-    "\n  query PosSalesActivity($locationId: ID!, $date: String!, $source: SaleSource) {\n    listSalesForKPI(locationId: $locationId, date: $date, source: $source) {\n      id\n      status\n      paymentStatus\n      totalCents\n      createdAt\n      appointmentId\n      walkInId\n      customer { id fullName email phone }\n    }\n  }\n": typeof types.PosSalesActivityDocument,
     "\n  query PosRegisters($locationId: ID!) {\n    registers(locationId: $locationId) {\n      id name isActive locationId\n      openSession { id status openedAt expectedCashCents expectedCardCents expectedTransferCents }\n    }\n  }\n": typeof types.PosRegistersDocument,
     "\n  mutation OpenRegisterSession($registerId: ID!, $openingCashCents: Int) {\n    openRegisterSession(registerId: $registerId, openingCashCents: $openingCashCents) {\n      id status openedAt expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": typeof types.OpenRegisterSessionDocument,
     "\n  mutation CloseRegisterSession($input: CloseRegisterSessionInput!) {\n    closeRegisterSession(input: $input) {\n      id status closedAt\n      countedCashCents countedCardCents countedTransferCents\n      expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": typeof types.CloseRegisterSessionDocument,
@@ -64,6 +66,10 @@ const documents: Documents = {
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": types.StartServiceDocument,
     "mutation Complete($id: ID!) { complete(appointmentId: $id) { id status } }": types.CompleteDocument,
     "mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }": types.NoShowDocument,
+    "\n  mutation PosFindOrCreateMostradorCustomer {\n    findOrCreateMostradorCustomer {\n      id\n      fullName\n    }\n  }\n": types.PosFindOrCreateMostradorCustomerDocument,
+    "\n  query PosCheckoutBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n    }\n  }\n": types.PosCheckoutBarbersDocument,
+    "\n  query PosCustomer($id: ID!) {\n    customer(id: $id) {\n      id\n      fullName\n      email\n      phone\n    }\n  }\n": types.PosCustomerDocument,
+    "\n  query PosWalkInsForLookup($locationId: ID!) {\n    walkIns(locationId: $locationId) {\n      id\n      status\n      assignedStaffUser { id fullName }\n      customer { id fullName email phone }\n    }\n  }\n": types.PosWalkInsForLookupDocument,
     "\n  query PosCatalogCategories {\n    catalogCategories {\n      id\n      name\n      slug\n      sortOrder\n      appliesTo\n    }\n  }\n": types.PosCatalogCategoriesDocument,
     "\n  query PosServices($locationId: ID!, $staffUserId: ID) {\n    services(locationId: $locationId) {\n      id\n      name\n      basePriceCents\n      baseDurationMin\n      isActive\n      isAddOn\n      imageUrl\n      categoryId\n      pricingFor(locationId: $locationId, staffUserId: $staffUserId) {\n        priceCents\n        durationMin\n        extras {\n          serviceId\n          name\n          priceCents\n          durationMin\n        }\n      }\n    }\n  }\n": types.PosServicesDocument,
     "\n  query PosProducts($locationId: ID!) {\n    products(locationId: $locationId) {\n      id\n      name\n      sku\n      imageUrl\n      categoryId\n      isActive\n      variants {\n        id\n        priceCents\n      }\n    }\n  }\n": types.PosProductsDocument,
@@ -78,8 +84,6 @@ const documents: Documents = {
     "\n  query ShiftTemplates($staffUserId: ID!, $locationId: ID!) {\n    shiftTemplates(staffUserId: $staffUserId, locationId: $locationId) {\n      id staffUserId locationId dayOfWeek startMin endMin\n    }\n  }\n": types.ShiftTemplatesDocument,
     "\n  query PosHomeCommission($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n": types.PosHomeCommissionDocument,
     "\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n": types.PosHomeCajaStatusDocument,
-    "\n  query PosStaffMetricsToday($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n": types.PosStaffMetricsTodayDocument,
-    "\n  query PosSalesActivity($locationId: ID!, $date: String!, $source: SaleSource) {\n    listSalesForKPI(locationId: $locationId, date: $date, source: $source) {\n      id\n      status\n      paymentStatus\n      totalCents\n      createdAt\n      appointmentId\n      walkInId\n      customer { id fullName email phone }\n    }\n  }\n": types.PosSalesActivityDocument,
     "\n  query PosRegisters($locationId: ID!) {\n    registers(locationId: $locationId) {\n      id name isActive locationId\n      openSession { id status openedAt expectedCashCents expectedCardCents expectedTransferCents }\n    }\n  }\n": types.PosRegistersDocument,
     "\n  mutation OpenRegisterSession($registerId: ID!, $openingCashCents: Int) {\n    openRegisterSession(registerId: $registerId, openingCashCents: $openingCashCents) {\n      id status openedAt expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": types.OpenRegisterSessionDocument,
     "\n  mutation CloseRegisterSession($input: CloseRegisterSessionInput!) {\n    closeRegisterSession(input: $input) {\n      id status closedAt\n      countedCashCents countedCardCents countedTransferCents\n      expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": types.CloseRegisterSessionDocument,
@@ -155,6 +159,22 @@ export function graphql(source: "mutation NoShow($id: ID!) { noShow(appointmentI
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
+export function graphql(source: "\n  mutation PosFindOrCreateMostradorCustomer {\n    findOrCreateMostradorCustomer {\n      id\n      fullName\n    }\n  }\n"): (typeof documents)["\n  mutation PosFindOrCreateMostradorCustomer {\n    findOrCreateMostradorCustomer {\n      id\n      fullName\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query PosCheckoutBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n    }\n  }\n"): (typeof documents)["\n  query PosCheckoutBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query PosCustomer($id: ID!) {\n    customer(id: $id) {\n      id\n      fullName\n      email\n      phone\n    }\n  }\n"): (typeof documents)["\n  query PosCustomer($id: ID!) {\n    customer(id: $id) {\n      id\n      fullName\n      email\n      phone\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query PosWalkInsForLookup($locationId: ID!) {\n    walkIns(locationId: $locationId) {\n      id\n      status\n      assignedStaffUser { id fullName }\n      customer { id fullName email phone }\n    }\n  }\n"): (typeof documents)["\n  query PosWalkInsForLookup($locationId: ID!) {\n    walkIns(locationId: $locationId) {\n      id\n      status\n      assignedStaffUser { id fullName }\n      customer { id fullName email phone }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
 export function graphql(source: "\n  query PosCatalogCategories {\n    catalogCategories {\n      id\n      name\n      slug\n      sortOrder\n      appliesTo\n    }\n  }\n"): (typeof documents)["\n  query PosCatalogCategories {\n    catalogCategories {\n      id\n      name\n      slug\n      sortOrder\n      appliesTo\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
@@ -208,14 +228,6 @@ export function graphql(source: "\n  query PosHomeCommission($staffUserId: ID!, 
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n"): (typeof documents)["\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n"];
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query PosStaffMetricsToday($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n"): (typeof documents)["\n  query PosStaffMetricsToday($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n"];
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query PosSalesActivity($locationId: ID!, $date: String!, $source: SaleSource) {\n    listSalesForKPI(locationId: $locationId, date: $date, source: $source) {\n      id\n      status\n      paymentStatus\n      totalCents\n      createdAt\n      appointmentId\n      walkInId\n      customer { id fullName email phone }\n    }\n  }\n"): (typeof documents)["\n  query PosSalesActivity($locationId: ID!, $date: String!, $source: SaleSource) {\n    listSalesForKPI(locationId: $locationId, date: $date, source: $source) {\n      id\n      status\n      paymentStatus\n      totalCents\n      createdAt\n      appointmentId\n      walkInId\n      customer { id fullName email phone }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

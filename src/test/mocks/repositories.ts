@@ -112,6 +112,30 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
   async findOrCreateCustomer(_name: string, _email?: string | null, _phone?: string | null): Promise<CustomerResult | null> {
     return null
   }
+
+  async findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }> {
+    return { id: 'cust-mostrador', fullName: 'Mostrador' }
+  }
+
+  async getBarbers(_locationId: string): Promise<{ id: string; fullName: string; photoUrl: string | null }[]> {
+    return [
+      { id: 'staff-1', fullName: 'Carlos', photoUrl: null },
+      { id: 'staff-2', fullName: 'Antonio', photoUrl: null },
+    ]
+  }
+
+  async getCustomer(_id: string): Promise<CustomerResult | null> {
+    return null
+  }
+
+  async getWalkIn(_walkInId: string, _locationId: string): Promise<{
+    id: string
+    status: string
+    assignedStaffUser: { id: string; fullName: string } | null
+    customer: CustomerResult | null
+  } | null> {
+    return null
+  }
 }
 
 export class InMemoryRegisterRepository implements RegisterRepository {
