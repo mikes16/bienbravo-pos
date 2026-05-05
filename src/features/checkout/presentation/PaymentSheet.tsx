@@ -3,6 +3,7 @@ import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
 import { CashChangeHelper } from './CashChangeHelper'
+import { type CashCounts, emptyCashCounts } from '@/shared/cash/cashCounts'
 import { TipInput } from './TipInput'
 
 type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER'
@@ -27,7 +28,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
 
 export function PaymentSheet({ open, totalCents, onClose, onConfirm }: PaymentSheetProps) {
   const [method, setMethod] = useState<PaymentMethod | null>(null)
-  const [receivedPesos, setReceivedPesos] = useState(0)
+  const [cashCounts, setCashCounts] = useState<CashCounts>(emptyCashCounts())
   const [tipCents, setTipCents] = useState(0)
 
   if (!open) return null
@@ -74,8 +75,8 @@ export function PaymentSheet({ open, totalCents, onClose, onConfirm }: PaymentSh
         {method === 'CASH' && (
           <CashChangeHelper
             totalCents={totalCents}
-            receivedPesos={receivedPesos}
-            onReceivedChange={setReceivedPesos}
+            counts={cashCounts}
+            onCountsChange={setCashCounts}
           />
         )}
 
