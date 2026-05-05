@@ -27,7 +27,7 @@ export function LockPage() {
   useEffect(() => {
     if (state.kind !== 'INITIAL_LOAD') return
     if (isAuthenticated && !isLocked) {
-      navigate('/home', { replace: true })
+      navigate('/hoy', { replace: true })
       return
     }
     const storedLocationId = actions.getStoredLocationId()
@@ -155,7 +155,7 @@ export function LockPage() {
   // 5) On successful auth, navigate to home
   useEffect(() => {
     if (isAuthenticated && !isLocked) {
-      navigate('/home', { replace: true })
+      navigate('/hoy', { replace: true })
     }
   }, [isAuthenticated, isLocked, navigate])
 

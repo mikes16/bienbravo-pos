@@ -3,7 +3,7 @@ import { ShoppingCartIcon, ClockIcon, CalendarIcon, SeatReclineIcon, WalletIcon,
 import type { FeatureManifest } from './feature.types.ts'
 import { PosShell } from './PosShell.tsx'
 import { LockPage } from '@/features/auth/index.ts'
-import { HomePage } from '@/features/home/index.ts'
+import { HoyPage } from '@/features/home/index.ts'
 import { CheckoutPage } from '@/features/checkout/index.ts'
 import { RegisterPage } from '@/features/register/index.ts'
 import { ClockPage } from '@/features/clock/index.ts'
@@ -26,13 +26,17 @@ export const router = createBrowserRouter([
   {
     element: <PosShell />,
     children: [
-      { path: '/home', element: <HomePage /> },
+      { path: '/hoy', element: <HoyPage /> },
+      { path: '/home', element: <Navigate to="/hoy" replace /> },
       { path: '/checkout', element: <CheckoutPage /> },
       { path: '/register', element: <RegisterPage /> },
+      { path: '/caja', element: <Navigate to="/register" replace /> },
       { path: '/clock', element: <ClockPage /> },
+      { path: '/reloj', element: <Navigate to="/clock" replace /> },
       { path: '/agenda', element: <AgendaPage /> },
       { path: '/walkins', element: <WalkInsPage /> },
       { path: '/my-day', element: <MyDayPage /> },
+      { path: '/mis-ventas', element: <Navigate to="/my-day" replace /> },
     ],
   },
   { path: '/dev/hello-pos', element: <HelloPosPage /> },
