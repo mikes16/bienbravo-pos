@@ -48,7 +48,7 @@ export function BarberSelectorSheet({ open, barbers, currentBarberId, onSelect, 
               )}
             >
               {b.photoUrl ? (
-                <img src={b.photoUrl} alt="" className="h-14 w-14 border border-[var(--color-leather-muted)] object-cover" />
+                <img src={b.photoUrl} alt="" loading="lazy" decoding="async" className="h-14 w-14 border border-[var(--color-leather-muted)] object-cover" />
               ) : (
                 <div className="flex h-14 w-14 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[24px] font-extrabold text-[var(--color-bone)]">
                   {b.fullName[0]}

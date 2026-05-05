@@ -27,6 +27,8 @@ export function NoPinMessageView({ staffName, photoUrl, onBack }: NoPinMessageVi
           <img
             src={photoUrl}
             alt={staffName}
+            loading="lazy"
+            decoding="async"
             className="h-20 w-20 rounded-full object-cover bg-[var(--color-cuero-viejo)]"
           />
         ) : (
