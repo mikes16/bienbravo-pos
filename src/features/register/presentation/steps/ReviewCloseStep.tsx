@@ -1,6 +1,21 @@
 import { formatMoney } from '@/shared/lib/money'
 import { cn } from '@/shared/lib/cn'
 
+const LARGE_DIFF_THRESHOLD_CENTS = 5000 // $50
+
+function diffClass(diff: number): string {
+  return cn(
+    'py-2 text-right tabular-nums text-[14px] font-bold',
+    diff === 0 && 'text-[var(--color-bone-muted)]',
+    diff !== 0 && Math.abs(diff) <= LARGE_DIFF_THRESHOLD_CENTS && 'text-[var(--color-warning)]',
+    Math.abs(diff) > LARGE_DIFF_THRESHOLD_CENTS && 'text-[var(--color-bravo)]',
+  )
+}
+
+function formatDiff(d: number): string {
+  return d === 0 ? '—' : (d > 0 ? '+' : '') + formatMoney(d)
+}
+
 interface Channels {
   cashCents: number
   cardCents: number
@@ -13,8 +28,6 @@ interface ReviewCloseStepProps {
   confirmAck: boolean
   onConfirmAckChange: (ack: boolean) => void
 }
-
-const LARGE_DIFF_THRESHOLD_CENTS = 5000 // $50
 
 export function ReviewCloseStep({
   expected,
@@ -29,17 +42,6 @@ export function ReviewCloseStep({
 
   const hasDiff = totalDiff !== 0
   const isLargeDiff = Math.abs(totalDiff) > LARGE_DIFF_THRESHOLD_CENTS
-
-  const diffClass = (diff: number) =>
-    cn(
-      'py-2 text-right tabular-nums text-[14px] font-bold',
-      diff === 0 && 'text-[var(--color-bone-muted)]',
-      diff !== 0 && Math.abs(diff) <= LARGE_DIFF_THRESHOLD_CENTS && 'text-[var(--color-warning)]',
-      Math.abs(diff) > LARGE_DIFF_THRESHOLD_CENTS && 'text-[var(--color-bravo)]',
-    )
-
-  const formatDiff = (d: number) =>
-    d === 0 ? '—' : (d > 0 ? '+' : '') + formatMoney(d)
 
   return (
     <div className="flex flex-col gap-4 px-6 py-4">
@@ -111,7 +113,7 @@ export function ReviewCloseStep({
               isLargeDiff && 'text-[var(--color-bravo)]',
             )}
           >
-            {totalDiff === 0 ? '$0 exacto' : (totalDiff > 0 ? '+' : '') + formatMoney(totalDiff)}
+            {totalDiff === 0 ? '$0 exacto' : formatDiff(totalDiff)}
           </span>
         </div>
       </div>

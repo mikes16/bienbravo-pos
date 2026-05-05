@@ -51,4 +51,14 @@ describe('ReviewCloseStep', () => {
     render(<ReviewCloseStep {...PERFECT} confirmAck={false} onConfirmAckChange={() => {}} />)
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
+
+  it('TOTAL shows success color when diff is 0', () => {
+    render(<ReviewCloseStep {...PERFECT} confirmAck={false} onConfirmAckChange={() => {}} />)
+    expect(screen.getByText('$0 exacto').className).toMatch(/color-success/)
+  })
+
+  it('renders checkbox as checked when confirmAck=true', () => {
+    render(<ReviewCloseStep {...SMALL_DIFF} confirmAck={true} onConfirmAckChange={() => {}} />)
+    expect(screen.getByRole('checkbox')).toBeChecked()
+  })
 })
