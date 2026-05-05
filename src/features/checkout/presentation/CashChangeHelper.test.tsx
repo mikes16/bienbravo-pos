@@ -21,7 +21,8 @@ describe('CashChangeHelper', () => {
         onCountsChange={() => {}}
       />,
     )
-    expect(screen.getByText(/cambio.*\$0/i)).toBeInTheDocument()
+    const cambioRow = screen.getByText('Cambio').parentElement
+    expect(cambioRow).toHaveTextContent('$0')
   })
 
   it('renders correct change when received > total', () => {
@@ -32,7 +33,8 @@ describe('CashChangeHelper', () => {
         onCountsChange={() => {}}
       />,
     )
-    expect(screen.getByText(/cambio.*\$190/i)).toBeInTheDocument()
+    const cambioRow = screen.getByText('Cambio').parentElement
+    expect(cambioRow).toHaveTextContent('$190')
   })
 
   it('renders the "Recibido" total derived from counts', () => {

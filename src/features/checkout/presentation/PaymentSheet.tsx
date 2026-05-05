@@ -61,7 +61,11 @@ export function PaymentSheet({ open, totalCents, onClose, onConfirm }: PaymentSh
               key={m}
               variant="secondary"
               size="secondary"
-              onClick={() => setMethod(m)}
+              onClick={() => {
+                setMethod(m)
+                setCashCounts(emptyCashCounts())
+                setTipCents(0)
+              }}
               className={cn(
                 'flex-1',
                 method === m && 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]',

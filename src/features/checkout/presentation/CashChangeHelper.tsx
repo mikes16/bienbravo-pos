@@ -22,7 +22,10 @@ export function CashChangeHelper({ totalCents, counts, onCountsChange }: CashCha
       />
       <div className="flex items-baseline justify-between border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-5 py-3">
         <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-          {`Cambio ${formatMoney(changeCents)}`}
+          Cambio
+        </span>
+        <span className="font-[var(--font-pos-display)] text-[22px] font-extrabold tabular-nums text-[var(--color-bone)]">
+          {formatMoney(changeCents)}
         </span>
       </div>
     </div>
