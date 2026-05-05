@@ -35,15 +35,24 @@ export function BottomTabNav({ tabs, activeTo, className }: BottomTabNavProps) {
             onClick={() => navigate(tab.to)}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'relative flex h-16 cursor-pointer flex-col items-center justify-center gap-1 px-2 py-3 transition-colors sm:h-20',
-              'border-t-2 border-transparent',
+              'group relative flex h-16 cursor-pointer flex-col items-center justify-center gap-1 px-2 py-3 transition-colors sm:h-20',
               isActive
-                ? 'border-t-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.04] text-[var(--color-bone)]'
-                : 'text-[var(--color-bone-muted)] hover:bg-white/[0.02] hover:text-[var(--color-bone)]',
+                ? 'bg-[var(--color-carbon-panel)] text-[var(--color-bone)]'
+                : 'text-[var(--color-bone-muted)] hover:bg-white/[0.03] hover:text-[var(--color-bone)]',
             )}
           >
-            <Icon className="h-6 w-6 sm:h-7 sm:w-7" />
-            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em]">
+            <Icon
+              className={cn(
+                'h-6 w-6 transition-colors sm:h-7 sm:w-7',
+                isActive && 'text-[var(--color-bravo)]',
+              )}
+            />
+            <span
+              className={cn(
+                'font-mono text-[9px] uppercase tracking-[0.2em]',
+                isActive ? 'font-extrabold tracking-[0.22em]' : 'font-bold',
+              )}
+            >
               {tab.label}
             </span>
             {tab.meta && (

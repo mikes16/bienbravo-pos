@@ -46,7 +46,7 @@ export function CajaClosedView({ registers, onAbrir }: CajaClosedViewProps) {
         Sin abrir
       </p>
       <p className="max-w-[280px] text-[13px] text-[var(--color-bone-muted)]">
-        Para empezar a cobrar abre la caja con el fondo inicial. Lo hace cualquier barbero del turno.
+        Para empezar a cobrar abre la caja con el fondo inicial.
       </p>
 
       {registers.length > 1 && (
