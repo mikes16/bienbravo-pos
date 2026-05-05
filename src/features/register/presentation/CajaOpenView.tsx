@@ -1,16 +1,6 @@
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { formatMoney } from '@/shared/lib/money'
-import type { RegisterSession } from '../domain/register.types'
-
-interface SaleLedgerEntry {
-  id: string
-  createdAt: string
-  totalCents: number
-  paymentStatus: string
-  customer: { fullName: string } | null
-  appointmentId: string | null
-  walkInId: string | null
-}
+import type { RegisterSession, SaleLedgerEntry } from '../domain/register.types'
 
 interface CajaOpenViewProps {
   session: RegisterSession
@@ -20,15 +10,19 @@ interface CajaOpenViewProps {
 }
 
 function formatTimeMx(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
-}
-
-function inferPaymentLabel(tx: SaleLedgerEntry): string {
-  return tx.paymentStatus === 'PAID' ? 'Pagado' : 'Pendiente'
+  return new Date(iso).toLocaleTimeString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Monterrey',
+  })
 }
 
 export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar }: CajaOpenViewProps) {
-  const totalAll = session.expectedCashCents + session.expectedCardCents + session.expectedTransferCents
+  // Session running total — API increments these as sales attribute to the session.
+  // Not summed from todayTransactions to ensure consistency with backend totals.
+  const sessionExpectedTotalCents =
+    session.expectedCashCents + session.expectedCardCents + session.expectedTransferCents
 
   return (
     <div className="flex h-full flex-col">
@@ -84,7 +78,7 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
           <span className="text-[11px] text-[var(--color-bone-muted)]">
             {todayTransactions.length === 0
               ? 'Sin ventas todavía'
-              : `${todayTransactions.length} ventas · ${formatMoney(totalAll)}`}
+              : `${todayTransactions.length} ventas · ${formatMoney(sessionExpectedTotalCents)}`}
           </span>
         </div>
 
@@ -106,7 +100,7 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
                 </span>
                 <span className="text-[var(--color-bone)]">{tx.customer?.fullName ?? 'Mostrador'}</span>
                 <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">
-                  {inferPaymentLabel(tx)}
+                  {tx.paymentStatus === 'PAID' ? 'Pagado' : 'Pendiente'}
                 </span>
                 <span className="text-right font-bold tabular-nums text-[var(--color-bone)]">
                   {formatMoney(tx.totalCents)}

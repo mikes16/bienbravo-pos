@@ -21,6 +21,8 @@ describe('CajaOpenView', () => {
   it('renders the open status banner', () => {
     render(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={() => {}} />)
     expect(screen.getByText(/caja abierta/i)).toBeInTheDocument()
+    // openedAt = '2026-05-04T09:15:00.000Z'; America/Monterrey is UTC-6 year-round → 03:15
+    expect(screen.getByText(/Desde 03:15/)).toBeInTheDocument()
   })
 
   it('shows the three totals cards with formatted amounts', () => {
