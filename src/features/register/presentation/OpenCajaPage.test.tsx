@@ -58,7 +58,34 @@ describe('OpenCajaPage', () => {
       initialRoute: '/caja/abrir?reg=reg-a',
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    const cta = screen.getByRole('button', { name: /abrir caja/i })
+    // When no amount entered and explicitZero not set, CTA reads "Selecciona el fondo →"
+    const cta = screen.getByRole('button', { name: /selecciona el fondo/i })
     expect(cta).toBeDisabled()
+  })
+
+  it('explicit $0 preset enables CTA', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OpenCajaPage />, {
+      initialRoute: '/caja/abrir?reg=reg-a',
+      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
+    })
+    await user.click(screen.getByRole('button', { name: /sin fondo/i }))
+    const cta = screen.getByRole('button', { name: /abrir caja sin fondo/i })
+    expect(cta).not.toBeDisabled()
+  })
+
+  it('typing on Numpad resets explicit zero state', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OpenCajaPage />, {
+      initialRoute: '/caja/abrir?reg=reg-a',
+      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
+    })
+    await user.click(screen.getByRole('button', { name: /sin fondo/i }))
+    // Press 5, 0, 0 → 500 cents = $5.00
+    await user.click(screen.getByRole('button', { name: '5' }))
+    await user.click(screen.getByRole('button', { name: '0' }))
+    await user.click(screen.getByRole('button', { name: '0' }))
+    // After typing, the CTA reflects the amount, not the zero state
+    expect(screen.getByRole('button', { name: /abrir caja · \$5/i })).toBeInTheDocument()
   })
 })

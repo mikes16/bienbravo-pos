@@ -15,6 +15,7 @@ export function OpenCajaPage() {
   const registerId = params.get('reg') ?? ''
   const { register } = useRepositories()
   const [cents, setCents] = useState(0)
+  const [explicitZero, setExplicitZero] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -25,6 +26,7 @@ export function OpenCajaPage() {
 
   const onKey = (k: NumpadKey) => {
     if (k === '.') return
+    setExplicitZero(false)
     if (k === 'backspace') {
       setCents((c) => Math.floor(c / 10))
       return
@@ -33,7 +35,8 @@ export function OpenCajaPage() {
   }
 
   const handleSubmit = async () => {
-    if (!registerId || cents <= 0 || submitting) return
+    if (!registerId || submitting) return
+    if (cents <= 0 && !explicitZero) return
     setSubmitting(true)
     setError(null)
     try {
@@ -55,11 +58,21 @@ export function OpenCajaPage() {
     } else if (e.key === 'Backspace') {
       onKey('backspace')
       e.preventDefault()
-    } else if (e.key === 'Enter' && cents > 0 && !submitting) {
+    } else if (e.key === 'Enter' && (cents > 0 || explicitZero) && !submitting) {
       e.preventDefault()
       void handleSubmit()
     }
   }
+
+  const canOpen = (cents > 0 || explicitZero) && !submitting
+
+  const ctaLabel = submitting
+    ? 'Abriendo…'
+    : explicitZero && cents === 0
+      ? 'Abrir caja sin fondo →'
+      : cents > 0
+        ? `Abrir caja · ${formatMoney(cents)} →`
+        : 'Selecciona el fondo →'
 
   return (
     <div
@@ -91,15 +104,33 @@ export function OpenCajaPage() {
       </div>
 
       <div className="flex gap-2">
+        {/* $0 — sin fondo: explicit safety opt-out chip, visually distinct with dashed border */}
+        <TouchButton
+          variant="secondary"
+          size="min"
+          onClick={() => { setCents(0); setExplicitZero(true) }}
+          className={cn(
+            'flex-1 border-dashed tabular-nums',
+            explicitZero && cents === 0
+              ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
+              : 'text-[var(--color-bone-muted)]',
+          )}
+        >
+          <span className="flex flex-col items-center leading-none">
+            <span>$0</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em]">sin fondo</span>
+          </span>
+        </TouchButton>
+
         {PRESETS_CENTS.map((p) => (
           <TouchButton
             key={p}
             variant="secondary"
             size="min"
-            onClick={() => setCents(p)}
+            onClick={() => { setCents(p); setExplicitZero(false) }}
             className={cn(
               'flex-1 tabular-nums',
-              cents === p &&
+              cents === p && !explicitZero &&
                 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]',
             )}
           >
@@ -121,22 +152,12 @@ export function OpenCajaPage() {
       <TouchButton
         variant="primary"
         size="primary"
-        disabled={cents <= 0 || submitting}
+        disabled={!canOpen}
         onClick={handleSubmit}
-        aria-label={
-          submitting
-            ? 'Abriendo…'
-            : cents > 0
-              ? `Abrir caja · ${formatMoney(cents)} →`
-              : 'Abrir caja →'
-        }
+        aria-label={ctaLabel}
         className="mt-auto rounded-none uppercase tracking-[0.06em]"
       >
-        {submitting
-          ? 'Abriendo…'
-          : cents > 0
-            ? `Abrir caja · ${formatMoney(cents)} →`
-            : 'Selecciona el fondo →'}
+        {ctaLabel}
       </TouchButton>
     </div>
   )
