@@ -17,6 +17,7 @@
 @theme {
   /* ── Editorial color palette (matches admin) ── */
   --color-bravo: #c41e3a;
+  --color-bravo-hover: #b32d24;
   --color-bravo-muted: #a01830;
   --color-carbon: #0f0e0e;
   --color-carbon-elevated: #1a1918;
