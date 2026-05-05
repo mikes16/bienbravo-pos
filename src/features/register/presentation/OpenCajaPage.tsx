@@ -19,7 +19,7 @@ export function OpenCajaPage() {
   const [error, setError] = useState<string | null>(null)
 
   const cents = totalCountedCents(counts)
-  const canOpen = (cents > 0 || explicitZero) && !submitting
+  const canOpen = !!registerId && (cents > 0 || explicitZero) && !submitting
 
   const handleSubmit = async () => {
     if (!registerId || submitting) return

@@ -5,14 +5,11 @@ import { useLocation } from '@/core/location/useLocation'
 import { useRegister } from '../application/useRegister'
 import type { RegisterSession } from '../domain/register.types'
 import { CountCashStep } from './steps/CountCashStep'
-import { totalCountedCents, type CashCounts } from '@/shared/cash/cashCounts'
+import { totalCountedCents, emptyCashCounts, type CashCounts } from '@/shared/cash/cashCounts'
 import { ConfirmDigitalStep, type DigitalCounted } from './steps/ConfirmDigitalStep'
 import { ReviewCloseStep } from './steps/ReviewCloseStep'
 import { formatMoney } from '@/shared/lib/money'
 
-const ZERO_COUNTS: CashCounts = {
-  d500: 0, d200: 0, d100: 0, d50: 0, d20: 0, coinsCents: 0,
-}
 const PENDING_DIGITAL: DigitalCounted = { cardCents: null, transferCents: null }
 const SUCCESS_REDIRECT_DELAY_MS = 2000
 const STEPS = ['Contar efectivo', 'Tarjeta · Stripe', 'Cerrar']
@@ -28,7 +25,7 @@ export function CloseCajaWizard() {
   )
 
   const [step, setStep] = useState(0)
-  const [counts, setCounts] = useState<CashCounts>(ZERO_COUNTS)
+  const [counts, setCounts] = useState<CashCounts>(emptyCashCounts())
   const [digital, setDigital] = useState<DigitalCounted>(PENDING_DIGITAL)
   const [confirmAck, setConfirmAck] = useState(false)
   const [submitting, setSubmitting] = useState(false)

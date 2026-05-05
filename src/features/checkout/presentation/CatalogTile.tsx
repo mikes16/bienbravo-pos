@@ -33,7 +33,7 @@ export function CatalogTile({ kind, name, priceCents, stockQty, imageUrl, onAdd 
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${imageUrl})` }}
+            style={{ backgroundImage: `url(${encodeURI(imageUrl)})` }}
           />
           <div
             aria-hidden

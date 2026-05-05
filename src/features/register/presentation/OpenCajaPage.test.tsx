@@ -84,4 +84,17 @@ describe('OpenCajaPage', () => {
     await user.click(cta)
     expect(openSessionSpy).toHaveBeenCalledWith('reg-a', 100000)
   })
+
+  it('CTA stays disabled when registerId is missing from the URL', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OpenCajaPage />, {
+      initialRoute: '/caja/abrir',
+      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
+    })
+    // Even after tapping a denomination, no registerId means the CTA must not enable
+    const plusButtons = screen.getAllByRole('button', { name: /aumentar/i })
+    await user.click(plusButtons[0])
+    const cta = screen.getByRole('button', { name: /abrir caja · \$500/i })
+    expect(cta).toBeDisabled()
+  })
 })

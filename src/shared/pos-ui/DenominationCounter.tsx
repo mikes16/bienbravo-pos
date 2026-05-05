@@ -93,6 +93,7 @@ export function DenominationCounter({
               type="number"
               inputMode="numeric"
               min={0}
+              aria-label={amountLabel}
               value={lumpSumDisplay}
               onChange={(e) => {
                 const raw = e.target.value

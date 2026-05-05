@@ -222,4 +222,37 @@ describe('DenominationCounter', () => {
     )
     expect(screen.queryByRole('button', { name: /editar cantidad/i })).toBeNull()
   })
+
+  it('Escape cancels the inline edit without firing onCountChange', async () => {
+    const onCountChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <DenominationCounter
+        amountLabel="$100"
+        count={5}
+        subtotalCents={50000}
+        onCountChange={onCountChange}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /editar cantidad/i }))
+    const input = screen.getByRole('spinbutton')
+    await user.clear(input)
+    await user.type(input, '999{Escape}')
+    expect(onCountChange).not.toHaveBeenCalled()
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+    expect(screen.getByRole('button', { name: /editar cantidad/i })).toHaveTextContent('5')
+  })
+
+  it('lump-sum input has accessible name from amountLabel', () => {
+    render(
+      <DenominationCounter
+        amountLabel="MONEDAS"
+        subtotalCents={4000}
+        isLumpSum
+        lumpSumCents={4000}
+        onLumpSumChange={() => {}}
+      />,
+    )
+    expect(screen.getByRole('spinbutton', { name: /monedas/i })).toBeInTheDocument()
+  })
 })
