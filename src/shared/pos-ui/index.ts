@@ -25,3 +25,6 @@ export { FeatureTile } from './FeatureTile'
 export { PlaceholderPage } from './PlaceholderPage'
 export { BottomTabNav, type BottomTabNavTab } from './BottomTabNav'
 export * from './icons'
+
+// Foundation v2 components — sub-project #3 (Caja)
+export { DenominationCounter } from './DenominationCounter'
