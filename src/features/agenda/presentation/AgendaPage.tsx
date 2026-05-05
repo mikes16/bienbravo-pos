@@ -409,18 +409,19 @@ export function AgendaPage() {
         </div>
         <button
           type="button"
+          aria-label="Volver a inicio"
           onClick={() => navigate('/home')}
           className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-bone-muted)] active:opacity-60"
         >
-          ← Inicio
+          <span aria-hidden>← </span>Inicio
         </button>
       </div>
 
       {/* ── error ── */}
       {error && (
-        <p className="mb-4 border border-[var(--color-bravo)]/30 bg-[var(--color-bravo)]/10 px-4 py-3 text-sm text-[var(--color-bravo)]">
-          {error}
-        </p>
+        <div role="alert" className="mb-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+          <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
+        </div>
       )}
 
       {/* ── body ── */}

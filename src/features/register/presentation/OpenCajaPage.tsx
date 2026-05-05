@@ -156,9 +156,9 @@ export function OpenCajaPage() {
         </div>
 
         {error && (
-          <p role="alert" className="text-[12px] text-[var(--color-bravo)]">
-            {error}
-          </p>
+          <div role="alert" className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+            <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
+          </div>
         )}
       </div>
 

@@ -106,11 +106,11 @@ describe('CheckoutPage (integration)', () => {
     await user.click(screen.getAllByText('Corte')[0])
     await user.click(screen.getAllByText('Corte')[0])
     // Now 3 lines exist. Tap the last line's barber chip and pick Carlos
-    const barberChips = screen.getAllByRole('button', { name: /↓/ })
+    const barberChips = screen.getAllByRole('button', { name: /cambiar barbero/i })
     await user.click(barberChips[barberChips.length - 1])
     await user.click(await screen.findByLabelText('Carlos'))
     // Tap the new last chip and swap to Beto
-    const chipsAgain = screen.getAllByRole('button', { name: /↓/ })
+    const chipsAgain = screen.getAllByRole('button', { name: /cambiar barbero/i })
     await user.click(chipsAgain[chipsAgain.length - 1])
     await user.click(await screen.findByLabelText('Beto'))
     // Cobrar

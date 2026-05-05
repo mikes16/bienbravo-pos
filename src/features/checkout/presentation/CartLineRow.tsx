@@ -36,7 +36,7 @@ export function CartLineRow({ line, barbers, onIncQty, onDecQty, onSetBarber, on
             type="button"
             aria-label="Disminuir cantidad"
             onClick={() => onDecQty(line.id)}
-            className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[16px] font-bold text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]"
+            className="flex h-10 w-10 cursor-pointer items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[16px] font-bold text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]"
           >
             −
           </button>
@@ -45,13 +45,14 @@ export function CartLineRow({ line, barbers, onIncQty, onDecQty, onSetBarber, on
             type="button"
             aria-label="Aumentar cantidad"
             onClick={() => onIncQty(line.id)}
-            className="flex h-9 w-9 cursor-pointer items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[16px] font-bold text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]"
+            className="flex h-10 w-10 cursor-pointer items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[16px] font-bold text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]"
           >
             +
           </button>
         </div>
         <button
           type="button"
+          aria-label={`Cambiar barbero: ${currentBarber?.fullName ?? 'sin asignar'}`}
           onClick={() => setPickerOpen((v) => !v)}
           className={cn(
             'cursor-pointer border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
@@ -60,7 +61,7 @@ export function CartLineRow({ line, barbers, onIncQty, onDecQty, onSetBarber, on
               : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
           )}
         >
-          {currentBarber?.fullName.split(' ')[0] ?? '— Barbero'} ↓
+          <span aria-hidden>{currentBarber?.fullName.split(' ')[0] ?? '— Barbero'} ↓</span>
         </button>
         <button
           type="button"

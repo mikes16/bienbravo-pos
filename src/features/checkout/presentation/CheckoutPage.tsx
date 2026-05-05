@@ -113,8 +113,8 @@ export function CheckoutPage() {
         />
         <CartTotals subtotalCents={totals.subtotalCents} />
         {ck.error && (
-          <div role="alert" className="px-4 py-2">
-            <p className="text-[12px] text-[var(--color-bravo)]">{ck.error}</p>
+          <div role="alert" className="mx-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+            <p className="text-[13px] text-[var(--color-bravo)]">{ck.error}</p>
           </div>
         )}
         <CobrarCTA

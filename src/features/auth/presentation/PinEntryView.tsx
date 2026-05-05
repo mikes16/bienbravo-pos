@@ -61,7 +61,9 @@ export function PinEntryView({
       </div>
 
       {error && (
-        <p className="text-[var(--pos-text-label)] text-[var(--color-bravo)]">{error}</p>
+        <div role="alert" className="w-full border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+          <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
+        </div>
       )}
 
       <TouchButton variant="ghost" size="row" onClick={onBack} disabled={submitting}>
