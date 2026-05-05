@@ -28,3 +28,6 @@ export * from './icons'
 
 // Foundation v2 components — sub-project #3 (Caja)
 export { DenominationCounter } from './DenominationCounter'
+
+// Foundation v2 components — sub-project #6 (Skeleton)
+export { SkeletonRow, SkeletonCard, SkeletonText, SkeletonCircle } from './Skeleton'
