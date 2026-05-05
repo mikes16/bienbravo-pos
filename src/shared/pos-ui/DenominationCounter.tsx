@@ -32,6 +32,18 @@ export function DenominationCounter({
     setLumpSumDisplay(Math.round(lumpSumCents / 100))
   }, [lumpSumCents])
 
+  const [editing, setEditing] = useState(false)
+  const [countDraft, setCountDraft] = useState<string>(String(count))
+  useEffect(() => {
+    if (!editing) setCountDraft(String(count))
+  }, [count, editing])
+
+  const commitCount = () => {
+    const n = Math.max(0, Number(countDraft) || 0)
+    if (n !== count) onCountChange?.(n)
+    setEditing(false)
+  }
+
   const hasCount = isLumpSum ? lumpSumCents > 0 : count > 0
 
   const stripeColor =
@@ -110,14 +122,41 @@ export function DenominationCounter({
           >
             −
           </button>
-          <span
-            className={cn(
-              'w-10 text-center text-[20px] font-extrabold tabular-nums',
-              count === 0 ? 'text-[var(--color-leather-muted)]' : 'text-[var(--color-bone)]',
-            )}
-          >
-            {count}
-          </span>
+          {editing ? (
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              autoFocus
+              value={countDraft}
+              onChange={(e) => setCountDraft(e.target.value)}
+              onBlur={commitCount}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commitCount()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setCountDraft(String(count))
+                  setEditing(false)
+                }
+              }}
+              aria-label="Cantidad"
+              className="w-12 border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-1 text-center text-[20px] font-extrabold tabular-nums text-[var(--color-bone)] outline-none"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label="Editar cantidad"
+              className={cn(
+                'w-10 cursor-pointer text-center text-[20px] font-extrabold tabular-nums',
+                count === 0 ? 'text-[var(--color-leather-muted)]' : 'text-[var(--color-bone)]',
+              )}
+            >
+              {count}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onCountChange?.(count + 1)}

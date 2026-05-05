@@ -154,4 +154,72 @@ describe('DenominationCounter', () => {
     )
     expect(container.querySelector('[data-bill-stripe]')).toBeNull()
   })
+
+  it('tap on count number opens an inline input', async () => {
+    const user = userEvent.setup()
+    render(
+      <DenominationCounter
+        amountLabel="$100"
+        count={3}
+        subtotalCents={30000}
+        onCountChange={() => {}}
+      />,
+    )
+    // Initially: number is shown as a tap target, no spinbutton input
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /editar cantidad/i }))
+    expect(screen.getByRole('spinbutton')).toBeInTheDocument()
+  })
+
+  it('typing in the inline count input fires onCountChange on blur', async () => {
+    const onCountChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <DenominationCounter
+        amountLabel="$100"
+        count={1}
+        subtotalCents={10000}
+        onCountChange={onCountChange}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /editar cantidad/i }))
+    const input = screen.getByRole('spinbutton')
+    await user.clear(input)
+    await user.type(input, '23')
+    await user.tab() // blur
+    expect(onCountChange).toHaveBeenLastCalledWith(23)
+  })
+
+  it('inline count input commits on Enter', async () => {
+    const onCountChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <DenominationCounter
+        amountLabel="$100"
+        count={1}
+        subtotalCents={10000}
+        onCountChange={onCountChange}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /editar cantidad/i }))
+    const input = screen.getByRole('spinbutton')
+    await user.clear(input)
+    await user.type(input, '7{Enter}')
+    expect(onCountChange).toHaveBeenLastCalledWith(7)
+    // Input closed, number shown again
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+  })
+
+  it('lump-sum mode does not expose the editar-cantidad button', () => {
+    render(
+      <DenominationCounter
+        amountLabel="MONEDAS"
+        subtotalCents={4000}
+        isLumpSum
+        lumpSumCents={4000}
+        onLumpSumChange={() => {}}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /editar cantidad/i })).toBeNull()
+  })
 })
