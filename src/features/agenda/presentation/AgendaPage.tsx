@@ -1,12 +1,80 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { cn } from '@/shared/lib/cn.ts'
 import { formatMoney } from '@/shared/lib/money.ts'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
+import { TouchButton } from '@/shared/pos-ui/TouchButton'
+import { SkeletonRow } from '@/shared/pos-ui/index'
 import { useAgenda } from '../application/useAgenda.ts'
 import type { Appointment, AppointmentStatus } from '../domain/agenda.types.ts'
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function formatTimeMx(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Monterrey',
+  })
+}
+
+function hourKeyMx(iso: string): string {
+  return new Date(iso).toLocaleString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Monterrey',
+  }).slice(0, 2) // "10" from "10:00"
+}
+
+function hourLabelMx(iso: string): string {
+  // Returns "10:00" label for the hour group header
+  const hour = new Date(iso).toLocaleString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Monterrey',
+  })
+  const [h] = hour.split(':')
+  return `${h.padStart(2, '0')}:00`
+}
+
+// ── status pill ──────────────────────────────────────────────────────────────
+
+const STATUS_LABELS: Record<AppointmentStatus, string> = {
+  HOLD: 'En espera',
+  CONFIRMED: 'Confirmada',
+  CHECKED_IN: 'Check-in',
+  IN_SERVICE: 'En servicio',
+  COMPLETED: 'Completada',
+  CANCELLED: 'Cancelada',
+  NO_SHOW: 'No show',
+}
+
+const STATUS_TOKEN: Record<AppointmentStatus, string> = {
+  HOLD: 'var(--color-leather-muted)',
+  CONFIRMED: 'var(--color-bone)',
+  CHECKED_IN: 'var(--color-warning)',
+  IN_SERVICE: 'var(--color-success)',
+  COMPLETED: 'var(--color-bone-muted)',
+  CANCELLED: 'var(--color-bravo)',
+  NO_SHOW: 'var(--color-bravo)',
+}
+
+function StatusPillInline({ status }: { status: AppointmentStatus }) {
+  return (
+    <span
+      style={{ color: STATUS_TOKEN[status], borderColor: `${STATUS_TOKEN[status]}60` }}
+      className="inline-block border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.15em]"
+    >
+      {STATUS_LABELS[status]}
+    </span>
+  )
+}
+
+// ── pay appointment modal ─────────────────────────────────────────────────────
 
 const PAYMENT_METHODS = [
   { value: 'CASH', label: 'Efectivo' },
@@ -56,15 +124,26 @@ function PayAppointmentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
-      <div className="w-full max-w-sm rounded-t-2xl bg-bb-bg p-6 shadow-xl sm:rounded-2xl">
-        <h3 className="mb-1 font-bb-display text-lg font-bold">Cobrar cita</h3>
-        <p className="mb-4 text-sm text-bb-muted">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center">
+      <div
+        className="w-full max-w-sm border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] p-6"
+      >
+        <p
+          className="mb-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]"
+        >
+          Cobrar cita
+        </p>
+        <p
+          style={{ fontFamily: 'var(--font-pos-display)' }}
+          className="mb-4 text-xl font-extrabold text-[var(--color-bone)]"
+        >
           {appt.customer?.fullName ?? 'Walk-in'} · {formatMoney(appt.totalCents)}
         </p>
 
         {error && (
-          <p className="mb-3 rounded-xl bg-bb-danger/10 px-3 py-2 text-sm text-bb-danger">{error}</p>
+          <p className="mb-3 border border-[var(--color-bravo)]/30 bg-[var(--color-bravo)]/10 px-3 py-2 text-sm text-[var(--color-bravo)]">
+            {error}
+          </p>
         )}
 
         <div className="mb-4 flex gap-2">
@@ -73,12 +152,12 @@ function PayAppointmentModal({
               key={pm.value}
               type="button"
               onClick={() => setMethod(pm.value)}
-              className={cn(
-                'flex-1 rounded-xl py-2.5 text-sm font-semibold transition-colors',
+              style={
                 method === pm.value
-                  ? 'bg-bb-primary text-white'
-                  : 'bg-bb-surface text-bb-muted hover:bg-bb-surface-2',
-              )}
+                  ? { borderColor: 'var(--color-bravo)', color: 'var(--color-bone)' }
+                  : { borderColor: 'var(--color-leather-muted)', color: 'var(--color-bone-muted)' }
+              }
+              className="flex-1 border py-2.5 text-sm font-semibold transition-colors"
             >
               {pm.label}
             </button>
@@ -86,26 +165,24 @@ function PayAppointmentModal({
         </div>
 
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-2xl bg-bb-surface py-3 text-sm font-semibold hover:bg-bb-surface-2"
-          >
+          <TouchButton variant="ghost" onClick={onClose} className="flex-1 py-3 text-sm">
             Cancelar
-          </button>
-          <button
-            type="button"
+          </TouchButton>
+          <TouchButton
+            variant="primary"
             onClick={handlePay}
             disabled={submitting}
-            className="flex-1 rounded-2xl bg-bb-primary py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-50"
+            className="flex-1 py-3 text-sm"
           >
-            {submitting ? 'Procesando...' : `Cobrar ${formatMoney(appt.totalCents)}`}
-          </button>
+            {submitting ? 'Procesando…' : `Cobrar ${formatMoney(appt.totalCents)}`}
+          </TouchButton>
         </div>
       </div>
     </div>
   )
 }
+
+// ── confirm no-show modal ─────────────────────────────────────────────────────
 
 function ConfirmNoShowModal({
   appt,
@@ -132,60 +209,50 @@ function ConfirmNoShowModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
-      <div className="w-full max-w-sm rounded-t-2xl bg-bb-bg p-6 shadow-xl sm:rounded-2xl">
-        <h3 className="mb-1 font-bb-display text-lg font-bold">Confirmar no-show</h3>
-        <p className="mb-4 text-sm text-bb-muted">
-          Vas a marcar como no-show a <span className="font-semibold text-bb-text">{appt.customer?.fullName ?? 'este cliente'}</span>.
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center">
+      <div
+        className="w-full max-w-sm border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] p-6"
+      >
+        <p
+          className="mb-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]"
+        >
+          Confirmar no-show
+        </p>
+        <p
+          style={{ fontFamily: 'var(--font-pos-display)' }}
+          className="mb-2 text-xl font-extrabold text-[var(--color-bone)]"
+        >
+          {appt.customer?.fullName ?? 'Este cliente'}
+        </p>
+        <p className="mb-4 text-sm text-[var(--color-bone-muted)]">
           Esta acción impacta métricas y comisiones.
         </p>
         {error && (
-          <p className="mb-3 rounded-xl bg-bb-danger/10 px-3 py-2 text-sm text-bb-danger">{error}</p>
+          <p className="mb-3 border border-[var(--color-bravo)]/30 bg-[var(--color-bravo)]/10 px-3 py-2 text-sm text-[var(--color-bravo)]">
+            {error}
+          </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-2xl bg-bb-surface py-3 text-sm font-semibold hover:bg-bb-surface-2"
-            disabled={submitting}
-          >
+          <TouchButton variant="ghost" onClick={onClose} disabled={submitting} className="flex-1 py-3 text-sm">
             Cancelar
-          </button>
-          <button
-            type="button"
+          </TouchButton>
+          <TouchButton
+            variant="danger"
             onClick={handleConfirm}
             disabled={submitting}
-            className="flex-1 rounded-2xl bg-bb-danger py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-50"
+            className="flex-1 py-3 text-sm"
           >
-            {submitting ? 'Aplicando...' : 'Sí, marcar no-show'}
-          </button>
+            {submitting ? 'Aplicando…' : 'Sí, no-show'}
+          </TouchButton>
         </div>
       </div>
     </div>
   )
 }
 
-const STATUS_COLORS: Record<AppointmentStatus, string> = {
-  HOLD: 'bg-yellow-100 text-yellow-800',
-  CONFIRMED: 'bg-blue-100 text-blue-800',
-  CHECKED_IN: 'bg-indigo-100 text-indigo-800',
-  IN_SERVICE: 'bg-green-100 text-green-800',
-  COMPLETED: 'bg-gray-100 text-gray-600',
-  CANCELLED: 'bg-red-100 text-red-700',
-  NO_SHOW: 'bg-red-100 text-red-700',
-}
+// ── appointment row ───────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<AppointmentStatus, string> = {
-  HOLD: 'En espera',
-  CONFIRMED: 'Confirmada',
-  CHECKED_IN: 'Check-in',
-  IN_SERVICE: 'En servicio',
-  COMPLETED: 'Completada',
-  CANCELLED: 'Cancelada',
-  NO_SHOW: 'No show',
-}
-
-function AppointmentCard({
+function AppointmentRow({
   appt,
   onCheckIn,
   onStartService,
@@ -200,65 +267,102 @@ function AppointmentCard({
   onNoShow: () => void
   onPay: () => void
 }) {
-  const time = new Date(appt.startAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+  const serviceNames = appt.items.map((i) => i.label).join(', ')
+  const barberName = appt.staffUser?.fullName ?? null
 
   return (
-    <div className="flex items-start gap-4 rounded-2xl bg-bb-surface p-4">
-      <div className="flex flex-col items-center gap-1">
-        <span className="text-lg font-bold">{time}</span>
-        <span className={cn('rounded-lg px-2 py-0.5 text-[10px] font-semibold', STATUS_COLORS[appt.status])}>
-          {STATUS_LABELS[appt.status]}
+    <div className="flex items-center gap-4 border-b border-[var(--color-leather-muted)]/25 py-3 last:border-b-0">
+      {/* time */}
+      <div className="w-14 shrink-0 text-right">
+        <span
+          className="font-mono text-sm font-bold tabular-nums text-[var(--color-bone)]"
+        >
+          {formatTimeMx(appt.startAt)}
         </span>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold">{appt.customer?.fullName ?? 'Walk-in'}</p>
-        <p className="text-xs text-bb-muted">{appt.items.map((i) => i.label).join(', ')}</p>
-        <p className="mt-1 text-sm font-semibold text-bb-primary">{formatMoney(appt.totalCents)}</p>
+      {/* main info */}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-[var(--color-bone)]">
+          {appt.customer?.fullName ?? 'Walk-in'}
+        </p>
+        <p className="truncate text-xs text-[var(--color-bone-muted)]">
+          {serviceNames}
+          {barberName && (
+            <> · <span className="text-[var(--color-leather-muted)]">{barberName}</span></>
+          )}
+        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <StatusPillInline status={appt.status} />
+          <span className="font-mono text-[10px] text-[var(--color-bone-muted)]">
+            {formatMoney(appt.totalCents)}
+          </span>
+        </div>
       </div>
 
-      <div className="flex min-w-[122px] flex-col gap-2">
+      {/* inline actions */}
+      <div className="flex shrink-0 flex-col gap-1.5">
         {appt.status === 'CONFIRMED' && (
-          <ActionBtn label="Check-in" color="bg-indigo-600" onClick={onCheckIn} />
+          <InlineAction label="Check-in" color="var(--color-warning)" onClick={onCheckIn} />
         )}
         {appt.status === 'CHECKED_IN' && (
-          <ActionBtn label="Iniciar" color="bg-green-600" onClick={onStartService} />
+          <InlineAction label="Iniciar" color="var(--color-success)" onClick={onStartService} />
         )}
         {appt.status === 'IN_SERVICE' && (
-          <ActionBtn label="Completar" color="bg-bb-primary" onClick={onComplete} />
+          <InlineAction label="Completar" color="var(--color-success)" onClick={onComplete} />
         )}
         {appt.status === 'COMPLETED' && appt.salePaymentStatus !== 'PAID' && (
-          <ActionBtn label="Cobrar" color="bg-green-700" onClick={onPay} />
+          <InlineAction label="Cobrar" color="var(--color-success)" onClick={onPay} />
         )}
-        {['CONFIRMED', 'CHECKED_IN'].includes(appt.status) && (
-          <button
-            type="button"
-            onClick={onNoShow}
-            className="mt-1 rounded-xl border border-bb-danger/50 bg-bb-danger/10 px-3 py-2 text-xs font-semibold text-bb-danger hover:bg-bb-danger/20 active:scale-[0.97]"
-          >
-            Marcar no-show
-          </button>
+        {(appt.status === 'CONFIRMED' || appt.status === 'CHECKED_IN') && (
+          <InlineAction label="No-show" color="var(--color-bravo)" onClick={onNoShow} />
         )}
       </div>
     </div>
   )
 }
 
-function ActionBtn({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+function InlineAction({
+  label,
+  color,
+  onClick,
+}: {
+  label: string
+  color: string
+  onClick: () => void
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        'rounded-xl px-3 py-1.5 text-xs font-semibold text-white',
-        'active:scale-[0.95]',
-        color,
-      )}
+      style={{ borderColor: `${color}60`, color }}
+      className="min-w-[72px] border px-3 py-1.5 text-center font-mono text-[10px] font-bold uppercase tracking-[0.12em] active:opacity-70"
     >
       {label}
     </button>
   )
 }
+
+// ── skeleton row ──────────────────────────────────────────────────────────────
+
+function AgendaSkeletonRow() {
+  return (
+    <div className="flex items-center gap-4 border-b border-[var(--color-leather-muted)]/25 py-3">
+      <div className="w-14 shrink-0">
+        <SkeletonRow heightPx={14} widthPercent={100} />
+      </div>
+      <div className="flex-1 space-y-2">
+        <SkeletonRow heightPx={14} widthPercent={55} />
+        <SkeletonRow heightPx={11} widthPercent={80} />
+      </div>
+      <div className="shrink-0">
+        <SkeletonRow heightPx={24} widthPercent={100} className="w-[72px]" />
+      </div>
+    </div>
+  )
+}
+
+// ── main page ─────────────────────────────────────────────────────────────────
 
 export function AgendaPage() {
   const navigate = useNavigate()
@@ -271,54 +375,104 @@ export function AgendaPage() {
   const [payingAppt, setPayingAppt] = useState<Appointment | null>(null)
   const [confirmNoShowAppt, setConfirmNoShowAppt] = useState<Appointment | null>(null)
 
+  // sort by startAt asc
   const sorted = [...appointments].sort(
     (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
   )
 
+  // group by hour in America/Monterrey
+  const groups: { hourLabel: string; appts: Appointment[] }[] = []
+  const seen = new Map<string, number>()
+  for (const appt of sorted) {
+    const key = hourKeyMx(appt.startAt)
+    if (!seen.has(key)) {
+      seen.set(key, groups.length)
+      groups.push({ hourLabel: hourLabelMx(appt.startAt), appts: [] })
+    }
+    groups[seen.get(key)!].appts.push(appt)
+  }
+
   return (
-    <div className="flex min-h-full flex-col px-6 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-bb-display text-xl font-bold">Mi Agenda</h1>
+    <div className="flex min-h-full flex-col px-5 py-6">
+      {/* ── header ── */}
+      <div className="mb-5 flex items-center justify-between border-b border-[var(--color-leather-muted)]/40 pb-4">
+        <div>
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
+            Agenda
+          </p>
+          <h1
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+            className="text-2xl font-extrabold text-[var(--color-bone)]"
+          >
+            Mi Agenda
+          </h1>
+        </div>
         <button
           type="button"
           onClick={() => navigate('/home')}
-          className="rounded-xl px-3 py-2 text-sm text-bb-muted hover:text-bb-text"
+          className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-bone-muted)] active:opacity-60"
         >
           ← Inicio
         </button>
       </div>
 
+      {/* ── error ── */}
       {error && (
-        <p className="mb-4 rounded-xl bg-bb-danger/10 px-4 py-3 text-sm text-bb-danger">{error}</p>
+        <p className="mb-4 border border-[var(--color-bravo)]/30 bg-[var(--color-bravo)]/10 px-4 py-3 text-sm text-[var(--color-bravo)]">
+          {error}
+        </p>
       )}
 
+      {/* ── body ── */}
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-2xl bg-bb-surface" />
+        <div>
+          {[1, 2, 3, 4].map((i) => (
+            <AgendaSkeletonRow key={i} />
           ))}
         </div>
       ) : sorted.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-bb-muted">
-          <span className="text-4xl">📅</span>
-          <p className="text-sm">Sin citas para hoy</p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+          <p
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+            className="text-2xl font-extrabold text-[var(--color-bone-muted)]"
+          >
+            Sin citas para hoy
+          </p>
+          <p className="text-sm text-[var(--color-leather-muted)]">
+            Aún no hay citas agendadas para esta sucursal.
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {sorted.map((appt) => (
-            <AppointmentCard
-              key={appt.id}
-              appt={appt}
-              onCheckIn={() => checkIn(appt.id)}
-              onStartService={() => startService(appt.id)}
-              onComplete={() => complete(appt.id)}
-              onNoShow={() => setConfirmNoShowAppt(appt)}
-              onPay={() => setPayingAppt(appt)}
-            />
+        <div>
+          {groups.map((group) => (
+            <div key={group.hourLabel} className="mb-4">
+              {/* hour group header */}
+              <div className="mb-2 flex items-center gap-3">
+                <span className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-[var(--color-leather-muted)]">
+                  {group.hourLabel}
+                </span>
+                <div className="h-px flex-1 bg-[var(--color-leather-muted)]/30" />
+              </div>
+              {/* appointment rows */}
+              <div>
+                {group.appts.map((appt) => (
+                  <AppointmentRow
+                    key={appt.id}
+                    appt={appt}
+                    onCheckIn={() => checkIn(appt.id)}
+                    onStartService={() => startService(appt.id)}
+                    onComplete={() => complete(appt.id)}
+                    onNoShow={() => setConfirmNoShowAppt(appt)}
+                    onPay={() => setPayingAppt(appt)}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
 
+      {/* ── modals ── */}
       {confirmNoShowAppt && (
         <ConfirmNoShowModal
           appt={confirmNoShowAppt}
@@ -336,7 +490,10 @@ export function AgendaPage() {
           locationId={locationId}
           staffUserId={viewer?.staff.id ?? null}
           onClose={() => setPayingAppt(null)}
-          onPaid={() => { setPayingAppt(null); refresh() }}
+          onPaid={() => {
+            setPayingAppt(null)
+            refresh()
+          }}
         />
       )}
     </div>
