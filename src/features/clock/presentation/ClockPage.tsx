@@ -1,179 +1,178 @@
-import { LoginIcon, LogoutIcon, ClockIcon, CalendarClockIcon } from '@/shared/pos-ui/GoogleIcon.tsx'
-import { cn } from '@/shared/lib/cn.ts'
-import { usePosAuth } from '@/core/auth/usePosAuth.ts'
-import { useLocation } from '@/core/location/useLocation.ts'
-import { useClock } from '../application/useClock.ts'
-import { PosCard, TapButton, StatusPill, SkeletonBlock, SectionHeader } from '@/shared/pos-ui/index.ts'
+import { useMemo } from 'react'
+import { TouchButton } from '@/shared/pos-ui/TouchButton'
+import { cn } from '@/shared/lib/cn'
+import { usePosAuth } from '@/core/auth/usePosAuth'
+import { useLocation } from '@/core/location/useLocation'
+import { useClock } from '../application/useClock'
+
+function formatTimeMx(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-MX', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Monterrey',
+  })
+}
 
 export function ClockPage() {
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
   const { events, isClockedIn, loading, error, doClockIn, doClockOut, shiftStatus } = useClock(
-    viewer?.staff.id ?? null,
+    viewer?.staff?.id ?? null,
     locationId,
   )
 
-  const staffName = viewer?.staff.fullName ?? ''
-  const initials = staffName
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
+  const staffName = viewer?.staff?.fullName ?? ''
+  const initials = useMemo(
+    () =>
+      staffName
+        .split(' ')
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase(),
+    [staffName],
+  )
 
   if (loading) {
     return (
-      <div className="flex h-full gap-6 px-6 py-6">
-        <div className="flex flex-1 flex-col gap-4">
-          <SkeletonBlock className="h-32" />
-          <div className="flex gap-4">
-            <SkeletonBlock className="h-28 flex-1" />
-            <SkeletonBlock className="h-28 flex-1" />
-          </div>
-          <SkeletonBlock className="h-36" />
-        </div>
-        <div className="flex w-80 flex-col gap-4">
-          <SkeletonBlock className="h-8 w-24" />
-          <SkeletonBlock className="h-16" />
-          <SkeletonBlock className="h-16" />
-        </div>
+      <div className="flex h-full flex-col gap-6 px-6 py-6">
+        <div className="h-12 w-32 animate-pulse bg-[var(--color-cuero-viejo)]" />
+        <div className="h-20 animate-pulse bg-[var(--color-cuero-viejo)]" />
+        <div className="h-16 animate-pulse bg-[var(--color-cuero-viejo)]" />
       </div>
     )
   }
 
   return (
-    <div className="flex h-full gap-6 px-6 py-6">
-      {/* ── Left column: staff + actions + shift status ──────── */}
-      <div className="flex flex-1 flex-col gap-5">
-        <SectionHeader title="Registro Horario" />
+    <div className="flex h-full flex-col gap-6 overflow-y-auto px-6 py-6">
+      <h1 className="font-[var(--font-pos-display)] text-[28px] font-extrabold leading-none tracking-[-0.02em] text-[var(--color-bone)]">
+        Reloj
+      </h1>
 
-        {error && (
-          <p className="rounded-xl bg-bb-danger/10 px-4 py-3 text-sm text-bb-danger">{error}</p>
-        )}
-
-        {/* Staff card */}
-        <PosCard className="flex items-center gap-4">
-          {viewer?.staff.photoUrl ? (
-            <img
-              src={viewer.staff.photoUrl}
-              alt={staffName}
-              className="h-16 w-16 rounded-2xl object-cover"
-            />
-          ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-bb-surface-2 text-xl font-bold text-bb-muted">
-              {initials}
-            </div>
-          )}
-          <div className="flex-1">
-            <p className="text-base font-bold">{staffName}</p>
-            <p className="text-xs text-bb-muted">Barbero</p>
-          </div>
-          <StatusPill
-            label={isClockedIn ? 'Activo' : 'Inactivo'}
-            color={isClockedIn ? 'green' : 'gray'}
-          />
-        </PosCard>
-
-        {/* Clock in / out buttons */}
-        <div className="flex gap-4">
-          <TapButton
-            size="xl"
-            variant="dark"
-            className={cn('flex flex-1 flex-col items-center gap-2', isClockedIn && 'opacity-40 cursor-not-allowed')}
-            disabled={isClockedIn}
-            onClick={doClockIn}
-          >
-            <LoginIcon className="h-7 w-7" />
-            <span>CLOCK IN</span>
-          </TapButton>
-          <TapButton
-            size="xl"
-            variant="danger"
-            className={cn('flex flex-1 flex-col items-center gap-2', !isClockedIn && 'opacity-40 cursor-not-allowed')}
-            disabled={!isClockedIn}
-            onClick={doClockOut}
-          >
-            <LogoutIcon className="h-7 w-7" />
-            <span>CLOCK OUT</span>
-          </TapButton>
+      {error && (
+        <div role="alert" className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+          <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
         </div>
+      )}
 
-        {/* Shift status card */}
-        <PosCard className="space-y-3">
-          <div className="flex items-center gap-2">
-            <CalendarClockIcon className="h-4 w-4 text-bb-muted" />
-            <span className="text-xs font-bold uppercase tracking-wider text-bb-muted">Estado del Turno</span>
+      {/* Staff hero */}
+      <div className="flex items-center gap-4 border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-5 py-4">
+        {viewer?.staff?.photoUrl ? (
+          <img
+            src={viewer.staff.photoUrl}
+            alt=""
+            className="h-16 w-16 border border-[var(--color-leather-muted)] object-cover"
+          />
+        ) : (
+          <div className="flex h-16 w-16 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[24px] font-extrabold text-[var(--color-bone)]">
+            {initials || '—'}
           </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-[11px] text-bb-muted">Programado</p>
-              <p className="text-sm font-bold">
-                {shiftStatus.scheduledStartLabel ?? '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] text-bb-muted">Llegada</p>
-              <p className="text-sm font-bold">
-                {shiftStatus.arrivalLabel ?? '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] text-bb-muted">Estado</p>
-              <StatusPill
-                label={shiftStatus.statusLabel}
-                color={shiftStatus.isLate ? 'amber' : shiftStatus.arrivalMin !== null ? 'green' : 'gray'}
-              />
-            </div>
-          </div>
-
-          {shiftStatus.scheduledEndMin !== null && (
-            <p className="text-xs text-bb-muted">
-              Turno programado: {shiftStatus.scheduledStartLabel} – {formatMinToTime(shiftStatus.scheduledEndMin)}
-            </p>
+        )}
+        <div className="flex-1">
+          <p className="text-[18px] font-extrabold leading-tight text-[var(--color-bone)]">{staffName}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">Barbero</p>
+        </div>
+        <span
+          className={cn(
+            'flex items-center gap-2 border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
+            isClockedIn
+              ? 'border-[var(--color-success)]/40 bg-[var(--color-success)]/[0.06] text-[var(--color-success)]'
+              : 'border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[var(--color-bone-muted)]',
           )}
-        </PosCard>
+        >
+          <span aria-hidden className={cn('h-2 w-2', isClockedIn ? 'bg-[var(--color-success)]' : 'bg-[var(--color-bone-muted)]')} />
+          {isClockedIn ? 'Activo' : 'Inactivo'}
+        </span>
       </div>
 
-      {/* ── Right column: event history ─────────────────────── */}
-      <div className="flex w-80 shrink-0 flex-col gap-4">
-        <SectionHeader title="Historial de Hoy" />
+      {/* Single contextual CTA */}
+      <TouchButton
+        variant="primary"
+        size="primary"
+        onClick={isClockedIn ? doClockOut : doClockIn}
+        className="rounded-none uppercase tracking-[0.06em]"
+      >
+        {isClockedIn ? 'Salir →' : 'Entrar →'}
+      </TouchButton>
 
+      {/* Shift status */}
+      <div className="flex flex-col gap-2 border border-[var(--color-leather-muted)]/40 px-5 py-4">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+          Turno hoy
+        </p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Programado</p>
+            <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
+              {shiftStatus.scheduledStartLabel ?? '—'}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Llegada</p>
+            <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
+              {shiftStatus.arrivalLabel ?? '—'}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Estado</p>
+            <p
+              className={cn(
+                'text-[13px] font-bold',
+                shiftStatus.isLate
+                  ? 'text-[var(--color-warning)]'
+                  : shiftStatus.arrivalMin !== null
+                  ? 'text-[var(--color-success)]'
+                  : 'text-[var(--color-bone-muted)]',
+              )}
+            >
+              {shiftStatus.statusLabel}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Today's history */}
+      <div className="flex flex-col gap-2">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+          Historial de hoy
+        </p>
         {events.length === 0 ? (
-          <PosCard className="flex flex-col items-center gap-2 py-8 text-bb-muted">
-            <ClockIcon className="h-8 w-8" />
-            <p className="text-xs">Sin registros hoy</p>
-          </PosCard>
+          <div className="flex items-center justify-center border border-[var(--color-leather-muted)]/40 px-5 py-8">
+            <p className="text-[13px] text-[var(--color-bone-muted)]">Sin registros hoy</p>
+          </div>
         ) : (
-          <div className="space-y-2">
+          <div className="flex flex-col border border-[var(--color-leather-muted)]/40">
             {events.map((e) => (
-              <PosCard key={e.id} className="flex items-center justify-between py-3">
+              <div
+                key={e.id}
+                className="flex items-center justify-between border-b border-[var(--color-leather-muted)]/30 px-4 py-2.5 last:border-b-0"
+              >
                 <div className="flex items-center gap-2">
-                  {e.type === 'CLOCK_IN' ? (
-                    <LoginIcon className="h-4 w-4 text-green-400" />
-                  ) : (
-                    <LogoutIcon className="h-4 w-4 text-bb-danger" />
-                  )}
-                  <span className={cn('text-sm font-semibold', e.type === 'CLOCK_IN' ? 'text-green-400' : 'text-bb-danger')}>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'h-2 w-2',
+                      e.type === 'CLOCK_IN' ? 'bg-[var(--color-success)]' : 'bg-[var(--color-bravo)]',
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      'font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
+                      e.type === 'CLOCK_IN' ? 'text-[var(--color-success)]' : 'text-[var(--color-bravo)]',
+                    )}
+                  >
                     {e.type === 'CLOCK_IN' ? 'Entrada' : 'Salida'}
                   </span>
                 </div>
-                <span className="text-sm tabular-nums text-bb-muted">
-                  {new Date(e.at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                <span className="font-mono text-[12px] tabular-nums text-[var(--color-bone)]">
+                  {formatTimeMx(e.at)}
                 </span>
-              </PosCard>
+              </div>
             ))}
           </div>
         )}
       </div>
     </div>
   )
-}
-
-function formatMinToTime(min: number): string {
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  const period = h >= 12 ? 'PM' : 'AM'
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return `${h12}:${String(m).padStart(2, '0')} ${period}`
 }
