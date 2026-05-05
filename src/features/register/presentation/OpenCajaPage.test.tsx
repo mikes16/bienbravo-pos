@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { OpenCajaPage } from './OpenCajaPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
@@ -21,71 +21,67 @@ describe('OpenCajaPage', () => {
     expect(screen.getByText(/fondo inicial/i)).toBeInTheDocument()
   })
 
-  it('preset $500 fills the amount and CTA shows it', async () => {
+  it('renders all 6 denomination rows (NOT the legacy Numpad)', () => {
+    renderWithProviders(<OpenCajaPage />, {
+      initialRoute: '/caja/abrir?reg=reg-a',
+      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
+    })
+    expect(screen.getByText('$500')).toBeInTheDocument()
+    expect(screen.getByText('$200')).toBeInTheDocument()
+    expect(screen.getByText('$100')).toBeInTheDocument()
+    expect(screen.getByText('$50')).toBeInTheDocument()
+    expect(screen.getByText('$20')).toBeInTheDocument()
+    expect(screen.getByText('MONEDAS')).toBeInTheDocument()
+    // Numpad ('7') should not be on screen — there is no Numpad anymore
+    expect(screen.queryByRole('button', { name: '7' })).toBeNull()
+  })
+
+  it('tapping + on $500 row enables CTA and shows the amount', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OpenCajaPage />, {
       initialRoute: '/caja/abrir?reg=reg-a',
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    await user.click(screen.getByRole('button', { name: /^\$500$/ }))
+    const plusButtons = screen.getAllByRole('button', { name: /aumentar/i })
+    await user.click(plusButtons[0]) // $500 row
     expect(screen.getByRole('button', { name: /abrir caja · \$500/i })).toBeInTheDocument()
   })
 
-  it('Numpad digit "5" appends to amount', async () => {
-    const user = userEvent.setup()
+  it('CTA disabled when counts empty AND Sin fondo not checked', () => {
     renderWithProviders(<OpenCajaPage />, {
       initialRoute: '/caja/abrir?reg=reg-a',
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    await user.click(screen.getByRole('button', { name: '5' }))
-    await user.click(screen.getByRole('button', { name: '0' }))
-    await user.click(screen.getByRole('button', { name: '0' }))
-    expect(screen.getByRole('button', { name: /abrir caja · \$5/i })).toBeInTheDocument()
-  })
-
-  it('keyboard "5" digit also appends to amount', async () => {
-    const user = userEvent.setup()
-    renderWithProviders(<OpenCajaPage />, {
-      initialRoute: '/caja/abrir?reg=reg-a',
-      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
-    })
-    await user.keyboard('500')
-    expect(screen.getByRole('button', { name: /abrir caja · \$5/i })).toBeInTheDocument()
-  })
-
-  it('CTA disabled when amount is 0 / empty', () => {
-    renderWithProviders(<OpenCajaPage />, {
-      initialRoute: '/caja/abrir?reg=reg-a',
-      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
-    })
-    // When no amount entered and explicitZero not set, CTA reads "Selecciona el fondo →"
-    const cta = screen.getByRole('button', { name: /selecciona el fondo/i })
+    const cta = screen.getByRole('button', { name: /selecciona el fondo|abrir caja/i })
     expect(cta).toBeDisabled()
   })
 
-  it('explicit $0 preset enables CTA', async () => {
+  it('checking "Sin fondo" enables CTA with empty counts', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OpenCajaPage />, {
       initialRoute: '/caja/abrir?reg=reg-a',
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    await user.click(screen.getByRole('button', { name: /sin fondo/i }))
-    const cta = screen.getByRole('button', { name: /abrir caja sin fondo/i })
+    const toggle = screen.getByRole('checkbox', { name: /sin fondo/i })
+    await user.click(toggle)
+    const cta = screen.getByRole('button', { name: /abrir sin fondo|abrir caja sin fondo/i })
     expect(cta).not.toBeDisabled()
   })
 
-  it('typing on Numpad resets explicit zero state', async () => {
+  it('submitting calls register.openSession with summed total in cents', async () => {
+    const repos = createMockRepositories()
+    const openSessionSpy = vi.spyOn(repos.register, 'openSession')
     const user = userEvent.setup()
     renderWithProviders(<OpenCajaPage />, {
       initialRoute: '/caja/abrir?reg=reg-a',
-      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
+      repos: { ...repos, auth: new TestAuthRepo() },
     })
-    await user.click(screen.getByRole('button', { name: /sin fondo/i }))
-    // Press 5, 0, 0 → 500 cents = $5.00
-    await user.click(screen.getByRole('button', { name: '5' }))
-    await user.click(screen.getByRole('button', { name: '0' }))
-    await user.click(screen.getByRole('button', { name: '0' }))
-    // After typing, the CTA reflects the amount, not the zero state
-    expect(screen.getByRole('button', { name: /abrir caja · \$5/i })).toBeInTheDocument()
+    const plusButtons = screen.getAllByRole('button', { name: /aumentar/i })
+    // 2 × $500 = 100000 cents
+    await user.click(plusButtons[0])
+    await user.click(plusButtons[0])
+    const cta = screen.getByRole('button', { name: /abrir caja · \$1,000/i })
+    await user.click(cta)
+    expect(openSessionSpy).toHaveBeenCalledWith('reg-a', 100000)
   })
 })
