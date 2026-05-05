@@ -90,6 +90,45 @@ describe('CloseCajaWizard', () => {
     })
   })
 
+  it('step 1 has no back button (nowhere to go)', async () => {
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...makeRepos(), auth: new TestAuthRepo() },
+    })
+    await screen.findByText(/cuenta el efectivo/i)
+    expect(screen.queryByRole('button', { name: /regresar/i })).not.toBeInTheDocument()
+  })
+
+  it('back button on step 2 returns to step 1 preserving cash counts', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...makeRepos(), auth: new TestAuthRepo() },
+    })
+    await screen.findByText(/cuenta el efectivo/i)
+    await user.click(screen.getByRole('button', { name: /siguiente/i }))
+    await screen.findByText(/confirma los totales digitales/i)
+    await user.click(screen.getByRole('button', { name: /regresar/i }))
+    expect(await screen.findByText(/cuenta el efectivo/i)).toBeInTheDocument()
+  })
+
+  it('back button on step 3 returns to step 2 preserving digital confirmations', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...makeRepos(), auth: new TestAuthRepo() },
+    })
+    await screen.findByText(/cuenta el efectivo/i)
+    await user.click(screen.getByRole('button', { name: /siguiente/i }))
+    await screen.findByText(/confirma los totales digitales/i)
+    await user.click(screen.getByRole('button', { name: /sí, \$2,540/i }))
+    await user.click(screen.getByRole('button', { name: /sí, \$1,260/i }))
+    await user.click(screen.getByRole('button', { name: /revisar/i }))
+    await screen.findByText(/revisa el resumen/i)
+    await user.click(screen.getByRole('button', { name: /regresar/i }))
+    expect(await screen.findByText(/confirma los totales digitales/i)).toBeInTheDocument()
+  })
+
   it('SIGUIENTE is disabled on step 1 when neither digital channel is confirmed', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CloseCajaWizard />, {

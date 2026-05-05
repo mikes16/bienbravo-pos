@@ -118,6 +118,7 @@ export function CloseCajaWizard() {
     <WizardShell
       steps={STEPS}
       activeIndex={step}
+      onBack={step > 0 && !submitting ? () => setStep(step - 1) : undefined}
       cta={
         <TouchButton
           variant="primary"
