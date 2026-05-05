@@ -4,6 +4,7 @@ import { useLocation } from '@/core/location/useLocation'
 import { useRegister } from '../application/useRegister'
 import { CajaClosedView } from './CajaClosedView'
 import { CajaOpenView } from './CajaOpenView'
+import { SkeletonRow } from '@/shared/pos-ui'
 
 // TODO: derive fondoCents from session metadata (the API doesn't expose
 // opening fondo as a discrete field today). For Sub-#3 v1 we use a placeholder;
@@ -35,7 +36,15 @@ export function CajaPage() {
     navigate('/caja/cerrar')
   }
 
-  if (loading && registers.length === 0) return null
+  if (loading && registers.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 py-12">
+        <SkeletonRow heightPx={48} widthPercent={50} />
+        <SkeletonRow heightPx={20} widthPercent={30} />
+        <SkeletonRow heightPx={56} widthPercent={60} />
+      </div>
+    )
+  }
 
   if (openRegister?.openSession) {
     return (

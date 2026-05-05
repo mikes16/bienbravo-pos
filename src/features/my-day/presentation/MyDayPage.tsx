@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { AnalyticsIcon } from '@/shared/pos-ui/GoogleIcon.tsx'
 import { formatMoney } from '@/shared/lib/money.ts'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
@@ -39,12 +38,37 @@ function computeSummary(appointments: Appointment[], clockEvents: TimeClockEvent
   return { completedCount: completed.length, revenueCents, hoursWorked: `${h}h ${m}m`, clockedIn }
 }
 
+interface KPICardProps {
+  label: string
+  value: string
+  loading?: boolean
+}
+
+function KPICard({ label, value, loading = false }: KPICardProps) {
+  return (
+    <div className="border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-4">
+      <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+        {label}
+      </p>
+      {loading ? (
+        <div className="mt-2 h-7 w-16 animate-pulse rounded bg-[var(--color-leather-muted)]/20" />
+      ) : (
+        <p className="mt-2 font-[var(--font-pos-display)] text-[28px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
+          {value}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function MyDayPage() {
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
   const { agenda, clock } = useRepositories()
   const [summary, setSummary] = useState<DaySummary | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const staffName = viewer?.staff?.fullName ?? ''
 
   useEffect(() => {
     if (!viewer || !locationId) return
@@ -59,48 +83,46 @@ export function MyDayPage() {
   }, [agenda, clock, viewer, locationId])
 
   return (
-    <div className="flex min-h-full flex-col items-center px-6 py-10">
-      <AnalyticsIcon className="mt-6 h-14 w-14 text-bb-primary" />
-      <h1 className="mt-4 font-bb-display text-2xl font-bold">Mi Día</h1>
-      <p className="text-sm text-bb-muted">
-        {new Date().toLocaleDateString('es-MX', { weekday: 'long', month: 'long', day: 'numeric' })}
-      </p>
+    <div className="flex h-full flex-col gap-6 px-6 py-5">
+      <div>
+        <h1 className="font-[var(--font-pos-display)] text-[28px] font-extrabold leading-none tracking-[-0.02em] text-[var(--color-bone)]">
+          Mi Día
+        </h1>
+        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+          {staffName}
+        </p>
+      </div>
 
-      {loading || !summary ? (
-        <div className="mt-10 grid w-full max-w-sm grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-2xl bg-bb-surface" />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-10 grid w-full max-w-sm grid-cols-2 gap-4">
-          <StatCard label="Citas completadas" value={String(summary.completedCount)} />
-          <StatCard label="Ingresos" value={formatMoney(summary.revenueCents)} />
-          <StatCard label="Tiempo trabajado" value={summary.hoursWorked} />
-          <StatCard
-            label="Reloj"
-            value={summary.clockedIn ? 'Dentro' : 'Fuera'}
-            highlight={summary.clockedIn}
-          />
-        </div>
-      )}
-    </div>
-  )
-}
+      <div className="grid grid-cols-3 gap-3">
+        <KPICard
+          label="Ventas hoy"
+          value={summary ? formatMoney(summary.revenueCents) : '—'}
+          loading={loading}
+        />
+        <KPICard
+          label="Citas completadas"
+          value={summary ? String(summary.completedCount) : '—'}
+          loading={loading}
+        />
+        <KPICard
+          label="Tiempo trabajado"
+          value={summary ? summary.hoursWorked : '—'}
+          loading={loading}
+        />
+      </div>
 
-function StatCard({
-  label,
-  value,
-  highlight = false,
-}: {
-  label: string
-  value: string
-  highlight?: boolean
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-1 rounded-2xl bg-bb-surface p-5">
-      <span className={`text-2xl font-bold ${highlight ? 'text-green-600' : ''}`}>{value}</span>
-      <span className="text-xs text-bb-muted">{label}</span>
+      <div className="border border-[var(--color-leather-muted)]/40 px-5 py-4">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+          Turno actual
+        </p>
+        {loading ? (
+          <div className="mt-2 h-4 w-32 animate-pulse rounded bg-[var(--color-leather-muted)]/20" />
+        ) : (
+          <p className="mt-2 text-[14px] text-[var(--color-bone-muted)]">
+            {summary?.clockedIn ? 'Dentro del turno' : 'Fuera del turno'}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

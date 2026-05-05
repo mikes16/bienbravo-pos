@@ -78,7 +78,7 @@ export class ApolloClockRepository implements ClockRepository {
     const { data } = await this.#client.query<{ timeClockEvents: TimeClockEvent[] }>({
       query: TIME_CLOCK_EVENTS,
       variables: { staffUserId, locationId, fromDate, toDate },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.timeClockEvents
   }

@@ -37,7 +37,7 @@ export class ApolloAgendaRepository implements AgendaRepository {
     const { data } = await this.#client.query<{ appointments: Appointment[] }>({
       query: APPOINTMENTS_QUERY,
       variables: { dateFrom, dateTo, locationId, status },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.appointments
   }

@@ -29,7 +29,7 @@ export function BarberPickerInline({ barbers, currentBarberId, onSelect }: Barbe
           )}
         >
           {b.photoUrl ? (
-            <img src={b.photoUrl} alt="" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
+            <img src={b.photoUrl} alt="" loading="lazy" decoding="async" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
           ) : (
             <div className="flex h-10 w-10 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[16px] font-extrabold text-[var(--color-bone)]">
               {b.fullName[0]}

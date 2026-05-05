@@ -45,7 +45,7 @@ export class ApolloRegisterRepository implements RegisterRepository {
     const { data } = await this.#client.query<{ registers: Register[] }>({
       query: REGISTERS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.registers.filter((r: Register) => r.isActive)
   }

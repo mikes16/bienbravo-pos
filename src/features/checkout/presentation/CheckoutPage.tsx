@@ -13,6 +13,7 @@ import { CartTotals } from './CartTotals'
 import { CobrarCTA } from './CobrarCTA'
 import { PaymentSheet } from './PaymentSheet'
 import { ReceiptScreen } from './ReceiptScreen'
+import { SkeletonRow, SkeletonCard } from '@/shared/pos-ui'
 
 export function CheckoutPage() {
   const navigate = useNavigate()
@@ -48,8 +49,27 @@ export function CheckoutPage() {
 
   if (!defaultBarber) {
     return (
-      <div className="flex h-full items-center justify-center px-8">
-        <p className="text-[14px] text-[var(--color-bone-muted)]">Cargando catálogo…</p>
+      <div className="flex h-full">
+        <div className="flex flex-1 flex-col gap-4 px-6 py-5">
+          <div className="flex gap-2">
+            <SkeletonRow heightPx={36} widthPercent={20} />
+            <SkeletonRow heightPx={36} widthPercent={20} />
+            <SkeletonRow heightPx={36} widthPercent={20} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        </div>
+        <div className="flex w-[40%] min-w-[360px] flex-col gap-4 border-l border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-4">
+          <SkeletonRow heightPx={64} />
+          <SkeletonRow heightPx={36} />
+          <SkeletonRow heightPx={56} />
+        </div>
       </div>
     )
   }
@@ -93,8 +113,8 @@ export function CheckoutPage() {
         />
         <CartTotals subtotalCents={totals.subtotalCents} />
         {ck.error && (
-          <div role="alert" className="px-4 py-2">
-            <p className="text-[12px] text-[var(--color-bravo)]">{ck.error}</p>
+          <div role="alert" className="mx-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+            <p className="text-[13px] text-[var(--color-bravo)]">{ck.error}</p>
           </div>
         )}
         <CobrarCTA

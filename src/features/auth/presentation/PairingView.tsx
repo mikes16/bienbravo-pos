@@ -58,7 +58,9 @@ export function PairingView({ locations, loading, onPair }: PairingViewProps) {
           className="h-[var(--pos-touch-secondary)] border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 text-[var(--pos-text-body)] text-[var(--color-bone)] outline-none focus:border-[var(--color-bravo)]"
         />
         {error && (
-          <p className="text-[var(--pos-text-label)] text-[var(--color-bravo)]">{error}</p>
+          <div role="alert" className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+            <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
+          </div>
         )}
         <TouchButton
           onClick={() => void handleContinue()}

@@ -57,7 +57,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
     const { data } = await this.#client.query<{ walkIns: WalkIn[] }>({
       query: WALKINS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.walkIns
   }

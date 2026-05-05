@@ -254,7 +254,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   async getCategories(): Promise<CatalogCategory[]> {
     const { data } = await this.#client.query<{ catalogCategories: CatalogCategory[] }>({
       query: CATEGORIES_QUERY,
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.catalogCategories
   }
@@ -263,7 +263,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     const { data } = await this.#client.query<{ services: RawService[] }>({
       query: SERVICES_QUERY,
       variables: { locationId, staffUserId: staffUserId ?? null },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.services
       .filter((s: RawService) => s.isActive)
@@ -293,7 +293,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   async getCombos(): Promise<CatalogCombo[]> {
     const { data } = await this.#client.query<{ catalogCombos: CatalogCombo[] }>({
       query: COMBOS_QUERY,
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.catalogCombos
   }
@@ -302,7 +302,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     const { data } = await this.#client.query<{ products: RawProduct[] }>({
       query: PRODUCTS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.products
       .filter((p: RawProduct) => p.isActive)

@@ -46,7 +46,7 @@ export function HelloPosPage() {
   if (step === 2) {
     return (
       <SuccessSplash
-        title="¡Cobrado!"
+        title="Cobrado"
         subtitle={`Total: $${(total / 100).toLocaleString('es-MX')}`}
         action={{
           label: 'Nueva venta',

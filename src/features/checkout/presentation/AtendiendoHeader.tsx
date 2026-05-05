@@ -13,6 +13,7 @@ export function AtendiendoHeader({ barber, onTap }: AtendiendoHeaderProps) {
   return (
     <button
       type="button"
+      aria-label={`Cambiar barbero: ${barber.fullName}`}
       onClick={onTap}
       className="flex w-full cursor-pointer items-center justify-between border border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.06] px-4 py-3 transition-colors hover:bg-[var(--color-bravo)]/[0.12]"
     >
@@ -26,13 +27,13 @@ export function AtendiendoHeader({ barber, onTap }: AtendiendoHeaderProps) {
       </div>
       <div className="flex items-center gap-2">
         {barber.photoUrl ? (
-          <img src={barber.photoUrl} alt="" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
+          <img src={barber.photoUrl} alt="" loading="lazy" decoding="async" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
         ) : (
           <div className="flex h-10 w-10 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[18px] font-extrabold text-[var(--color-bone)]">
             {barber.fullName[0]}
           </div>
         )}
-        <span className="font-mono text-[12px] text-[var(--color-bone-muted)]">↓</span>
+        <span aria-hidden className="font-mono text-[12px] text-[var(--color-bone-muted)]">↓</span>
       </div>
     </button>
   )

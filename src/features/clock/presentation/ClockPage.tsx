@@ -62,6 +62,8 @@ export function ClockPage() {
           <img
             src={viewer.staff.photoUrl}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="h-16 w-16 border border-[var(--color-leather-muted)] object-cover"
           />
         ) : (
