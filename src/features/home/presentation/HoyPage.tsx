@@ -51,14 +51,14 @@ export function HoyPage() {
       }>({
         query: POS_HOME_COMMISSION,
         variables: { staffUserId: viewer.staff.id, locationId, date },
-        fetchPolicy: 'network-only',
+        fetchPolicy: 'cache-first',
       }),
       apollo.query<{
         posCajaStatusHome: { isOpen: boolean; accumulatedCents: number | null; openedAt: string | null }
       }>({
         query: POS_HOME_CAJA_STATUS,
         variables: { locationId },
-        fetchPolicy: 'network-only',
+        fetchPolicy: 'cache-first',
       }),
     ])
 
