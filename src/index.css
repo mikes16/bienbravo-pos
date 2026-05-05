@@ -32,6 +32,15 @@
   --color-warning: #a87a3a;
   --color-error: #b04a4a;
 
+  /* ── Bill-color stripe tokens (sub-#7 money UX consistency).
+   *    4px vertical stripe associates each row with the real Mexican peso bill
+   *    color. Used by <DenominationCounter denomination={500}> etc. ── */
+  --color-bill-500: #2563eb; /* Frida & Diego — blue */
+  --color-bill-200: #15803d; /* Allende — green */
+  --color-bill-100: #dc2626; /* Nezahualcóyotl — red */
+  --color-bill-50: #a855f7;  /* Juárez — purple */
+  --color-bill-20: #2dd4bf;  /* Madero historical — teal */
+
   /* ── Legacy --color-bb-* aliases (mapped to editorial values).
    *    Existing pos-ui v1 components (TapButton, StatusPill, etc.) still
    *    consume bg-bb-primary, text-bb-text utilities. Aliases keep them
