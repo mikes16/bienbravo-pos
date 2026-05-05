@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PersonAddIcon } from '@/shared/pos-ui/GoogleIcon.tsx'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useWalkIns } from '../application/useWalkIns.ts'
-import type { WalkIn } from '../domain/walkins.types.ts'
-import { PosCard, TapButton, StatusPill, KanbanColumn, SkeletonBlock, EmptyState, SectionHeader } from '@/shared/pos-ui/index.ts'
+import type { WalkIn, WalkInStatus } from '../domain/walkins.types.ts'
+import { TouchButton, SkeletonRow } from '@/shared/pos-ui/index.ts'
+import { cn } from '@/shared/lib/cn'
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
 
@@ -15,148 +15,96 @@ function minutesAgo(isoDate: string): number {
 
 function waitLabel(mins: number): string {
   if (mins < 1) return 'Recién llegado'
-  return `Esp. ${mins} min`
+  return `${mins} min`
 }
 
-/* ── Walk-in card per column ──────────────────────────────────────────── */
+/* ── Status pill ──────────────────────────────────────────────────────── */
 
-function PendingCard({
-  w,
-  index,
-  onAssign,
-  onDrop,
-}: {
-  w: WalkIn
-  index: number
-  onAssign: () => void
-  onDrop: () => void
-}) {
-  const mins = minutesAgo(w.createdAt)
+const STATUS_LABELS: Record<WalkInStatus, string> = {
+  PENDING: 'Esperando',
+  ASSIGNED: 'Asignado',
+  DONE: 'Listo',
+  CANCELLED: 'Cancelado',
+}
+
+const STATUS_COLORS: Record<WalkInStatus, string> = {
+  PENDING: 'text-[var(--color-warning)] border-[var(--color-warning)]/40',
+  ASSIGNED: 'text-[var(--color-bone)] border-[var(--color-bone-muted)]/40',
+  DONE: 'text-[var(--color-success)] border-[var(--color-success)]/40',
+  CANCELLED: 'text-[var(--color-bone-muted)] border-[var(--color-bone-muted)]/30',
+}
+
+function StatusPill({ status }: { status: WalkInStatus }) {
   return (
-    <PosCard className="space-y-3">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-bold">{w.customerName ?? 'Cliente Anónimo'}</p>
-          <p className="mt-0.5 text-xs text-bb-muted">{waitLabel(mins)}</p>
-        </div>
-        <span className="text-xs text-bb-muted">#{String(index + 1).padStart(2, '0')}</span>
-      </div>
-      <div className="flex gap-2">
-        <TapButton size="md" variant="primary" className="flex-1 text-xs" onClick={onAssign}>
-          Tomar
-        </TapButton>
-        <TapButton size="md" variant="ghost" className="text-xs text-bb-danger" onClick={onDrop}>
-          Quitar
-        </TapButton>
-      </div>
-    </PosCard>
+    <span
+      className={cn(
+        'border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest',
+        STATUS_COLORS[status],
+      )}
+    >
+      {STATUS_LABELS[status]}
+    </span>
   )
 }
 
-function CancelWalkInOverlay({
+/* ── Drop confirm overlay ─────────────────────────────────────────────── */
+
+function DropConfirmOverlay({
   walkIn,
-  onSubmit,
+  onConfirm,
   onClose,
 }: {
   walkIn: WalkIn
-  onSubmit: (reason: string) => Promise<void>
+  onConfirm: () => Promise<void>
   onClose: () => void
 }) {
-  const [reason, setReason] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   async function handleConfirm() {
-    const trimmed = reason.trim()
-    if (trimmed.length < 3) {
-      setError('Escribe un motivo de cancelación para liberar al barbero.')
-      return
-    }
-    setSubmitting(true)
-    setError(null)
+    setBusy(true)
     try {
-      await onSubmit(trimmed)
+      await onConfirm()
       onClose()
-    } catch {
-      setError('No se pudo cancelar el servicio.')
     } finally {
-      setSubmitting(false)
+      setBusy(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <PosCard className="w-full max-w-md space-y-4 bg-bb-bg shadow-xl">
-        <h3 className="font-bb-display text-lg font-bold">Cancelar servicio sin cobro</h3>
-        <p className="text-sm text-bb-muted">
-          Cliente: <span className="font-semibold text-bb-text">{walkIn.customerName ?? 'Walk-in'}</span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-sm border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] p-6">
+        <p
+          className="mb-1 text-xs font-mono uppercase tracking-widest text-[var(--color-bone-muted)]"
+        >
+          Confirmar
         </p>
-        <textarea
-          placeholder="Motivo (ej. cliente se retiró, no quiso esperar...)"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={3}
-          className="w-full rounded-xl border border-bb-border bg-bb-surface px-4 py-3 text-sm outline-none focus:border-bb-primary"
-        />
-        {error && <p className="text-xs text-bb-danger">{error}</p>}
+        <h3
+          className="mb-6 text-[var(--font-pos-display,var(--font-pos-display))] text-xl font-bold text-[var(--color-bone)]"
+        >
+          Quitar a {walkIn.customerName ?? 'este cliente'}?
+        </h3>
         <div className="flex gap-3">
-          <TapButton size="md" variant="ghost" className="flex-1" onClick={onClose} disabled={submitting}>
-            Volver
-          </TapButton>
-          <TapButton size="md" variant="danger" className="flex-1" onClick={handleConfirm} disabled={submitting}>
-            Confirmar cancelación
-          </TapButton>
+          <TouchButton
+            variant="ghost"
+            size="row"
+            className="flex-1"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancelar
+          </TouchButton>
+          <TouchButton
+            variant="danger"
+            size="row"
+            className="flex-1"
+            onClick={handleConfirm}
+            disabled={busy}
+          >
+            Sí, quitar
+          </TouchButton>
         </div>
-      </PosCard>
+      </div>
     </div>
-  )
-}
-
-function AssignedCard({
-  w,
-  onComplete,
-  onCancel,
-}: {
-  w: WalkIn
-  onComplete: () => void
-  onCancel: () => void
-}) {
-  const mins = minutesAgo(w.createdAt)
-  return (
-    <PosCard className="space-y-3">
-      <p className="text-sm font-bold">{w.customerName ?? 'Walk-in'}</p>
-      {w.assignedStaffUser && (
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-bb-surface-2 text-[10px] font-bold text-bb-muted">
-            {w.assignedStaffUser.fullName.slice(0, 2).toUpperCase()}
-          </div>
-          <span className="text-xs text-bb-muted">{w.assignedStaffUser.fullName}</span>
-        </div>
-      )}
-      <p className="text-xs text-bb-muted">En servicio · {mins} min</p>
-      <div className="flex gap-2">
-        <TapButton size="md" variant="primary" className="flex-1 text-xs" onClick={onComplete}>
-          Finalizar
-        </TapButton>
-        <TapButton size="md" variant="ghost" className="text-xs text-bb-danger" onClick={onCancel}>
-          Cancelar
-        </TapButton>
-      </div>
-    </PosCard>
-  )
-}
-
-function DoneCard({ w }: { w: WalkIn }) {
-  return (
-    <PosCard className="flex items-center justify-between opacity-70">
-      <div>
-        <p className="text-sm font-semibold">{w.customerName ?? 'Walk-in'}</p>
-        {w.assignedStaffUser && (
-          <p className="text-xs text-bb-muted">{w.assignedStaffUser.fullName}</p>
-        )}
-      </div>
-      <StatusPill label="Finalizado" color="green" />
-    </PosCard>
   )
 }
 
@@ -179,9 +127,12 @@ function NewWalkInOverlay({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <PosCard className="w-full max-w-sm space-y-4 bg-bb-bg shadow-xl">
-        <h3 className="font-bb-display text-lg font-bold">Nuevo Walk-in</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-sm border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] p-6">
+        <p className="mb-1 text-xs font-mono uppercase tracking-widest text-[var(--color-bone-muted)]">
+          Walk-in
+        </p>
+        <h3 className="mb-5 text-xl font-bold text-[var(--color-bone)]">Nuevo cliente</h3>
         <div className="space-y-3">
           <input
             type="text"
@@ -189,14 +140,14 @@ function NewWalkInOverlay({
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoFocus
-            className="w-full rounded-xl border border-bb-border bg-bb-surface px-4 py-3 text-sm outline-none focus:border-bb-primary"
+            className="w-full border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 py-3 text-sm text-[var(--color-bone)] outline-none placeholder:text-[var(--color-bone-muted)] focus:border-[var(--color-bone-muted)]"
           />
           <input
             type="tel"
             placeholder="Teléfono (opcional)"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="w-full rounded-xl border border-bb-border bg-bb-surface px-4 py-3 text-sm outline-none focus:border-bb-primary"
+            className="w-full border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 py-3 text-sm text-[var(--color-bone)] outline-none placeholder:text-[var(--color-bone-muted)] focus:border-[var(--color-bone-muted)]"
           />
           <input
             type="email"
@@ -204,19 +155,116 @@ function NewWalkInOverlay({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
-            className="w-full rounded-xl border border-bb-border bg-bb-surface px-4 py-3 text-sm outline-none focus:border-bb-primary"
+            className="w-full border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 py-3 text-sm text-[var(--color-bone)] outline-none placeholder:text-[var(--color-bone-muted)] focus:border-[var(--color-bone-muted)]"
           />
-          <p className="text-xs text-bb-muted">Con teléfono o correo se puede identificar al cliente al cobrar y evitar duplicados.</p>
+          <p className="text-xs text-[var(--color-bone-muted)]">
+            Con teléfono o correo se puede identificar al cliente al cobrar y evitar duplicados.
+          </p>
         </div>
-        <div className="flex gap-3">
-          <TapButton size="md" variant="ghost" className="flex-1" onClick={onClose}>
+        <div className="mt-5 flex gap-3">
+          <TouchButton size="row" variant="ghost" className="flex-1" onClick={onClose}>
             Cancelar
-          </TapButton>
-          <TapButton size="md" variant="primary" className="flex-1" onClick={handleSubmit}>
+          </TouchButton>
+          <TouchButton size="row" variant="primary" className="flex-1" onClick={handleSubmit}>
             Agregar
-          </TapButton>
+          </TouchButton>
         </div>
-      </PosCard>
+      </div>
+    </div>
+  )
+}
+
+/* ── Queue row ────────────────────────────────────────────────────────── */
+
+function QueueRow({
+  w,
+  index,
+  onTomar,
+  onCompletar,
+  onDrop,
+}: {
+  w: WalkIn
+  index: number
+  onTomar: () => void
+  onCompletar: () => void
+  onDrop: () => void
+}) {
+  const mins = minutesAgo(w.createdAt)
+  const isDone = w.status === 'DONE' || w.status === 'CANCELLED'
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-4 border-b border-[var(--color-leather-muted)]/30 px-5 py-4',
+        isDone && 'opacity-50',
+      )}
+    >
+      {/* Position number */}
+      <span className="w-7 shrink-0 text-center font-mono text-xs text-[var(--color-bone-muted)]">
+        {String(index + 1).padStart(2, '0')}
+      </span>
+
+      {/* Name + barber chip */}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-[var(--color-bone)]">
+          {w.customerName ?? 'Cliente anónimo'}
+        </p>
+        {w.assignedStaffUser && (
+          <p className="mt-0.5 truncate text-xs text-[var(--color-bone-muted)]">
+            {w.assignedStaffUser.fullName}
+          </p>
+        )}
+      </div>
+
+      {/* Wait time */}
+      <span className="shrink-0 font-mono text-xs text-[var(--color-bone-muted)]">
+        {waitLabel(mins)}
+      </span>
+
+      {/* Status pill */}
+      <StatusPill status={w.status} />
+
+      {/* Actions */}
+      {w.status === 'PENDING' && (
+        <TouchButton size="min" variant="primary" onClick={onTomar}>
+          Tomar
+        </TouchButton>
+      )}
+      {w.status === 'ASSIGNED' && (
+        <TouchButton size="min" variant="secondary" onClick={onCompletar}>
+          Completar
+        </TouchButton>
+      )}
+
+      {/* × drop button — raw button per spec, touch-target height via CSS var */}
+      {!isDone && (
+        <button
+          type="button"
+          aria-label="Quitar cliente"
+          className="flex shrink-0 items-center justify-center text-[var(--color-bone-muted)] hover:text-[var(--color-bravo)]"
+          style={{ minHeight: 'var(--pos-touch-min)', minWidth: 'var(--pos-touch-min)' }}
+          onClick={onDrop}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* ── Loading skeleton rows ────────────────────────────────────────────── */
+
+function SkeletonQueueRow() {
+  return (
+    <div className="flex items-center gap-4 border-b border-[var(--color-leather-muted)]/30 px-5 py-4">
+      <SkeletonRow heightPx={12} widthPercent={4} className="shrink-0" />
+      <div className="flex-1 space-y-2">
+        <SkeletonRow heightPx={14} widthPercent={45} />
+        <SkeletonRow heightPx={11} widthPercent={28} />
+      </div>
+      <SkeletonRow heightPx={12} widthPercent={8} className="shrink-0" />
+      <SkeletonRow heightPx={20} className="w-20 shrink-0" />
+      <SkeletonRow heightPx={36} className="w-16 shrink-0" />
     </div>
   )
 }
@@ -228,87 +276,82 @@ export function WalkInsPage() {
   const { locationId } = useLocation()
   const navigate = useNavigate()
   const { list, loading, error, create, assign, drop } = useWalkIns(locationId)
-  const [showNew, setShowNew] = useState(false)
-  const [cancelTarget, setCancelTarget] = useState<WalkIn | null>(null)
 
-  const pending = list.filter((w) => w.status === 'PENDING')
-  const assigned = list.filter((w) => w.status === 'ASSIGNED')
-  const done = list.filter((w) => w.status === 'DONE')
+  const [showNew, setShowNew] = useState(false)
+  const [dropTarget, setDropTarget] = useState<WalkIn | null>(null)
+
+  // Show active queue (PENDING + ASSIGNED) first, then DONE at the bottom
+  const active = list.filter((w) => w.status === 'PENDING' || w.status === 'ASSIGNED')
+  const done = list.filter((w) => w.status === 'DONE' || w.status === 'CANCELLED')
+  const sorted = [...active, ...done]
 
   return (
-    <div className="flex h-full flex-col px-6 py-6">
-      {/* Header */}
-      <SectionHeader
-        title="Sala de Espera"
-        className="mb-5"
-        action={
-          <TapButton size="md" variant="primary" className="flex items-center gap-2" onClick={() => setShowNew(true)}>
-            <PersonAddIcon className="h-4 w-4" />
-            Nuevo Walk-in
-          </TapButton>
-        }
-      />
+    <div className="flex h-full flex-col">
+      {/* ── Page header ── */}
+      <div className="flex items-end justify-between border-b border-[var(--color-leather-muted)]/40 px-6 py-5">
+        <div>
+          <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Walk-ins
+          </p>
+          <h1
+            className="text-2xl font-bold leading-tight text-[var(--color-bone)]"
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+          >
+            Sala de Espera
+          </h1>
+        </div>
+        <TouchButton size="row" variant="secondary" onClick={() => setShowNew(true)}>
+          + Nuevo Walk-in
+        </TouchButton>
+      </div>
 
+      {/* ── Error banner ── */}
       {error && (
-        <p className="mb-4 rounded-xl bg-bb-danger/10 px-4 py-3 text-sm text-bb-danger">{error}</p>
+        <p className="border-b border-[var(--color-bravo)]/30 bg-[var(--color-bravo)]/10 px-6 py-3 text-sm text-[var(--color-bravo)]">
+          {error}
+        </p>
       )}
 
+      {/* ── Body ── */}
       {loading ? (
-        <div className="flex flex-1 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="flex flex-1 flex-col gap-3">
-              <SkeletonBlock className="h-6 w-24" />
-              <SkeletonBlock className="h-28" />
-              <SkeletonBlock className="h-28" />
-            </div>
+        <div className="flex-1 overflow-y-auto">
+          {[1, 2, 3, 4].map((i) => (
+            <SkeletonQueueRow key={i} />
           ))}
         </div>
-      ) : list.length === 0 ? (
-        <EmptyState
-          icon={<PersonAddIcon className="h-10 w-10 text-bb-muted" />}
-          message="Sin walk-ins por ahora"
-          action={
-            <TapButton size="md" variant="ghost" onClick={() => setShowNew(true)}>
-              + Agregar walk-in
-            </TapButton>
-          }
-        />
+      ) : sorted.length === 0 ? (
+        /* ── Empty state ── */
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+          <p
+            className="text-3xl font-bold text-[var(--color-bone)]"
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+          >
+            Aún no hay clientes esperando
+          </p>
+          <p className="max-w-xs text-sm text-[var(--color-bone-muted)]">
+            Cuando llegue un cliente sin cita, agrégalo aquí y asígnalo al siguiente barbero disponible.
+          </p>
+          <TouchButton size="secondary" variant="secondary" onClick={() => setShowNew(true)}>
+            + Agregar walk-in
+          </TouchButton>
+        </div>
       ) : (
-        <div className="flex flex-1 gap-6 overflow-x-auto pb-2">
-          {/* EN ESPERA */}
-          <KanbanColumn title="En Espera" count={pending.length} accent="amber">
-            {pending.map((w, i) => (
-              <PendingCard
-                key={w.id}
-                w={w}
-                index={i}
-                onAssign={() => viewer && assign(w.id, viewer.staff.id)}
-                onDrop={() => drop(w.id)}
-              />
-            ))}
-          </KanbanColumn>
-
-          {/* EN SERVICIO */}
-          <KanbanColumn title="En Servicio" count={assigned.length} accent="blue">
-            {assigned.map((w) => (
-              <AssignedCard
-                key={w.id}
-                w={w}
-                onComplete={() => navigate(`/checkout?completeWalkInId=${w.id}`)}
-                onCancel={() => setCancelTarget(w)}
-              />
-            ))}
-          </KanbanColumn>
-
-          {/* FINALIZADO */}
-          <KanbanColumn title="Finalizado" count={done.length} accent="green">
-            {done.map((w) => (
-              <DoneCard key={w.id} w={w} />
-            ))}
-          </KanbanColumn>
+        /* ── Queue list ── */
+        <div className="flex-1 overflow-y-auto">
+          {sorted.map((w, i) => (
+            <QueueRow
+              key={w.id}
+              w={w}
+              index={i}
+              onTomar={() => viewer && assign(w.id, viewer.staff.id)}
+              onCompletar={() => navigate(`/checkout?completeWalkInId=${w.id}`)}
+              onDrop={() => setDropTarget(w)}
+            />
+          ))}
         </div>
       )}
 
+      {/* ── Overlays ── */}
       {showNew && (
         <NewWalkInOverlay
           onSubmit={(n, p, e) => create(n, p, e)}
@@ -316,11 +359,11 @@ export function WalkInsPage() {
         />
       )}
 
-      {cancelTarget && (
-        <CancelWalkInOverlay
-          walkIn={cancelTarget}
-          onSubmit={(reason) => drop(cancelTarget.id, reason)}
-          onClose={() => setCancelTarget(null)}
+      {dropTarget && (
+        <DropConfirmOverlay
+          walkIn={dropTarget}
+          onConfirm={() => drop(dropTarget.id)}
+          onClose={() => setDropTarget(null)}
         />
       )}
     </div>
