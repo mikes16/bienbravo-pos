@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Register } from '../domain/register.types'
 import { cn } from '@/shared/lib/cn'
 import { StrongboxIcon } from '@/shared/pos-ui/icons/StrongboxIcon'
+import { TouchButton } from '@/shared/pos-ui/TouchButton'
 
 interface CajaClosedViewProps {
   registers: Register[]
@@ -13,22 +14,29 @@ export function CajaClosedView({ registers, onAbrir }: CajaClosedViewProps) {
     registers.length === 1 ? registers[0].id : null,
   )
 
+  useEffect(() => {
+    setSelectedId(registers.length === 1 ? registers[0].id : null)
+  }, [registers])
+
   if (registers.length === 0) {
     return (
       <div className="flex h-full items-center justify-center px-8 py-12">
-        <p className="text-center text-[14px] text-[var(--color-bone-muted)]">
-          Sin cajas configuradas en esta sucursal.
-        </p>
+        <div className="text-center text-[14px] text-[var(--color-bone-muted)]">
+          <p>Sin cajas configuradas en esta sucursal.</p>
+          <p>Pide a tu administrador que configure una caja para esta sucursal.</p>
+        </div>
       </div>
     )
   }
 
-  const effectiveId = selectedId ?? (registers.length === 1 ? registers[0].id : null)
-  const canAbrir = effectiveId !== null
+  const canAbrir = selectedId !== null
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 px-8 py-12 text-center">
-      <div className="flex h-20 w-20 items-center justify-center border-2 border-[var(--color-leather-muted)] text-[var(--color-bone-muted)]">
+      <div
+        aria-hidden="true"
+        className="flex h-20 w-20 items-center justify-center border-2 border-[var(--color-leather-muted)] text-[var(--color-bone-muted)]"
+      >
         <StrongboxIcon className="h-10 w-10" />
       </div>
       <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
@@ -44,34 +52,32 @@ export function CajaClosedView({ registers, onAbrir }: CajaClosedViewProps) {
       {registers.length > 1 && (
         <div className="flex flex-col gap-2">
           {registers.map((r) => (
-            <button
+            <TouchButton
               key={r.id}
-              type="button"
+              variant="secondary"
+              size="min"
               onClick={() => setSelectedId(r.id)}
               className={cn(
-                'cursor-pointer border px-4 py-2 text-[14px]',
                 selectedId === r.id
                   ? 'border-[var(--color-bravo)] text-[var(--color-bone)]'
                   : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)]',
               )}
             >
               {r.name}
-            </button>
+            </TouchButton>
           ))}
         </div>
       )}
 
-      <button
-        type="button"
+      <TouchButton
+        variant="primary"
+        size="primary"
         disabled={!canAbrir}
-        onClick={() => effectiveId && onAbrir(effectiveId)}
-        className={cn(
-          'mt-2 cursor-pointer bg-[var(--color-bravo)] px-8 py-3.5 font-extrabold uppercase tracking-[0.06em] text-[var(--color-bone)] transition-colors hover:bg-[var(--color-bravo-hover)]',
-          !canAbrir && 'cursor-not-allowed bg-[var(--color-leather-muted)]',
-        )}
+        onClick={() => selectedId && onAbrir(selectedId)}
+        className="mt-2 uppercase tracking-[0.06em]"
       >
         Abrir caja →
-      </button>
+      </TouchButton>
     </div>
   )
 }

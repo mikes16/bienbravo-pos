@@ -47,4 +47,16 @@ describe('CajaClosedView', () => {
     render(<CajaClosedView registers={[]} onAbrir={() => {}} />)
     expect(screen.getByText(/sin cajas configuradas|no hay cajas/i)).toBeInTheDocument()
   })
+
+  it('resets selection when registers prop changes', async () => {
+    const onAbrir = vi.fn()
+    const user = userEvent.setup()
+    const { rerender } = render(<CajaClosedView registers={[REG_A, REG_B]} onAbrir={onAbrir} />)
+    await user.click(screen.getByRole('button', { name: /caja b/i }))
+    // At this point reg-b is selected — CTA enabled
+    rerender(<CajaClosedView registers={[REG_A]} onAbrir={onAbrir} />)
+    // After re-render with single register, selection should be reg-a (auto-pick)
+    await user.click(screen.getByRole('button', { name: /abrir caja/i }))
+    expect(onAbrir).toHaveBeenCalledWith('reg-a')
+  })
 })
