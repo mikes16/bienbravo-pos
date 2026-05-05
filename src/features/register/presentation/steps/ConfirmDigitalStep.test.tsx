@@ -62,4 +62,51 @@ describe('ConfirmDigitalStep', () => {
     const confirmedTexts = screen.getAllByText(/confirmado|✓/i)
     expect(confirmedTexts.length).toBeGreaterThan(0)
   })
+
+  it('Guardar applies adjusted amount via onChange', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ConfirmDigitalStep
+        expectedCardCents={254000}
+        expectedTransferCents={126000}
+        counted={PENDING}
+        onChange={onChange}
+      />,
+    )
+    // Open adjust mode for tarjeta
+    const adjustButtons = screen.getAllByRole('button', { name: /ajustar/i })
+    await user.click(adjustButtons[0])
+
+    // Type a different amount
+    const input = screen.getAllByRole('spinbutton')[0]
+    await user.clear(input)
+    await user.type(input, '2530')
+
+    // Click Guardar
+    await user.click(screen.getByRole('button', { name: /guardar/i }))
+
+    // onChange called with adjusted cents
+    expect(onChange).toHaveBeenCalledWith({ cardCents: 253000, transferCents: null })
+  })
+
+  it('re-adjusting from confirmed state seeds input with confirmed value', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ConfirmDigitalStep
+        expectedCardCents={254000}
+        expectedTransferCents={126000}
+        counted={{ cardCents: 250000, transferCents: 126000 }}
+        onChange={onChange}
+      />,
+    )
+    // First Ajustar button is the confirmed-state one for tarjeta
+    const adjustButtons = screen.getAllByRole('button', { name: /ajustar/i })
+    await user.click(adjustButtons[0])
+
+    // The input should default to 2500 (pesos), not 2540 (the expected value)
+    const inputs = screen.getAllByRole('spinbutton')
+    expect((inputs[0] as HTMLInputElement).value).toBe('2500')
+  })
 })

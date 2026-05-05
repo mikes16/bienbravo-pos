@@ -25,6 +25,7 @@ interface RowProps {
 
 function ConfirmRow({ label, expected, counted, onConfirm, onAdjust }: RowProps) {
   const [adjusting, setAdjusting] = useState(false)
+  // Seeded once on mount; expected is static for a given close-caja session.
   const [pesos, setPesos] = useState(Math.round(expected / 100))
   const isConfirmed = counted !== null
 
@@ -76,13 +77,15 @@ function ConfirmRow({ label, expected, counted, onConfirm, onAdjust }: RowProps)
           <span className="text-[13px] text-[var(--color-success)]">
             ✓ Confirmado: {formatMoney(counted!)}
           </span>
+          {/* Tertiary inline-link affordance: raw <button> for typography, but
+              min-h-[var(--pos-touch-min)] enforces the 40px touch floor for iPads. */}
           <button
             type="button"
             onClick={() => {
-              setPesos(Math.round((counted ?? expected) / 100))
+              setPesos(Math.round(counted! / 100))
               setAdjusting(true)
             }}
-            className="cursor-pointer font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:text-[var(--color-bone)]"
+            className="cursor-pointer min-h-[var(--pos-touch-min)] flex items-center font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:text-[var(--color-bone)]"
           >
             Ajustar →
           </button>
@@ -97,13 +100,15 @@ function ConfirmRow({ label, expected, counted, onConfirm, onAdjust }: RowProps)
           >
             Sí, {formatMoney(expected)}
           </TouchButton>
+          {/* Tertiary inline-link affordance: raw <button> for typography, but
+              min-h-[var(--pos-touch-min)] enforces the 40px touch floor for iPads. */}
           <button
             type="button"
             onClick={() => {
               setPesos(Math.round(expected / 100))
               setAdjusting(true)
             }}
-            className="cursor-pointer border border-[var(--color-leather-muted)] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]"
+            className="cursor-pointer min-h-[var(--pos-touch-min)] flex items-center border border-[var(--color-leather-muted)] px-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]"
           >
             Ajustar →
           </button>
