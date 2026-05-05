@@ -7,6 +7,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { POS_HOME_COMMISSION, POS_HOME_CAJA_STATUS } from '../data/home.queries'
 import { deriveHoyViewModel, type HoyViewModel } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
+import { SkeletonRow } from '@/shared/pos-ui'
 import type { Appointment } from '@/features/agenda/domain/agenda.types'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types'
@@ -129,7 +130,18 @@ export function HoyPage() {
     [navigate],
   )
 
-  if (!vm) return null
+  if (!vm) {
+    return (
+      <div className="flex h-full flex-col gap-4 px-6 py-5">
+        <SkeletonRow heightPx={36} widthPercent={40} />
+        <div className="flex flex-col gap-2">
+          <SkeletonRow heightPx={56} />
+          <SkeletonRow heightPx={56} />
+          <SkeletonRow heightPx={56} />
+        </div>
+      </div>
+    )
+  }
 
   return <HoyView vm={vm} onCtaClick={handleCtaClick} onRowClick={handleRowClick} />
 }
