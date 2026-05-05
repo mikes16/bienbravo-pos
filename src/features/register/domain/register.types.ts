@@ -25,3 +25,13 @@ export interface CloseSessionInput {
   countedCardCents: number
   countedTransferCents: number
 }
+
+export interface SaleLedgerEntry {
+  id: string
+  createdAt: string
+  totalCents: number
+  paymentStatus: string
+  customer: { fullName: string } | null
+  appointmentId: string | null
+  walkInId: string | null
+}
