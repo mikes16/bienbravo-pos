@@ -24,6 +24,7 @@ interface CatalogItem {
   name: string
   priceCents: number
   stockQty?: number
+  imageUrl?: string | null
   categoryId: string | null
 }
 
@@ -104,6 +105,7 @@ export function useCheckout() {
             kind: 'service' as const,
             name: s.name,
             priceCents: s.priceCents,
+            imageUrl: s.imageUrl,
             categoryId: s.categoryId,
           })),
           ...products.map((p) => ({
@@ -112,6 +114,7 @@ export function useCheckout() {
             name: p.name,
             priceCents: p.priceCents,
             stockQty: stockByProductId.get(p.id),
+            imageUrl: p.imageUrl,
             categoryId: p.categoryId,
           })),
           ...combos.map((c) => ({
@@ -119,6 +122,7 @@ export function useCheckout() {
             kind: 'combo' as const,
             name: c.name,
             priceCents: c.priceCents,
+            imageUrl: c.imageUrl,
             categoryId: null,
           })),
         ]

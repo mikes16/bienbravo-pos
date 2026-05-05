@@ -6,6 +6,7 @@ interface CatalogItem {
   name: string
   priceCents: number
   stockQty?: number
+  imageUrl?: string | null
   categoryId: string | null
 }
 
@@ -42,6 +43,7 @@ export function CatalogGrid({ items, selectedCategoryId, searchQuery, onAdd }: C
           name={item.name}
           priceCents={item.priceCents}
           stockQty={item.stockQty}
+          imageUrl={item.imageUrl}
           onAdd={() => onAdd(item)}
         />
       ))}
