@@ -98,4 +98,60 @@ describe('DenominationCounter', () => {
     await user.clear(input)
     expect(onLumpSumChange).not.toHaveBeenCalled()
   })
+
+  it('renders bill-color stripe when denomination is 500', () => {
+    const { container } = render(
+      <DenominationCounter
+        amountLabel="$500"
+        denomination={500}
+        count={0}
+        subtotalCents={0}
+        onCountChange={() => {}}
+      />,
+    )
+    const stripe = container.querySelector('[data-bill-stripe="500"]')
+    expect(stripe).not.toBeNull()
+  })
+
+  it('renders bill-color stripe for each denomination', () => {
+    const denominations = [500, 200, 100, 50, 20] as const
+    for (const d of denominations) {
+      const { container, unmount } = render(
+        <DenominationCounter
+          amountLabel={`$${d}`}
+          denomination={d}
+          count={0}
+          subtotalCents={0}
+          onCountChange={() => {}}
+        />,
+      )
+      expect(container.querySelector(`[data-bill-stripe="${d}"]`)).not.toBeNull()
+      unmount()
+    }
+  })
+
+  it('does NOT render a stripe in lump-sum mode', () => {
+    const { container } = render(
+      <DenominationCounter
+        amountLabel="MONEDAS"
+        subtotalCents={4000}
+        isLumpSum
+        lumpSumCents={4000}
+        onLumpSumChange={() => {}}
+      />,
+    )
+    expect(container.querySelector('[data-bill-stripe]')).toBeNull()
+  })
+
+  it('does NOT render a stripe when denomination prop is omitted', () => {
+    const { container } = render(
+      <DenominationCounter
+        amountLabel="$100"
+        count={0}
+        subtotalCents={0}
+        onCountChange={() => {}}
+      />,
+    )
+    expect(container.querySelector('[data-bill-stripe]')).toBeNull()
+  })
 })

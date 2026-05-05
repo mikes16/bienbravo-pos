@@ -10,6 +10,7 @@ interface DenominationCounterProps {
   isLumpSum?: boolean
   lumpSumCents?: number
   onLumpSumChange?: (cents: number) => void
+  denomination?: 500 | 200 | 100 | 50 | 20
   className?: string
 }
 
@@ -21,6 +22,7 @@ export function DenominationCounter({
   isLumpSum,
   lumpSumCents = 0,
   onLumpSumChange,
+  denomination,
   className,
 }: DenominationCounterProps) {
   // Local display state for the lump-sum input so userEvent clear+type works
@@ -32,15 +34,34 @@ export function DenominationCounter({
 
   const hasCount = isLumpSum ? lumpSumCents > 0 : count > 0
 
+  const stripeColor =
+    denomination && !isLumpSum
+      ? {
+          500: 'var(--color-bill-500)',
+          200: 'var(--color-bill-200)',
+          100: 'var(--color-bill-100)',
+          50: 'var(--color-bill-50)',
+          20: 'var(--color-bill-20)',
+        }[denomination]
+      : undefined
+
   return (
     <div
       className={cn(
-        'grid grid-cols-[110px_1fr_auto] items-center gap-4 border-b border-[var(--color-leather-muted)]/40 px-4 py-3 last:border-b-0',
+        'relative grid grid-cols-[110px_1fr_auto] items-center gap-4 border-b border-[var(--color-leather-muted)]/40 px-4 py-3 last:border-b-0',
         hasCount && 'bg-[var(--color-bravo)]/[0.04]',
         isLumpSum && !hasCount && 'bg-[var(--color-cuero-viejo)]/[0.06]',
         className,
       )}
     >
+      {stripeColor && (
+        <span
+          data-bill-stripe={denomination}
+          aria-hidden="true"
+          className="absolute left-0 top-0 bottom-0 w-1"
+          style={{ backgroundColor: stripeColor }}
+        />
+      )}
       <span
         className={cn(
           'font-bold text-[var(--color-bone)] tabular-nums',
