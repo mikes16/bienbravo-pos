@@ -83,8 +83,23 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
   if (!isClockedIn) gate = { kind: 'clock-in' }
   else if (!caja.isOpen) gate = { kind: 'caja' }
 
-  const myAppts = appointments.filter((a) => a.staffUser?.id === staffId)
-  const myWalkIns = walkIns.filter((w) => w.assignedStaffUser?.id === staffId)
+  // Hoy is "what's happening right now". Already-finished work (COMPLETED appts,
+  // DONE walk-ins, CANCELLED/NO_SHOW) shouldn't crowd the queue or get picked as
+  // the "next" target — the API rejects retrying those, and the operator can't
+  // act on them anyway.
+  const myAppts = appointments.filter(
+    (a) =>
+      a.staffUser?.id === staffId &&
+      a.status !== 'COMPLETED' &&
+      a.status !== 'CANCELLED' &&
+      a.status !== 'NO_SHOW',
+  )
+  const myWalkIns = walkIns.filter(
+    (w) =>
+      w.assignedStaffUser?.id === staffId &&
+      w.status !== 'DONE' &&
+      w.status !== 'CANCELLED',
+  )
   const queueWalkIns = walkIns.filter(
     (w) => w.status === 'PENDING' && (w.assignedStaffUser === null || w.assignedStaffUser === undefined),
   )
@@ -217,9 +232,10 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         targetCustomerId: active.row.customerId,
       }
     } else if (nextMine) {
+      const isAppt = nextMine.row.sourceKind === 'appointment'
       cta = {
         variant: 'atender',
-        metaLabel: `CITA ${formatTimeMx(nextMine.sortKey)}`,
+        metaLabel: isAppt ? `CITA ${formatTimeMx(nextMine.sortKey)}` : 'WALK-IN ASIGNADO',
         actionLabel: `Atender a ${nextMine.row.customerName}`,
         targetId: nextMine.row.sourceId,
         targetKind: nextMine.row.sourceKind,
