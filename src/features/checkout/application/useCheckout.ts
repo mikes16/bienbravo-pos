@@ -58,6 +58,12 @@ export function useCheckout() {
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
   const [categories, setCategories] = useState<Array<{ id: string; name: string; sortOrder: number }>>([])
   const [barbers, setBarbers] = useState<Barber[]>([])
+  // Tracks whether the initial Promise.all (catalog + barbers + register) has
+  // settled — success OR failure. CheckoutPage was conflating "no default
+  // barber" with "still loading", so an empty barbers list left the page on
+  // the skeleton forever. With this flag the page can show a real empty
+  // state once the load is done, regardless of what the backend returned.
+  const [loaded, setLoaded] = useState(false)
 
   const completeWalkInId = params.get('completeWalkInId')
   const completeAppointmentIdParam = params.get('completeAppointmentId')
@@ -141,6 +147,10 @@ export function useCheckout() {
       .catch(() => {
         if (cancelled) return
         setError('No se pudo cargar el catálogo. Reintenta.')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLoaded(true)
       })
     return () => {
       cancelled = true
@@ -295,5 +305,6 @@ export function useCheckout() {
     successSale,
     setSuccessSale,
     registerSessionId,
+    loaded,
   }
 }

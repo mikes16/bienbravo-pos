@@ -50,7 +50,10 @@ export function CheckoutPage() {
     )
   }
 
-  if (!defaultBarber) {
+  // Loading: only show the skeleton until the initial Promise.all settles.
+  // Without the loaded gate, an empty barbers list (or a query error) would
+  // leave the page spinning forever.
+  if (!ck.loaded) {
     return (
       <div className="flex h-full">
         <div className="flex flex-1 flex-col gap-4 px-6 py-5">
@@ -73,6 +76,29 @@ export function CheckoutPage() {
           <SkeletonRow heightPx={36} />
           <SkeletonRow heightPx={56} />
         </div>
+      </div>
+    )
+  }
+
+  // Loaded but no barbers — surface this so the operator can act on it
+  // instead of staring at a stuck screen. Common causes: location has no
+  // active barbers configured, or the load itself errored.
+  if (!defaultBarber) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-5 px-6 py-10">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bravo)]">
+          No se pudo abrir cobro
+        </p>
+        <p className="max-w-md text-center text-[15px] leading-snug text-[var(--color-bone)]">
+          {ck.error ?? 'No hay barberos activos en esta sucursal. Configura el roster o regresa a Hoy.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/hoy')}
+          className="cursor-pointer border border-[var(--color-leather-muted)] px-6 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)]"
+        >
+          ← Volver a Hoy
+        </button>
       </div>
     )
   }

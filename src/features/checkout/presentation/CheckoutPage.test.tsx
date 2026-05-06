@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CheckoutPage } from './CheckoutPage'
@@ -47,6 +47,20 @@ function makeRepos() {
   return repos
 }
 
+// Tap enough $500 bills on the cash counter to cover any test ticket. The
+// real PaymentSheet now blocks Confirmar until received >= total; without
+// this the integration tests click a disabled button and the sale never
+// fires. Plus order in CashCounter is $500/$200/$100/$50/$20/MONEDAS, so
+// inside the dialog index 0 is +$500. Scope to the dialog because the cart
+// line rows ALSO have "Aumentar cantidad" buttons that would otherwise win.
+async function payInCash(user: ReturnType<typeof userEvent.setup>, fiveHundredTaps: number = 2) {
+  const dialog = await screen.findByRole('dialog', { name: /pago/i })
+  for (let i = 0; i < fiveHundredTaps; i++) {
+    const plusButtons = within(dialog).getAllByRole('button', { name: /aumentar/i })
+    await user.click(plusButtons[0])
+  }
+}
+
 describe('CheckoutPage (integration)', () => {
   beforeEach(() => {
     window.localStorage.setItem('bb-pos-location-id', 'loc1')
@@ -66,8 +80,9 @@ describe('CheckoutPage (integration)', () => {
     // Open payment sheet via Cobrar CTA
     const cobrarBtn = await screen.findByRole('button', { name: /cobrar.*280/i })
     await user.click(cobrarBtn)
-    // Pick CASH
+    // Pick CASH and count enough bills to cover $280
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
     // Confirm
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
     // Mostrador fallback used (no customer selected)
@@ -113,9 +128,10 @@ describe('CheckoutPage (integration)', () => {
     const chipsAgain = screen.getAllByRole('button', { name: /cambiar barbero/i })
     await user.click(chipsAgain[chipsAgain.length - 1])
     await user.click(await screen.findByLabelText('Beto'))
-    // Cobrar
+    // Cobrar — 3 cortes = $840, two $500 bills cover it
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 2)
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
     await waitFor(() => {
       const call = (repos.checkout.createSale as ReturnType<typeof vi.fn>).mock.calls[0][0]
@@ -135,6 +151,7 @@ describe('CheckoutPage (integration)', () => {
     // Don't touch customer chip
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
     await waitFor(() => {
       expect(repos.checkout.findOrCreateMostradorCustomer).toHaveBeenCalled()
@@ -155,8 +172,10 @@ describe('CheckoutPage (integration)', () => {
     await user.click(screen.getAllByText('Shampoo')[0])
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
-    await waitFor(() => expect(screen.getByText(/stock insuficiente/i)).toBeInTheDocument())
+    // Error appears in both the PaymentSheet alert and the cart panel error region.
+    await waitFor(() => expect(screen.getAllByText(/stock insuficiente/i).length).toBeGreaterThan(0))
   })
 
   it('no open register session: shows error', async () => {
@@ -171,7 +190,9 @@ describe('CheckoutPage (integration)', () => {
     await user.click(screen.getAllByText('Corte')[0])
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
-    await waitFor(() => expect(screen.getByText(/no hay caja abierta/i)).toBeInTheDocument())
+    // Error appears in both the PaymentSheet alert and the cart panel error region.
+    await waitFor(() => expect(screen.getAllByText(/no hay caja abierta/i).length).toBeGreaterThan(0))
   })
 })
