@@ -12,6 +12,7 @@ function makeVm(overrides: Partial<HoyViewModel> = {}): HoyViewModel {
     rows: [],
     cta: { variant: 'nueva-venta', actionLabel: 'Nueva venta' },
     cajaIsOpen: true,
+    gate: null,
     ...overrides,
   }
 }
@@ -20,7 +21,7 @@ describe('HoyView', () => {
   it('renders greeting with first name only', () => {
     render(
       <MemoryRouter>
-        <HoyView vm={makeVm({ staffName: 'Eli Cruz García' })} onCtaClick={() => {}} onRowClick={() => {}} />
+        <HoyView vm={makeVm({ staffName: 'Eli Cruz García' })} onCtaClick={() => {}} onGateAction={() => {}} />
       </MemoryRouter>,
     )
     expect(screen.getByText(/eli/i)).toBeInTheDocument()
@@ -29,7 +30,7 @@ describe('HoyView', () => {
   it('renders commission amount with formatMoney', () => {
     render(
       <MemoryRouter>
-        <HoyView vm={makeVm()} onCtaClick={() => {}} onRowClick={() => {}} />
+        <HoyView vm={makeVm()} onCtaClick={() => {}} onGateAction={() => {}} />
       </MemoryRouter>,
     )
     expect(screen.getByText('$845')).toBeInTheDocument()
@@ -41,7 +42,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ commission: { amountCents: 84500, serviceCount: 5, loading: false, projectedCents: null } })}
           onCtaClick={() => {}}
-          onRowClick={() => {}}
+          onGateAction={() => {}}
         />
       </MemoryRouter>,
     )
@@ -54,7 +55,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, loading: false, projectedCents: null } })}
           onCtaClick={() => {}}
-          onRowClick={() => {}}
+          onGateAction={() => {}}
         />
       </MemoryRouter>,
     )
@@ -64,7 +65,7 @@ describe('HoyView', () => {
   it('renders empty list message when rows is empty', () => {
     render(
       <MemoryRouter>
-        <HoyView vm={makeVm({ rows: [] })} onCtaClick={() => {}} onRowClick={() => {}} />
+        <HoyView vm={makeVm({ rows: [] })} onCtaClick={() => {}} onGateAction={() => {}} />
       </MemoryRouter>,
     )
     expect(screen.getByText(/todavía no tienes movimiento|sin actividad/i)).toBeInTheDocument()
@@ -93,7 +94,7 @@ describe('HoyView', () => {
             ],
           })}
           onCtaClick={() => {}}
-          onRowClick={() => {}}
+          onGateAction={() => {}}
         />
       </MemoryRouter>,
     )
@@ -106,7 +107,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ cta: { variant: 'cobrar', actionLabel: 'Cobrar a Carlos' } })}
           onCtaClick={() => {}}
-          onRowClick={() => {}}
+          onGateAction={() => {}}
         />
       </MemoryRouter>,
     )
@@ -121,7 +122,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ cta: { variant: 'nueva-venta', actionLabel: 'Nueva venta' } })}
           onCtaClick={onCtaClick}
-          onRowClick={() => {}}
+          onGateAction={() => {}}
         />
       </MemoryRouter>,
     )
@@ -129,9 +130,7 @@ describe('HoyView', () => {
     expect(onCtaClick).toHaveBeenCalledTimes(1)
   })
 
-  it('row tap fires onRowClick with row id', async () => {
-    const onRowClick = vi.fn()
-    const user = userEvent.setup()
+  it('rows are info-only (not rendered as buttons)', () => {
     render(
       <MemoryRouter>
         <HoyView
@@ -154,12 +153,32 @@ describe('HoyView', () => {
             ],
           })}
           onCtaClick={() => {}}
-          onRowClick={onRowClick}
+          onGateAction={() => {}}
         />
       </MemoryRouter>,
     )
-    await user.click(screen.getByRole('button', { name: /pedro/i }))
-    expect(onRowClick).toHaveBeenCalledWith('r1')
+    // Pedro's name is on screen but it's not a clickable button — only the
+    // contextual CTA bar at the bottom is the interactive element.
+    expect(screen.getByText('Pedro')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /pedro/i })).toBeNull()
+  })
+
+  it('renders the gate when vm.gate is set, hiding the normal Hoy view', async () => {
+    const onGateAction = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <HoyView
+          vm={makeVm({ gate: { kind: 'clock-in' } })}
+          onCtaClick={() => {}}
+          onGateAction={onGateAction}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/inicia tu día/i)).toBeInTheDocument()
+    expect(screen.queryByText(/comisiones hoy/i)).toBeNull()
+    await user.click(screen.getByRole('button', { name: /reloj/i }))
+    expect(onGateAction).toHaveBeenCalledTimes(1)
   })
 
   it('shows loading state in commission when loading=true', () => {
@@ -168,7 +187,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, loading: true, projectedCents: null } })}
           onCtaClick={() => {}}
-          onRowClick={() => {}}
+          onGateAction={() => {}}
         />
       </MemoryRouter>,
     )

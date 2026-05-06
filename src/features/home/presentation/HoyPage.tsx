@@ -121,14 +121,17 @@ export function HoyPage() {
     }
   }, [vm, navigate])
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleRowClick = useCallback(
-    (_rowId: string) => {
-      // Future: pass rowId to checkout to preselect customer
-      navigate('/checkout')
-    },
-    [navigate],
-  )
+  const handleGateAction = useCallback(() => {
+    if (!vm?.gate) return
+    switch (vm.gate.kind) {
+      case 'clock-in':
+        navigate('/reloj')
+        break
+      case 'caja':
+        navigate('/caja')
+        break
+    }
+  }, [vm, navigate])
 
   if (!vm) {
     return (
@@ -143,5 +146,5 @@ export function HoyPage() {
     )
   }
 
-  return <HoyView vm={vm} onCtaClick={handleCtaClick} onRowClick={handleRowClick} />
+  return <HoyView vm={vm} onCtaClick={handleCtaClick} onGateAction={handleGateAction} />
 }

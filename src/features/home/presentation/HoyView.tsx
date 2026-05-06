@@ -1,12 +1,13 @@
 import { formatMoney } from '@/shared/lib/money'
 import { HoyRow } from './HoyRow'
 import { ContextualCTABar } from './ContextualCTABar'
+import { HoyGate } from './HoyGate'
 import type { HoyViewModel } from './deriveHoyViewModel'
 
 interface HoyViewProps {
   vm: HoyViewModel
   onCtaClick: () => void
-  onRowClick: (rowId: string) => void
+  onGateAction: () => void
 }
 
 function pluralizeServicios(n: number): string {
@@ -20,7 +21,11 @@ function commissionCaption(amountCents: number, serviceCount: number): string {
   return pluralizeServicios(serviceCount)
 }
 
-export function HoyView({ vm, onCtaClick, onRowClick }: HoyViewProps) {
+export function HoyView({ vm, onCtaClick, onGateAction }: HoyViewProps) {
+  if (vm.gate) {
+    return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
+  }
+
   const firstName = vm.staffName.split(' ')[0] ?? vm.staffName
 
   return (
@@ -54,11 +59,7 @@ export function HoyView({ vm, onCtaClick, onRowClick }: HoyViewProps) {
           </div>
         ) : (
           vm.rows.map((row) => (
-            <HoyRow
-              key={row.id}
-              {...row}
-              onClick={() => onRowClick(row.id)}
-            />
+            <HoyRow key={row.id} {...row} />
           ))
         )}
       </div>

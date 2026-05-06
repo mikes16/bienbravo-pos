@@ -34,12 +34,19 @@ export interface ContextualCTAData {
   targetId?: string
 }
 
+export type HoyGate =
+  | { kind: 'clock-in' }
+  | { kind: 'caja' }
+
 export interface HoyViewModel {
   staffName: string
   commission: { amountCents: number; serviceCount: number; loading: boolean; projectedCents: number | null }
   rows: HoyRowData[]
   cta: ContextualCTAData
   cajaIsOpen: boolean
+  // When set, Hoy is blocked by a missing prerequisite. Clock-in takes priority
+  // over caja: the operator must start their day before the cash register matters.
+  gate: HoyGate | null
 }
 
 function getInitials(name: string): string {
@@ -61,7 +68,17 @@ function minutesSince(iso: string): number {
 }
 
 export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
-  const { staffId, staffName, appointments, walkIns, commission, caja } = input
+  const { staffId, staffName, appointments, walkIns, clockEvents, commission, caja } = input
+
+  // Clock-in detection: latest event today, sorted ascending.
+  // Clocked-in iff the last event is CLOCK_IN. No events ⇒ not clocked in.
+  const sortedClock = [...clockEvents].sort((a, b) => a.at.localeCompare(b.at))
+  const lastClockEvent = sortedClock[sortedClock.length - 1]
+  const isClockedIn = lastClockEvent?.type === 'CLOCK_IN'
+
+  let gate: HoyGate | null = null
+  if (!isClockedIn) gate = { kind: 'clock-in' }
+  else if (!caja.isOpen) gate = { kind: 'caja' }
 
   const myAppts = appointments.filter((a) => a.staffUser?.id === staffId)
   const myWalkIns = walkIns.filter((w) => w.assignedStaffUser?.id === staffId)
@@ -218,5 +235,6 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     rows,
     cta,
     cajaIsOpen: caja.isOpen,
+    gate,
   }
 }

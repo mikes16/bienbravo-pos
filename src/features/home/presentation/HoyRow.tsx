@@ -13,7 +13,7 @@ export interface HoyRowProps {
   pillTone: 'serving' | 'appt' | 'walkin'
   sourceKind: 'appointment' | 'walk-in'
   sourceId: string
-  onClick: () => void
+  onClick?: () => void
 }
 
 export function HoyRow({
@@ -31,13 +31,19 @@ export function HoyRow({
   const isActive = kind === 'active'
   const isNext = kind === 'next'
   const isQueue = kind === 'queue'
+  const isInteractive = typeof onClick === 'function'
+
+  const Tag = isInteractive ? 'button' : 'div'
+  const interactiveProps = isInteractive
+    ? ({ type: 'button' as const, onClick })
+    : {}
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <Tag
+      {...interactiveProps}
       className={cn(
-        'grid w-full cursor-pointer grid-cols-[100px_56px_1fr_auto] items-center gap-4 border-b border-[var(--color-leather-muted)]/40 px-5 py-3 text-left transition-colors hover:bg-white/[0.02]',
+        'grid w-full grid-cols-[100px_56px_1fr_auto] items-center gap-4 border-b border-[var(--color-leather-muted)]/40 px-5 py-3 text-left transition-colors',
+        isInteractive && 'cursor-pointer hover:bg-white/[0.02]',
         isActive && 'border-l-[3px] border-l-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.06] pl-[calc(1.25rem-3px)]',
         isNext && 'border-l-[2px] border-l-[var(--color-leather)] bg-[var(--color-cuero-viejo)]/30 pl-[calc(1.25rem-2px)]',
         isQueue && 'bg-[var(--color-cuero-viejo)]/10',
@@ -102,6 +108,6 @@ export function HoyRow({
       >
         {pillLabel}
       </span>
-    </button>
+    </Tag>
   )
 }
