@@ -3,7 +3,7 @@ import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
 import { CashChangeHelper } from './CashChangeHelper'
-import { type CashCounts, emptyCashCounts } from '@/shared/cash/cashCounts'
+import { type CashCounts, emptyCashCounts, totalCountedCents } from '@/shared/cash/cashCounts'
 import { TipInput } from './TipInput'
 
 type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER'
@@ -33,7 +33,13 @@ export function PaymentSheet({ open, totalCents, onClose, onConfirm }: PaymentSh
 
   if (!open) return null
 
-  const canConfirm = method !== null
+  // Cash payments must cover the total exactly or higher — anything less is a
+  // shortfall the operator has to hand the customer back as "debes $X". The
+  // POS doesn't model partial cash payments, so the safer rule is to lock the
+  // confirm button until the bills counted reach the total.
+  const cashReceivedCents = totalCountedCents(cashCounts)
+  const cashIsShort = method === 'CASH' && cashReceivedCents < totalCents
+  const canConfirm = method !== null && !cashIsShort
 
   return (
     <div

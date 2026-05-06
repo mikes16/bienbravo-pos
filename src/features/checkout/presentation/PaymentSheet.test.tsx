@@ -46,10 +46,34 @@ describe('PaymentSheet', () => {
     const user = userEvent.setup()
     render(<PaymentSheet open totalCents={50000} onClose={() => {}} onConfirm={onConfirm} />)
     await user.click(screen.getByRole('button', { name: /efectivo/i }))
-    // Tap +$500 once to make the form valid (received >= 0 is fine)
+    // Tap +$500 once to cover the total exactly.
     const plusButtons = screen.getAllByRole('button', { name: /aumentar/i })
     await user.click(plusButtons[0])
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
+    expect(onConfirm).toHaveBeenCalledWith({ method: 'CASH', tipCents: 0 })
+  })
+
+  it('Confirmar is disabled for CASH when received < total', async () => {
+    const onConfirm = vi.fn()
+    const user = userEvent.setup()
+    render(<PaymentSheet open totalCents={81000} onClose={() => {}} onConfirm={onConfirm} />)
+    await user.click(screen.getByRole('button', { name: /efectivo/i }))
+    // No bills counted yet — confirm must be locked.
+    const confirmBtn = screen.getByRole('button', { name: /confirmar/i })
+    expect(confirmBtn).toBeDisabled()
+
+    // Add $500 — still short of $810.
+    const plusButtons = screen.getAllByRole('button', { name: /aumentar/i })
+    await user.click(plusButtons[0])
+    expect(confirmBtn).toBeDisabled()
+    await user.click(confirmBtn)
+    expect(onConfirm).not.toHaveBeenCalled()
+
+    // Two more $200 → $900 received, now over $810. Confirm unlocks.
+    await user.click(plusButtons[1])
+    await user.click(plusButtons[1])
+    expect(confirmBtn).not.toBeDisabled()
+    await user.click(confirmBtn)
     expect(onConfirm).toHaveBeenCalledWith({ method: 'CASH', tipCents: 0 })
   })
 })

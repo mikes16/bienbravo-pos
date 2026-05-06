@@ -13,16 +13,39 @@ describe('CashChangeHelper', () => {
     expect(screen.getByText('MONEDAS')).toBeInTheDocument()
   })
 
-  it('renders 0 change when received < total', () => {
+  it('renders Falta with the missing amount when received < total', () => {
     render(
       <CashChangeHelper
         totalCents={81000}
-        counts={{ ...emptyCashCounts(), d500: 1 }} // $500 received
+        counts={{ ...emptyCashCounts(), d500: 1 }} // $500 received, $810 owed → falta $310
         onCountsChange={() => {}}
       />,
     )
+    expect(screen.queryByText('Cambio')).not.toBeInTheDocument()
+    const faltaRow = screen.getByText('Falta').parentElement
+    expect(faltaRow).toHaveTextContent('$310')
+  })
+
+  it('flips Falta → Cambio once received reaches the total', () => {
+    const { rerender } = render(
+      <CashChangeHelper
+        totalCents={50000}
+        counts={{ ...emptyCashCounts(), d500: 1 }} // exactly $500
+        onCountsChange={() => {}}
+      />,
+    )
+    expect(screen.queryByText('Falta')).not.toBeInTheDocument()
     const cambioRow = screen.getByText('Cambio').parentElement
     expect(cambioRow).toHaveTextContent('$0')
+
+    rerender(
+      <CashChangeHelper
+        totalCents={50000}
+        counts={emptyCashCounts()}
+        onCountsChange={() => {}}
+      />,
+    )
+    expect(screen.getByText('Falta')).toBeInTheDocument()
   })
 
   it('renders correct change when received > total', () => {
