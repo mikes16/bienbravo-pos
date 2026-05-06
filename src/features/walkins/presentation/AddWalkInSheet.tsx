@@ -10,8 +10,6 @@ type PickerSelection =
   | { kind: 'service'; id: string }
   | { kind: 'combo'; id: string }
 
-const COMBOS_CATEGORY_ID = '__combos__'
-
 interface AddWalkInSheetProps {
   open: boolean
   locationId: string
@@ -426,13 +424,12 @@ function ServicePicker({
   }, [services, combos, categories])
 
   const filteredServices = useMemo(() => {
-    if (selectedCategoryId === COMBOS_CATEGORY_ID) return []
     if (selectedCategoryId === null) return services
     return services.filter((s) => s.categoryId === selectedCategoryId)
   }, [services, selectedCategoryId])
 
   const filteredCombos = useMemo(() => {
-    if (selectedCategoryId === null || selectedCategoryId === COMBOS_CATEGORY_ID) return combos
+    if (selectedCategoryId === null) return combos
     return combos.filter((c) => c.effectiveCategoryIds.includes(selectedCategoryId))
   }, [combos, selectedCategoryId])
 
@@ -440,75 +437,81 @@ function ServicePicker({
   const totalShown = filteredServices.length + filteredCombos.length
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
         Servicio
       </label>
 
-      {/* Category chips */}
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-        <CategoryChip
+      {/* Filter tabs — flat text + bottom rule, not boxed. Sits under a hairline
+          divider so the eye reads it as a meta-control above the content area. */}
+      <div className="flex gap-5 overflow-x-auto border-b border-[var(--color-leather-muted)]/40">
+        <FilterTab
           label="Todo"
           active={selectedCategoryId === null}
           onClick={() => onCategoryChange(null)}
         />
         {visibleCategories.map((c) => (
-          <CategoryChip
+          <FilterTab
             key={c.id}
             label={c.name}
             active={selectedCategoryId === c.id}
             onClick={() => onCategoryChange(c.id)}
           />
         ))}
-        {combos.length > 0 && (
-          <CategoryChip
-            label="Combos"
-            active={selectedCategoryId === COMBOS_CATEGORY_ID}
-            onClick={() => onCategoryChange(COMBOS_CATEGORY_ID)}
-          />
-        )}
       </div>
 
-      {/* Cards */}
+      {/* Cards, grouped by kind so the visual structure tells the operator
+          "these are services, those are combos" without adding badges. */}
       {isLoading ? (
         <p className="text-[12px] text-[var(--color-bone-muted)]">Cargando servicios…</p>
       ) : totalShown === 0 ? (
-        <p className="text-[12px] text-[var(--color-bone-muted)]">Sin opciones en esta categoría.</p>
+        <p className="py-4 text-[12px] text-[var(--color-bone-muted)]">Sin opciones en esta categoría.</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {filteredServices.map((s) => {
-            const active = selection?.kind === 'service' && selection.id === s.id
-            return (
-              <PickerCard
-                key={`svc-${s.id}`}
-                title={s.name}
-                meta={`${s.durationMin} min`}
-                active={active}
-                onClick={() => onSelectionChange({ kind: 'service', id: s.id })}
-              />
-            )
-          })}
-          {filteredCombos.map((c) => {
-            const active = selection?.kind === 'combo' && selection.id === c.id
-            const dur = comboDurationMin(c, services)
-            return (
-              <PickerCard
-                key={`combo-${c.id}`}
-                title={c.name}
-                meta={dur > 0 ? `${dur} min` : 'Combo'}
-                eyebrow="COMBO"
-                active={active}
-                onClick={() => onSelectionChange({ kind: 'combo', id: c.id })}
-              />
-            )
-          })}
-        </div>
+        <>
+          {filteredServices.length > 0 && (
+            <Section label="Servicios">
+              <div className="grid grid-cols-2 gap-2">
+                {filteredServices.map((s) => {
+                  const active = selection?.kind === 'service' && selection.id === s.id
+                  return (
+                    <PickerCard
+                      key={`svc-${s.id}`}
+                      title={s.name}
+                      meta={`${s.durationMin} min`}
+                      active={active}
+                      onClick={() => onSelectionChange({ kind: 'service', id: s.id })}
+                    />
+                  )
+                })}
+              </div>
+            </Section>
+          )}
+          {filteredCombos.length > 0 && (
+            <Section label="Combos" labelTone="bravo">
+              <div className="grid grid-cols-2 gap-2">
+                {filteredCombos.map((c) => {
+                  const active = selection?.kind === 'combo' && selection.id === c.id
+                  const dur = comboDurationMin(c, services)
+                  return (
+                    <PickerCard
+                      key={`combo-${c.id}`}
+                      title={c.name}
+                      meta={dur > 0 ? `${dur} min` : 'Combo'}
+                      active={active}
+                      onClick={() => onSelectionChange({ kind: 'combo', id: c.id })}
+                    />
+                  )
+                })}
+              </div>
+            </Section>
+          )}
+        </>
       )}
     </div>
   )
 }
 
-function CategoryChip({
+function FilterTab({
   label,
   active,
   onClick,
@@ -518,10 +521,10 @@ function CategoryChip({
       type="button"
       onClick={onClick}
       className={cn(
-        'shrink-0 cursor-pointer border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-colors',
+        'shrink-0 cursor-pointer border-b-2 pb-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-colors',
         active
-          ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
-          : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
+          ? '-mb-px border-[var(--color-bravo)] text-[var(--color-bone)]'
+          : 'border-transparent text-[var(--color-bone-muted)] hover:text-[var(--color-bone)]',
       )}
     >
       {label}
@@ -529,29 +532,47 @@ function CategoryChip({
   )
 }
 
+function Section({
+  label,
+  labelTone = 'muted',
+  children,
+}: {
+  label: string
+  labelTone?: 'muted' | 'bravo'
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span
+        className={cn(
+          'font-mono text-[9px] font-bold uppercase tracking-[0.2em]',
+          labelTone === 'bravo' ? 'text-[var(--color-bravo)]' : 'text-[var(--color-bone-muted)]',
+        )}
+      >
+        {label}
+      </span>
+      {children}
+    </div>
+  )
+}
+
 function PickerCard({
   title,
   meta,
-  eyebrow,
   active,
   onClick,
-}: { title: string; meta: string; eyebrow?: string; active: boolean; onClick: () => void }) {
+}: { title: string; meta: string; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'flex cursor-pointer flex-col items-start gap-0.5 border px-3 py-2 text-left',
+        'flex cursor-pointer flex-col items-start gap-0.5 border px-3 py-2 text-left transition-colors',
         active
           ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08]'
-          : 'border-[var(--color-leather-muted)] hover:bg-[var(--color-cuero-viejo)]',
+          : 'border-[var(--color-leather-muted)]/60 hover:border-[var(--color-leather-muted)] hover:bg-[var(--color-cuero-viejo)]',
       )}
     >
-      {eyebrow && (
-        <span className="font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-[var(--color-bravo)]">
-          {eyebrow}
-        </span>
-      )}
       <span className="text-[13px] font-bold text-[var(--color-bone)]">{title}</span>
       <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">
         {meta}
