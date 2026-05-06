@@ -17,6 +17,7 @@ export interface HoyRowData {
   kind: 'active' | 'next' | 'queue' | 'pending'
   timeLabel: string
   customerName: string
+  customerId: string | null
   customerPhotoUrl: string | null
   customerInitials: string
   serviceLabel: string
@@ -32,6 +33,8 @@ export interface ContextualCTAData {
   actionLabel: string
   variant: 'cobrar' | 'atender' | 'abrir-caja' | 'nueva-venta'
   targetId?: string
+  targetKind?: 'appointment' | 'walk-in'
+  targetCustomerId?: string | null
 }
 
 export type HoyGate =
@@ -90,7 +93,8 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
   const candidates: Candidate[] = []
 
   for (const a of myAppts) {
-    const customer = (a.customer ?? null) as { fullName?: string; photoUrl?: string | null } | null
+    const customer = (a.customer ?? null) as { id?: string; fullName?: string; photoUrl?: string | null } | null
+    const customerId = customer?.id ?? null
     const customerName = customer?.fullName ?? 'Cliente'
     const photo = customer?.photoUrl ?? null
     const isInService = a.status === 'IN_SERVICE'
@@ -105,6 +109,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         kind: isInService ? 'active' : 'pending',
         timeLabel,
         customerName,
+        customerId,
         customerPhotoUrl: photo,
         customerInitials: getInitials(customerName),
         serviceLabel: a.items[0]?.label ?? 'Servicio',
@@ -122,6 +127,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
 
   for (const w of myWalkIns) {
     const customer = w.customer ?? null
+    const customerId = customer?.id ?? null
     const customerName = customer?.fullName ?? w.customerName ?? 'Walk-in'
     const isAssigned = w.status === 'ASSIGNED'
     const minutes = minutesSince(w.createdAt)
@@ -133,6 +139,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         kind: isAssigned ? 'active' : 'pending',
         timeLabel,
         customerName,
+        customerId,
         customerPhotoUrl: null,
         customerInitials: getInitials(customerName),
         serviceLabel: 'Walk-in',
@@ -150,6 +157,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
 
   for (const w of queueWalkIns) {
     const customer = w.customer ?? null
+    const customerId = customer?.id ?? null
     const customerName = customer?.fullName ?? w.customerName ?? 'Walk-in'
     const minutes = minutesSince(w.createdAt)
 
@@ -159,6 +167,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         kind: 'queue',
         timeLabel: 'EN COLA',
         customerName,
+        customerId,
         customerPhotoUrl: null,
         customerInitials: getInitials(customerName),
         serviceLabel: 'Walk-in',
@@ -204,6 +213,8 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         metaLabel: `EN SERVICIO · ${minutes} MIN`,
         actionLabel: `Cobrar a ${active.row.customerName}`,
         targetId: active.row.sourceId,
+        targetKind: active.row.sourceKind,
+        targetCustomerId: active.row.customerId,
       }
     } else if (nextMine) {
       cta = {
@@ -211,6 +222,8 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         metaLabel: `CITA ${formatTimeMx(nextMine.sortKey)}`,
         actionLabel: `Atender a ${nextMine.row.customerName}`,
         targetId: nextMine.row.sourceId,
+        targetKind: nextMine.row.sourceKind,
+        targetCustomerId: nextMine.row.customerId,
       }
     } else if (queueHead) {
       cta = {
@@ -218,6 +231,8 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         metaLabel: 'WALK-IN EN COLA',
         actionLabel: `Atender al siguiente: ${queueHead.row.customerName}`,
         targetId: queueHead.row.sourceId,
+        targetKind: queueHead.row.sourceKind,
+        targetCustomerId: queueHead.row.customerId,
       }
     } else {
       cta = { variant: 'nueva-venta', actionLabel: 'Nueva venta' }

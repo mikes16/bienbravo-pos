@@ -113,11 +113,26 @@ export function HoyPage() {
       case 'abrir-caja':
         navigate('/caja')
         break
-      case 'cobrar':
-      case 'atender':
       case 'nueva-venta':
         navigate('/checkout')
         break
+      case 'cobrar':
+      case 'atender': {
+        const { targetId, targetKind, targetCustomerId } = vm.cta
+        if (!targetId || !targetKind) {
+          navigate('/checkout')
+          break
+        }
+        const params = new URLSearchParams()
+        if (targetKind === 'walk-in') {
+          params.set('completeWalkInId', targetId)
+        } else {
+          params.set('completeAppointmentId', targetId)
+        }
+        if (targetCustomerId) params.set('customerId', targetCustomerId)
+        navigate(`/checkout?${params.toString()}`)
+        break
+      }
     }
   }, [vm, navigate])
 

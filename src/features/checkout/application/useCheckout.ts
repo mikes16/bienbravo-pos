@@ -60,8 +60,13 @@ export function useCheckout() {
   const [barbers, setBarbers] = useState<Barber[]>([])
 
   const completeWalkInId = params.get('completeWalkInId')
+  const completeAppointmentIdParam = params.get('completeAppointmentId')
   const customerIdParam = params.get('customerId')
   const [context, setContext] = useState<CheckoutContext | null>(null)
+  // Tracked separately from `context` because the appointment-completion target
+  // composes with a preselected customer (via customerId param) — they're not
+  // mutually exclusive the way 'walk-in' vs 'preselected-customer' are.
+  const [completeAppointmentId, setCompleteAppointmentId] = useState<string | null>(null)
 
   const [cartState, dispatch] = useReducer(cartReducer, initialCart(viewer?.staff?.id ?? ''))
 
@@ -81,7 +86,8 @@ export function useCheckout() {
     } else {
       setContext({ kind: 'free' })
     }
-  }, [completeWalkInId, customerIdParam])
+    setCompleteAppointmentId(completeAppointmentIdParam)
+  }, [completeWalkInId, customerIdParam, completeAppointmentIdParam])
 
   // Load catalog + barbers + active register session
   useEffect(() => {
@@ -200,7 +206,7 @@ export function useCheckout() {
         customerId,
         staffUserId: cartState.defaultBarberId || null,
         completeWalkInId: context?.kind === 'walk-in' ? context.walkInId : null,
-        completeAppointmentId: null,
+        completeAppointmentId,
         items: cartState.lines.map((l) => ({
           serviceId: l.kind === 'service' ? l.itemId : null,
           productId: l.kind === 'product' ? l.itemId : null,
