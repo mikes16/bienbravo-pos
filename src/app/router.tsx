@@ -1,7 +1,5 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import { ShoppingCartIcon, ClockIcon, CalendarIcon, SeatReclineIcon, WalletIcon, AnalyticsIcon } from '@/shared/pos-ui/GoogleIcon.tsx'
-import type { FeatureManifest } from './feature.types.ts'
 import { PosShell } from './PosShell.tsx'
 import { LockPage } from '@/features/auth/index.ts'
 import { HoyPage } from '@/features/home/index.ts'
@@ -24,15 +22,6 @@ function lazyRoute(Component: React.LazyExoticComponent<React.ComponentType>) {
     </Suspense>
   )
 }
-
-export const features: FeatureManifest[] = [
-  { id: 'checkout', label: 'Nueva Venta', icon: ShoppingCartIcon, path: '/checkout', permission: 'pos.sale.create', order: 1 },
-  { id: 'agenda', label: 'Mi Agenda', icon: CalendarIcon, path: '/agenda', permission: 'appointments.read', order: 2 },
-  { id: 'walkins', label: 'Walk-ins', icon: SeatReclineIcon, path: '/walkins', permission: 'walkins.manage', order: 3 },
-  { id: 'register', label: 'Caja', icon: WalletIcon, path: '/caja', permission: 'pos.register.manage', order: 4 },
-  { id: 'clock', label: 'Reloj', icon: ClockIcon, path: '/clock', permission: 'timeclock.manage', order: 5 },
-  { id: 'my-day', label: 'Mi Día', icon: AnalyticsIcon, path: '/my-day', order: 6 },
-]
 
 export const router = createBrowserRouter([
   { path: '/', element: <LockPage /> },
