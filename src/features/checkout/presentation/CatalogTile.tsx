@@ -22,20 +22,21 @@ export function CatalogTile({ kind, name, priceCents, stockQty, imageUrl, onAdd 
       disabled={isOutOfStock}
       onClick={onAdd}
       className={cn(
-        'relative flex aspect-square w-full flex-col items-start justify-between overflow-hidden border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] p-3 text-left transition-colors',
+        'relative flex w-full flex-col items-start justify-between overflow-hidden border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] p-3 text-left transition-colors',
         isOutOfStock
           ? 'cursor-not-allowed opacity-50'
           : 'cursor-pointer hover:border-[var(--color-bravo)]',
       )}
-      style={
-        imageUrl
+      style={{
+        aspectRatio: '1 / 1',
+        ...(imageUrl
           ? {
               backgroundImage: `url(${encodeURI(imageUrl)})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }
-          : undefined
-      }
+          : {}),
+      }}
     >
       <div className="flex flex-col gap-1">
         {kind === 'combo' && (
