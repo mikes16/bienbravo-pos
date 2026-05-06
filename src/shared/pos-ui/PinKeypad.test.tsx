@@ -57,4 +57,38 @@ describe('PinKeypad', () => {
     expect(onComplete).toHaveBeenCalledTimes(1)
     expect(onComplete).toHaveBeenCalledWith('1234')
   })
+
+  it('accepts physical-keyboard digits + Backspace', async () => {
+    const onComplete = vi.fn()
+    const user = userEvent.setup()
+    render(<PinKeypad length={4} onComplete={onComplete} />)
+    // 1 → 12 → 123 → backspace → 12 → 122 → 1224 (complete)
+    await user.keyboard('123{Backspace}24')
+    expect(onComplete).toHaveBeenCalledTimes(1)
+    expect(onComplete).toHaveBeenCalledWith('1224')
+  })
+
+  it('does not accept keyboard input when disabled', async () => {
+    const onComplete = vi.fn()
+    const user = userEvent.setup()
+    render(<PinKeypad length={4} onComplete={onComplete} disabled />)
+    await user.keyboard('1234')
+    expect(onComplete).not.toHaveBeenCalled()
+  })
+
+  it('skips keyboard input when an input element is focused', async () => {
+    const onComplete = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <div>
+        <input data-testid="other" />
+        <PinKeypad length={4} onComplete={onComplete} />
+      </div>,
+    )
+    const input = screen.getByTestId('other') as HTMLInputElement
+    input.focus()
+    await user.keyboard('1234')
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(input.value).toBe('1234')
+  })
 })

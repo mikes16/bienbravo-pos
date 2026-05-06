@@ -56,8 +56,8 @@ export function PinEntryView({
         </p>
       </div>
 
-      <div className={submitting ? 'pointer-events-none opacity-50 transition-opacity' : 'transition-opacity'}>
-        <PinKeypad length={4} onComplete={handleComplete} />
+      <div className={submitting ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
+        <PinKeypad length={4} onComplete={handleComplete} disabled={submitting} />
       </div>
 
       {error && (
