@@ -53,6 +53,36 @@ describe('PaymentSheet', () => {
     expect(onConfirm).toHaveBeenCalledWith({ method: 'CASH', tipCents: 0 })
   })
 
+  it('renders the API error inline and flips the CTA to Reintentar', () => {
+    render(
+      <PaymentSheet
+        open
+        totalCents={50000}
+        error="Este walk-in ya fue cobrado. Recarga la pantalla y selecciona otro."
+        onClose={() => {}}
+        onConfirm={() => {}}
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(/walk-in ya fue cobrado/i)
+    expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument()
+  })
+
+  it('hides the error region while a new submit is in flight', () => {
+    render(
+      <PaymentSheet
+        open
+        totalCents={50000}
+        error="Fallo previo"
+        submitting
+        onClose={() => {}}
+        onConfirm={() => {}}
+      />,
+    )
+    // The alert should be suppressed while we're already retrying.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /procesando/i })).toBeInTheDocument()
+  })
+
   it('shows Procesando… and locks the CTA while submitting', async () => {
     const onConfirm = vi.fn()
     render(

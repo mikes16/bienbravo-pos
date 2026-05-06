@@ -22,6 +22,12 @@ interface PaymentSheetProps {
    * operator never wonders whether their tap landed.
    */
   submitting?: boolean
+  /**
+   * Last submit error surfaced by the checkout hook. Rendered inline above
+   * the confirm CTA — the cart-panel error region is hidden behind this
+   * modal, so the sheet has to show its own copy or the failure is silent.
+   */
+  error?: string | null
   onClose: () => void
   onConfirm: (input: PaymentInput) => void
 }
@@ -32,7 +38,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   TRANSFER: 'Transferencia',
 }
 
-export function PaymentSheet({ open, totalCents, submitting = false, onClose, onConfirm }: PaymentSheetProps) {
+export function PaymentSheet({ open, totalCents, submitting = false, error = null, onClose, onConfirm }: PaymentSheetProps) {
   const [method, setMethod] = useState<PaymentMethod | null>(null)
   const [cashCounts, setCashCounts] = useState<CashCounts>(emptyCashCounts())
   const [tipCents, setTipCents] = useState(0)
@@ -106,6 +112,18 @@ export function PaymentSheet({ open, totalCents, submitting = false, onClose, on
           <TipInput totalCents={totalCents} tipCents={tipCents} onChange={setTipCents} />
         )}
 
+        {error && !submitting && (
+          <div
+            role="alert"
+            className="mt-4 border border-[var(--color-bravo)]/50 bg-[var(--color-bravo)]/[0.08] px-4 py-3"
+          >
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bravo)]">
+              No se pudo cobrar
+            </p>
+            <p className="mt-1 whitespace-pre-line text-[13px] text-[var(--color-bone)]">{error}</p>
+          </div>
+        )}
+
         <div className="mt-4">
           <TouchButton
             variant="primary"
@@ -123,6 +141,8 @@ export function PaymentSheet({ open, totalCents, submitting = false, onClose, on
                 />
                 Procesando…
               </span>
+            ) : error ? (
+              'Reintentar pago'
             ) : (
               'Confirmar pago'
             )}
