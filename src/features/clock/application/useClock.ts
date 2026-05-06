@@ -41,25 +41,40 @@ export interface ShiftStatus {
   statusLabel: string
 }
 
+function isForbidden(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /forbidden|unauthorized|not authorized|no autorizad/i.test(msg)
+}
+
 export function useClock(staffUserId: string | null, locationId: string | null) {
   const { clock } = useRepositories()
   const [events, setEvents] = useState<TimeClockEvent[]>([])
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // True when the API rejected the events/templates queries with Forbidden,
+  // i.e. the barber isn't assigned to this location (a setup task for the
+  // admin, not a transient runtime error).
+  const [notAssignedHere, setNotAssignedHere] = useState(false)
 
   const refresh = useCallback(() => {
     if (!staffUserId || !locationId) return
     const d = todayISO()
     setLoading(true)
     setError(null)
+    setNotAssignedHere(false)
     // Independent fetches: events and shift templates fail / succeed for
-    // different reasons (permissions vs setup), and a missing shift template is
-    // not a hard error — it just means the admin hasn't assigned a schedule yet.
+    // different reasons (permissions vs setup). A missing shift template is
+    // not a hard error — it just means the admin hasn't assigned a schedule
+    // yet. Forbidden on either query means the barber isn't a member of this
+    // location — show a setup hint, not a generic failure banner.
     void Promise.allSettled([
       clock.getEvents(staffUserId, locationId, d, d),
       clock.getShiftTemplates(staffUserId, locationId),
     ]).then(([evtsRes, templatesRes]) => {
+      const eventsForbidden = evtsRes.status === 'rejected' && isForbidden(evtsRes.reason)
+      const templatesForbidden = templatesRes.status === 'rejected' && isForbidden(templatesRes.reason)
+
       if (evtsRes.status === 'fulfilled') {
         setEvents(evtsRes.value)
       } else {
@@ -67,8 +82,10 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
           // eslint-disable-next-line no-console
           console.error('[useClock] getEvents failed', evtsRes.reason)
         }
-        // Events are critical — without them we can't tell clock-in state. Surface as an error.
-        setError('No se pudo cargar el historial. Reintenta.')
+        setEvents([])
+        if (!eventsForbidden) {
+          setError('No se pudo cargar el historial. Reintenta.')
+        }
       }
       if (templatesRes.status === 'fulfilled') {
         setShiftTemplates(templatesRes.value)
@@ -77,9 +94,11 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
           // eslint-disable-next-line no-console
           console.error('[useClock] getShiftTemplates failed', templatesRes.reason)
         }
-        // Templates are optional — fall back to empty so the page still works
-        // and the "sin turno programado" guidance kicks in.
         setShiftTemplates([])
+      }
+
+      if (eventsForbidden || templatesForbidden) {
+        setNotAssignedHere(true)
       }
       setLoading(false)
     })
@@ -168,5 +187,5 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     }
   }, [clock, locationId, refresh])
 
-  return { events, isClockedIn, loading, error, doClockIn, doClockOut, refresh, shiftStatus }
+  return { events, isClockedIn, loading, error, notAssignedHere, doClockIn, doClockOut, refresh, shiftStatus }
 }

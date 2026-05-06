@@ -17,7 +17,7 @@ function formatTimeMx(iso: string): string {
 export function ClockPage() {
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
-  const { events, isClockedIn, loading, error, doClockIn, doClockOut, shiftStatus } = useClock(
+  const { events, isClockedIn, loading, error, notAssignedHere, doClockIn, doClockOut, shiftStatus } = useClock(
     viewer?.staff?.id ?? null,
     locationId,
   )
@@ -53,6 +53,17 @@ export function ClockPage() {
       {error && (
         <div role="alert" className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
           <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
+        </div>
+      )}
+
+      {notAssignedHere && (
+        <div role="status" className="border border-[var(--color-leather-muted)]/40 bg-[var(--color-cuero-viejo)]/40 px-4 py-3">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+            Cuenta sin acceso aquí
+          </p>
+          <p className="mt-1 text-[13px] leading-snug text-[var(--color-bone)]">
+            Esta cuenta aún no está dada de alta como barbero en esta sucursal. Pídele al admin que te agregue al equipo y te asigne tu horario antes de marcar entrada.
+          </p>
         </div>
       )}
 
@@ -92,6 +103,7 @@ export function ClockPage() {
       <TouchButton
         variant="primary"
         size="primary"
+        disabled={notAssignedHere}
         onClick={isClockedIn ? doClockOut : doClockIn}
         className="rounded-none uppercase tracking-[0.06em]"
       >
