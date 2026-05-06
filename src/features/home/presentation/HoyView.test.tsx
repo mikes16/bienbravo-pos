@@ -21,7 +21,7 @@ describe('HoyView', () => {
   it('renders greeting with first name only', () => {
     render(
       <MemoryRouter>
-        <HoyView vm={makeVm({ staffName: 'Eli Cruz García' })} onCtaClick={() => {}} onGateAction={() => {}} />
+        <HoyView vm={makeVm({ staffName: 'Eli Cruz García' })} onCtaClick={() => {}} onGateAction={() => {}} onAddWalkIn={() => {}} />
       </MemoryRouter>,
     )
     expect(screen.getByText(/eli/i)).toBeInTheDocument()
@@ -30,7 +30,7 @@ describe('HoyView', () => {
   it('renders commission amount with formatMoney', () => {
     render(
       <MemoryRouter>
-        <HoyView vm={makeVm()} onCtaClick={() => {}} onGateAction={() => {}} />
+        <HoyView vm={makeVm()} onCtaClick={() => {}} onGateAction={() => {}} onAddWalkIn={() => {}} />
       </MemoryRouter>,
     )
     expect(screen.getByText('$845')).toBeInTheDocument()
@@ -42,7 +42,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ commission: { amountCents: 84500, serviceCount: 5, loading: false, projectedCents: null } })}
           onCtaClick={() => {}}
-          onGateAction={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
@@ -55,7 +55,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, loading: false, projectedCents: null } })}
           onCtaClick={() => {}}
-          onGateAction={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
@@ -65,7 +65,7 @@ describe('HoyView', () => {
   it('renders empty list message when rows is empty', () => {
     render(
       <MemoryRouter>
-        <HoyView vm={makeVm({ rows: [] })} onCtaClick={() => {}} onGateAction={() => {}} />
+        <HoyView vm={makeVm({ rows: [] })} onCtaClick={() => {}} onGateAction={() => {}} onAddWalkIn={() => {}} />
       </MemoryRouter>,
     )
     expect(screen.getByText(/todavía no tienes movimiento|sin actividad/i)).toBeInTheDocument()
@@ -95,7 +95,7 @@ describe('HoyView', () => {
             ],
           })}
           onCtaClick={() => {}}
-          onGateAction={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
@@ -108,7 +108,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ cta: { variant: 'cobrar', actionLabel: 'Cobrar a Carlos' } })}
           onCtaClick={() => {}}
-          onGateAction={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
@@ -123,7 +123,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ cta: { variant: 'nueva-venta', actionLabel: 'Nueva venta' } })}
           onCtaClick={onCtaClick}
-          onGateAction={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
@@ -154,7 +154,7 @@ describe('HoyView', () => {
             ],
           })}
           onCtaClick={() => {}}
-          onGateAction={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
@@ -172,7 +172,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ gate: { kind: 'clock-in' } })}
           onCtaClick={() => {}}
-          onGateAction={onGateAction}
+          onGateAction={onGateAction} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
@@ -188,7 +188,7 @@ describe('HoyView', () => {
         <HoyView
           vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, loading: true, projectedCents: null } })}
           onCtaClick={() => {}}
-          onGateAction={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )

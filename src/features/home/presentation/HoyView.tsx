@@ -8,6 +8,7 @@ interface HoyViewProps {
   vm: HoyViewModel
   onCtaClick: () => void
   onGateAction: () => void
+  onAddWalkIn: () => void
 }
 
 function pluralizeServicios(n: number): string {
@@ -21,7 +22,7 @@ function commissionCaption(amountCents: number, serviceCount: number): string {
   return pluralizeServicios(serviceCount)
 }
 
-export function HoyView({ vm, onCtaClick, onGateAction }: HoyViewProps) {
+export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn }: HoyViewProps) {
   if (vm.gate) {
     return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
   }
@@ -48,6 +49,19 @@ export function HoyView({ vm, onCtaClick, onGateAction }: HoyViewProps) {
             {commissionCaption(vm.commission.amountCents, vm.commission.serviceCount)}
           </span>
         </div>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-leather-muted)]/40 px-5 py-2.5">
+        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+          Hoy
+        </span>
+        <button
+          type="button"
+          onClick={onAddWalkIn}
+          className="cursor-pointer font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bravo)] hover:text-[var(--color-bone)]"
+        >
+          + Agregar walk-in
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto">

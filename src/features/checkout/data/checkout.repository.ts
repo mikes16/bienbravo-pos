@@ -109,6 +109,17 @@ const RESOLVE_SERVICE_PRICE_QUERY = gql`
   }
 `
 
+const CUSTOMER_HISTORY_QUERY = gql`
+  query PosCustomerHistory($customerId: ID!, $limit: Int) {
+    customerAppointments(customerId: $customerId, limit: $limit) {
+      id
+      status
+      startAt
+      items { label }
+    }
+  }
+`
+
 const PRODUCTS_QUERY = graphql(`
   query PosProducts($locationId: ID!) {
     products(locationId: $locationId) {
@@ -221,7 +232,15 @@ export interface CheckoutRepository {
   findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }>
   getBarbers(locationId: string): Promise<BarberResult[]>
   getCustomer(id: string): Promise<CustomerResult | null>
+  getCustomerHistory(customerId: string, limit?: number): Promise<CustomerHistoryEntry[]>
   getWalkIn(walkInId: string, locationId: string): Promise<WalkInLite | null>
+}
+
+export interface CustomerHistoryEntry {
+  id: string
+  status: string
+  startAt: string
+  itemLabels: string[]
 }
 
 /* ── Apollo Implementation ── */
@@ -409,6 +428,22 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       fetchPolicy: 'network-only',
     })
     return (data as { customer: CustomerResult | null }).customer ?? null
+  }
+
+  async getCustomerHistory(customerId: string, limit = 5): Promise<CustomerHistoryEntry[]> {
+    const { data } = await this.#client.query<{
+      customerAppointments: Array<{ id: string; status: string; startAt: string; items: Array<{ label: string }> }>
+    }>({
+      query: CUSTOMER_HISTORY_QUERY,
+      variables: { customerId, limit },
+      fetchPolicy: 'cache-first',
+    })
+    return (data?.customerAppointments ?? []).map((a) => ({
+      id: a.id,
+      status: a.status,
+      startAt: a.startAt,
+      itemLabels: a.items.map((i) => i.label),
+    }))
   }
 
   async getWalkIn(walkInId: string, locationId: string): Promise<WalkInLite | null> {

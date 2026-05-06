@@ -1,4 +1,4 @@
-import { type ApolloClient } from '@apollo/client'
+import { type ApolloClient, gql } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
 import type { WalkIn } from '../domain/walkins.types.ts'
 
@@ -12,13 +12,30 @@ const WALKINS_QUERY = graphql(`
   }
 `)
 
-const CREATE_WALKIN = graphql(`
-  mutation CreateWalkIn($locationId: ID!, $customerName: String, $customerPhone: String, $customerEmail: String) {
-    createWalkIn(locationId: $locationId, customerName: $customerName, customerPhone: $customerPhone, customerEmail: $customerEmail) {
+// Use gql() at runtime because we extended the mutation to take an optional
+// customerId — codegen hasn't regenerated against the new shape, so the typed
+// graphql() tag would fail to resolve. Migrate back to graphql() after the next
+// sync-schema + codegen run.
+const CREATE_WALKIN = gql`
+  mutation CreateWalkIn(
+    $locationId: ID!
+    $customerId: ID
+    $customerName: String
+    $customerPhone: String
+    $customerEmail: String
+  ) {
+    createWalkIn(
+      locationId: $locationId
+      customerId: $customerId
+      customerName: $customerName
+      customerPhone: $customerPhone
+      customerEmail: $customerEmail
+    ) {
       id status customerName customerPhone customerEmail createdAt
+      customer { id fullName email phone }
     }
   }
-`)
+`
 
 const ASSIGN_WALKIN = graphql(`
   mutation AssignWalkIn($walkInId: ID!, $staffUserId: ID!) {
@@ -39,9 +56,17 @@ const DROP_WALKIN = graphql(`
   mutation DropWalkIn($walkInId: ID!, $reason: String) { dropWalkIn(walkInId: $walkInId, reason: $reason) }
 `)
 
+export interface CreateWalkInInput {
+  locationId: string
+  customerId?: string | null
+  customerName: string | null
+  customerPhone?: string | null
+  customerEmail?: string | null
+}
+
 export interface WalkInsRepository {
   getWalkIns(locationId: string): Promise<WalkIn[]>
-  create(locationId: string, customerName: string | null, customerPhone?: string | null, customerEmail?: string | null): Promise<WalkIn>
+  create(input: CreateWalkInInput): Promise<WalkIn>
   assign(walkInId: string, staffUserId: string): Promise<{ walkIn: WalkIn; warning: string | null }>
   complete(walkInId: string): Promise<void>
   drop(walkInId: string, reason?: string | null): Promise<void>
@@ -62,10 +87,16 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
     return data!.walkIns
   }
 
-  async create(locationId: string, customerName: string | null, customerPhone?: string | null, customerEmail?: string | null): Promise<WalkIn> {
+  async create(input: CreateWalkInInput): Promise<WalkIn> {
     const { data } = await this.#client.mutate<{ createWalkIn: WalkIn }>({
       mutation: CREATE_WALKIN,
-      variables: { locationId, customerName, customerPhone: customerPhone ?? null, customerEmail: customerEmail ?? null },
+      variables: {
+        locationId: input.locationId,
+        customerId: input.customerId ?? null,
+        customerName: input.customerName,
+        customerPhone: input.customerPhone ?? null,
+        customerEmail: input.customerEmail ?? null,
+      },
     })
     return data!.createWalkIn
   }

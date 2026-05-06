@@ -21,9 +21,14 @@ export function useWalkIns(locationId: string | null) {
   useEffect(() => { refresh() }, [refresh])
 
   const create = useCallback(
-    async (customerName: string | null, customerPhone?: string | null, customerEmail?: string | null) => {
+    async (
+      customerName: string | null,
+      customerPhone?: string | null,
+      customerEmail?: string | null,
+      customerId?: string | null,
+    ) => {
       if (!locationId) return
-      await walkins.create(locationId, customerName, customerPhone, customerEmail)
+      await walkins.create({ locationId, customerId, customerName, customerPhone, customerEmail })
       refresh()
     },
     [walkins, locationId, refresh],

@@ -7,6 +7,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { POS_HOME_COMMISSION, POS_HOME_CAJA_STATUS } from '../data/home.queries'
 import { deriveHoyViewModel, type HoyViewModel } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
+import { AddWalkInSheet } from '@/features/walkins/presentation/AddWalkInSheet'
 import { SkeletonRow } from '@/shared/pos-ui'
 import type { Appointment } from '@/features/agenda/domain/agenda.types'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
@@ -35,6 +36,7 @@ export function HoyPage() {
   const navigate = useNavigate()
 
   const [vm, setVm] = useState<HoyViewModel | null>(null)
+  const [addWalkInOpen, setAddWalkInOpen] = useState(false)
 
   const refetch = useCallback(async () => {
     if (!viewer || !locationId) return
@@ -187,5 +189,22 @@ export function HoyPage() {
     )
   }
 
-  return <HoyView vm={vm} onCtaClick={handleCtaClick} onGateAction={handleGateAction} />
+  return (
+    <>
+      <HoyView
+        vm={vm}
+        onCtaClick={handleCtaClick}
+        onGateAction={handleGateAction}
+        onAddWalkIn={() => setAddWalkInOpen(true)}
+      />
+      {locationId && (
+        <AddWalkInSheet
+          open={addWalkInOpen}
+          locationId={locationId}
+          onClose={() => setAddWalkInOpen(false)}
+          onCreated={() => { void refetch() }}
+        />
+      )}
+    </>
+  )
 }

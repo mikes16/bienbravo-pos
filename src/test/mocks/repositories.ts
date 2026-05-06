@@ -132,6 +132,10 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return null
   }
 
+  async getCustomerHistory(_customerId: string, _limit?: number): Promise<Array<{ id: string; status: string; startAt: string; itemLabels: string[] }>> {
+    return []
+  }
+
   async getWalkIn(_walkInId: string, _locationId: string): Promise<{
     id: string
     status: string
@@ -176,7 +180,7 @@ export class InMemoryAgendaRepository implements AgendaRepository {
 
 export class InMemoryWalkInsRepository implements WalkInsRepository {
   async getWalkIns(_locationId: string): Promise<WalkIn[]> { return [] }
-  async create(_locationId: string, _customerName: string | null, _customerPhone?: string | null, _customerEmail?: string | null): Promise<WalkIn> {
+  async create(_input: { locationId: string; customerId?: string | null; customerName: string | null; customerPhone?: string | null; customerEmail?: string | null }): Promise<WalkIn> {
     return { id: 'wi-1', status: 'PENDING', customerName: null, customerPhone: null, customerEmail: null, createdAt: new Date().toISOString(), assignedStaffUser: null, customer: null }
   }
   async assign(_walkInId: string, _staffUserId: string): Promise<{ walkIn: WalkIn; warning: string | null }> {
