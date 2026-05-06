@@ -129,9 +129,11 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
 
   // resetForCompanion = true keeps the sheet open after a successful create
   // and clears only the per-person fields, so the operator can register the
-  // next family member fast (papá → hijo). The barber stays selected because
-  // families typically share a barber. Customer link / phone clear so the
-  // companion lands as a separate person, not auto-linked to the first.
+  // next family member fast (papá → hijo). The barber AND service stay
+  // selected: families typically share both, and keeping the service means
+  // the agenda still knows how long the next cut takes without a re-pick.
+  // Customer link / phone clear so the companion lands as a separate person,
+  // not auto-linked to the first.
   const handleSubmit = async (resetForCompanion = false) => {
     if (submitting) return
     const trimmedName = name.trim()
@@ -170,15 +172,16 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       addToast(toastMsg, 'success')
       onCreated()
       if (resetForCompanion) {
-        // Clear per-person fields, keep barber. Next acompañante registers fast.
+        // Clear per-person fields. Keep barber + service + category — the
+        // agenda needs the service to know cut duration, and families share
+        // both the barber and the cut nine times out of ten. The operator
+        // can still tap a different service if this companion needs one.
         setName('')
         setPhone('')
         setSelectedCustomer(null)
         setSearchResults([])
         setHistory(null)
         setHistoryLoading(false)
-        setSelection(null)
-        setSelectedCategoryId(null)
         setSubmitting(false)
         setError(null)
       } else {
