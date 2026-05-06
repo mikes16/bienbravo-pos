@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
+import { useToast } from '@/core/toast/useToast'
 import { cn } from '@/shared/lib/cn'
 import type { CustomerResult, BarberResult, CustomerHistoryEntry } from '@/features/checkout/data/checkout.repository'
 
@@ -17,6 +18,7 @@ function formatHistoryDate(iso: string): string {
 
 export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalkInSheetProps) {
   const { walkins, checkout } = useRepositories()
+  const { addToast } = useToast()
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null)
@@ -115,14 +117,20 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         customerName: trimmedName,
         customerPhone: phone.trim() || null,
       })
+      let assignedBarberName: string | null = null
       if (selectedBarberId) {
         try {
           await walkins.assign(created.id, selectedBarberId)
+          assignedBarberName = barbers.find((b) => b.id === selectedBarberId)?.fullName.split(' ')[0] ?? null
         } catch {
           // Walk-in landed; assignment failed. Still treat as success and let the
           // operator claim it from the queue manually.
         }
       }
+      const toastMsg = assignedBarberName
+        ? `Walk-in agregado · asignado a ${assignedBarberName}`
+        : `Walk-in agregado · ${trimmedName} en cola`
+      addToast(toastMsg, 'success')
       onCreated()
       onClose()
     } catch (err) {

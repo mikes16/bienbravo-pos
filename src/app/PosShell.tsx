@@ -9,6 +9,7 @@ import {
   StrongboxIcon,
 } from '@/shared/pos-ui/icons'
 import { BottomTabNav } from '@/shared/pos-ui'
+import { ToastViewport } from '@/core/toast/ToastViewport'
 import { IdentityStripV2 } from './IdentityStripV2.tsx'
 
 function useLiveClock() {
@@ -57,6 +58,7 @@ export function PosShell() {
         <Outlet />
       </main>
       <BottomTabNav tabs={tabs} activeTo={activeTo} />
+      <ToastViewport />
     </div>
   )
 }

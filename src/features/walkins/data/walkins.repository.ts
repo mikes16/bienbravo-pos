@@ -79,10 +79,13 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
   }
 
   async getWalkIns(locationId: string): Promise<WalkIn[]> {
+    // network-only: the queue mutates on every create / assign / complete /
+    // drop, so cache-first kept showing the previous snapshot until the user
+    // hard-refreshed. Same fix as getEvents in the clock repository.
     const { data } = await this.#client.query<{ walkIns: WalkIn[] }>({
       query: WALKINS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: 'network-only',
     })
     return data!.walkIns
   }
