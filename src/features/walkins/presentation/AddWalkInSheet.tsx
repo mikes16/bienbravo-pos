@@ -127,7 +127,12 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     // Leave the typed name/phone so the operator can still proceed as a fresh walk-in.
   }
 
-  const handleSubmit = async () => {
+  // resetForCompanion = true keeps the sheet open after a successful create
+  // and clears only the per-person fields, so the operator can register the
+  // next family member fast (papá → hijo). The barber stays selected because
+  // families typically share a barber. Customer link / phone clear so the
+  // companion lands as a separate person, not auto-linked to the first.
+  const handleSubmit = async (resetForCompanion = false) => {
     if (submitting) return
     const trimmedName = name.trim()
     if (!trimmedName) {
@@ -160,11 +165,25 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         }
       }
       const toastMsg = assignedBarberName
-        ? `Walk-in agregado · asignado a ${assignedBarberName}`
-        : `Walk-in agregado · ${trimmedName} en cola`
+        ? `${trimmedName} agregado · asignado a ${assignedBarberName}`
+        : `${trimmedName} agregado · en cola`
       addToast(toastMsg, 'success')
       onCreated()
-      onClose()
+      if (resetForCompanion) {
+        // Clear per-person fields, keep barber. Next acompañante registers fast.
+        setName('')
+        setPhone('')
+        setSelectedCustomer(null)
+        setSearchResults([])
+        setHistory(null)
+        setHistoryLoading(false)
+        setSelection(null)
+        setSelectedCategoryId(null)
+        setSubmitting(false)
+        setError(null)
+      } else {
+        onClose()
+      }
     } catch (err) {
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
@@ -359,15 +378,25 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             </div>
           )}
 
-          <TouchButton
-            variant="primary"
-            size="primary"
-            onClick={handleSubmit}
-            disabled={submitting || !name.trim() || !selection}
-            className="w-full rounded-none uppercase tracking-[0.06em]"
-          >
-            {submitting ? 'Agregando…' : 'Agregar walk-in →'}
-          </TouchButton>
+          <div className="flex flex-col gap-2">
+            <TouchButton
+              variant="primary"
+              size="primary"
+              onClick={() => handleSubmit(false)}
+              disabled={submitting || !name.trim() || !selection}
+              className="w-full rounded-none uppercase tracking-[0.06em]"
+            >
+              {submitting ? 'Agregando…' : 'Agregar walk-in →'}
+            </TouchButton>
+            <button
+              type="button"
+              onClick={() => handleSubmit(true)}
+              disabled={submitting || !name.trim() || !selection}
+              className="cursor-pointer self-center font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] underline-offset-4 hover:text-[var(--color-bone)] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Agregar y otro acompañante →
+            </button>
+          </div>
         </div>
       </div>
     </div>
