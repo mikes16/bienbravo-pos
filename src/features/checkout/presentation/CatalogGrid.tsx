@@ -36,7 +36,7 @@ export function CatalogGrid({ items, selectedCategoryId, searchQuery, onAdd }: C
   }
 
   return (
-    <div className="overflow-y-auto">
+    <div className="min-h-0 flex-1 overflow-y-auto">
       {/* Mobile (< sm): list rows. Denser layout for phone-sized screens. */}
       <div className="flex flex-col border-t border-[var(--color-leather-muted)]/40 sm:hidden">
         {filtered.map((item) => (
