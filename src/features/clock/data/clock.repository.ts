@@ -75,10 +75,12 @@ export class ApolloClockRepository implements ClockRepository {
     fromDate: string,
     toDate: string,
   ): Promise<TimeClockEvent[]> {
+    // network-only: the events list changes on every clockIn/clockOut, so
+    // cache-first would mask the just-recorded entry until the cache evicts.
     const { data } = await this.#client.query<{ timeClockEvents: TimeClockEvent[] }>({
       query: TIME_CLOCK_EVENTS,
       variables: { staffUserId, locationId, fromDate, toDate },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: 'network-only',
     })
     return data!.timeClockEvents
   }
