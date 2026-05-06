@@ -23,6 +23,7 @@ const CREATE_WALKIN = gql`
     $customerName: String
     $customerPhone: String
     $customerEmail: String
+    $requestedServiceId: ID
   ) {
     createWalkIn(
       locationId: $locationId
@@ -30,9 +31,11 @@ const CREATE_WALKIN = gql`
       customerName: $customerName
       customerPhone: $customerPhone
       customerEmail: $customerEmail
+      requestedServiceId: $requestedServiceId
     ) {
       id status customerName customerPhone customerEmail createdAt
       customer { id fullName email phone }
+      requestedService { id name baseDurationMin }
     }
   }
 `
@@ -62,6 +65,7 @@ export interface CreateWalkInInput {
   customerName: string | null
   customerPhone?: string | null
   customerEmail?: string | null
+  requestedServiceId?: string | null
 }
 
 export interface WalkInsRepository {
@@ -99,6 +103,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
         customerName: input.customerName,
         customerPhone: input.customerPhone ?? null,
         customerEmail: input.customerEmail ?? null,
+        requestedServiceId: input.requestedServiceId ?? null,
       },
     })
     return data!.createWalkIn

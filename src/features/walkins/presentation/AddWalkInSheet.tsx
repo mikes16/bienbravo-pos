@@ -4,6 +4,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
 import { cn } from '@/shared/lib/cn'
 import type { CustomerResult, BarberResult, CustomerHistoryEntry } from '@/features/checkout/data/checkout.repository'
+import type { CatalogService } from '@/features/checkout/domain/checkout.types'
 
 interface AddWalkInSheetProps {
   open: boolean
@@ -27,6 +28,8 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
   const [historyLoading, setHistoryLoading] = useState(false)
   const [barbers, setBarbers] = useState<BarberResult[]>([])
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null)
+  const [services, setServices] = useState<CatalogService[]>([])
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,17 +43,28 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setHistory(null)
     setHistoryLoading(false)
     setSelectedBarberId(null)
+    setSelectedServiceId(null)
     setSubmitting(false)
     setError(null)
   }, [open])
 
-  // Load the location's barbers once the sheet opens. cache-first under the hood.
+  // Load the location's barbers + services once the sheet opens. cache-first
+  // under the hood, so reopening is instant.
   useEffect(() => {
     if (!open || !locationId) return
     let cancelled = false
-    checkout.getBarbers(locationId).then((b) => {
-      if (!cancelled) setBarbers(b)
-    }).catch(() => {})
+    Promise.all([
+      checkout.getBarbers(locationId),
+      checkout.getServices(locationId, null),
+    ])
+      .then(([b, s]) => {
+        if (cancelled) return
+        setBarbers(b)
+        // Only show non-add-on services in the picker (add-ons are upsells, not
+        // standalone visit reasons).
+        setServices(s.filter((svc) => !svc.isAddOn))
+      })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [open, locationId, checkout])
 
@@ -108,6 +122,10 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       setError('Nombre requerido')
       return
     }
+    if (!selectedServiceId) {
+      setError('Selecciona el servicio que viene a hacerse')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -116,6 +134,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         customerId: selectedCustomer?.id ?? null,
         customerName: trimmedName,
         customerPhone: phone.trim() || null,
+        requestedServiceId: selectedServiceId,
       })
       let assignedBarberName: string | null = null
       if (selectedBarberId) {
@@ -275,6 +294,38 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             />
           </div>
 
+          {/* Service selector — required so the live agenda shows the walk-in
+              as a block with a real duration estimate. */}
+          <div className="flex flex-col gap-2">
+            <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+              Servicio
+            </label>
+            {services.length === 0 ? (
+              <p className="text-[12px] text-[var(--color-bone-muted)]">Cargando servicios…</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {services.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedServiceId(s.id)}
+                    className={cn(
+                      'flex cursor-pointer flex-col items-start gap-0.5 border px-3 py-2 text-left',
+                      selectedServiceId === s.id
+                        ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
+                        : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
+                    )}
+                  >
+                    <span className="text-[13px] font-bold text-[var(--color-bone)]">{s.name}</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">
+                      {s.durationMin} min
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Barber selector */}
           <div className="flex flex-col gap-2">
             <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
@@ -321,7 +372,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             variant="primary"
             size="primary"
             onClick={handleSubmit}
-            disabled={submitting || !name.trim()}
+            disabled={submitting || !name.trim() || !selectedServiceId}
             className="w-full rounded-none uppercase tracking-[0.06em]"
           >
             {submitting ? 'Agregando…' : 'Agregar walk-in →'}
