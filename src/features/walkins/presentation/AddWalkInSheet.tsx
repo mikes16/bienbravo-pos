@@ -378,7 +378,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             <TouchButton
               variant="primary"
               size="primary"
@@ -388,14 +388,20 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             >
               {submitting ? 'Agregando…' : 'Agregar walk-in →'}
             </TouchButton>
-            <button
-              type="button"
-              onClick={() => handleSubmit(true)}
-              disabled={submitting || !name.trim() || !selection}
-              className="cursor-pointer self-center font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] underline-offset-4 hover:text-[var(--color-bone)] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Agregar y otro acompañante →
-            </button>
+            {/* Companion CTA — kept visually subordinate but pushed clear of the
+                primary tap area: 24px breathing room + 44px min touch target
+                (Apple/Material). Hairline divider sells the separation visually
+                so a tablet finger never lands here by accident. */}
+            <div className="mt-6 border-t border-[var(--color-leather-muted)]/40 pt-3">
+              <button
+                type="button"
+                onClick={() => handleSubmit(true)}
+                disabled={submitting || !name.trim() || !selection}
+                className="block min-h-[44px] w-full cursor-pointer px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] underline-offset-4 hover:text-[var(--color-bone)] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Agregar y otro acompañante →
+              </button>
+            </div>
           </div>
         </div>
       </div>
