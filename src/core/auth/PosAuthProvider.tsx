@@ -12,11 +12,33 @@ export interface PosAuthContextValue extends AuthState {
 
 export const PosAuthContext = createContext<PosAuthContextValue | null>(null)
 
+const STORAGE_KEY_LOCKED = 'bb-pos-locked'
+const STORAGE_KEY_LAST_BARBER = 'bb-pos-last-barber-id'
+
+function readPersistedLocked(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(STORAGE_KEY_LOCKED) === 'true'
+}
+
+function writePersistedLocked(locked: boolean): void {
+  if (typeof window === 'undefined') return
+  if (locked) window.localStorage.setItem(STORAGE_KEY_LOCKED, 'true')
+  else window.localStorage.removeItem(STORAGE_KEY_LOCKED)
+}
+
 export function PosAuthProvider({ children }: { children: ReactNode }) {
   const { auth } = useRepositories()
   const [viewer, setViewer] = useState<PosViewer | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isLocked, setIsLocked] = useState(false)
+  // Persisted across reload/server restart so the soft lock holds until the
+  // operator types their PIN. If the cookie has since expired, the getViewer
+  // effect below clears the flag.
+  const [isLocked, setIsLockedState] = useState<boolean>(readPersistedLocked)
+
+  const setIsLocked = useCallback((next: boolean) => {
+    setIsLockedState(next)
+    writePersistedLocked(next)
+  }, [])
 
   useEffect(() => {
     auth
@@ -27,7 +49,7 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => setViewer(null))
       .finally(() => setLoading(false))
-  }, [auth])
+  }, [auth, setIsLocked])
 
   const pinLogin = useCallback(
     async (email: string, pin4: string) => {
@@ -35,7 +57,7 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
       setViewer(v)
       setIsLocked(false)
     },
-    [auth],
+    [auth, setIsLocked],
   )
 
   const logout = useCallback(async () => {
@@ -45,18 +67,18 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
       setViewer(null)
       setIsLocked(false)
       if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('bb-pos-last-barber-id')
+        window.localStorage.removeItem(STORAGE_KEY_LAST_BARBER)
       }
     }
-  }, [auth])
+  }, [auth, setIsLocked])
 
   const lock = useCallback(() => {
     setIsLocked(true)
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem('bb-pos-last-barber-id')
+      window.localStorage.removeItem(STORAGE_KEY_LAST_BARBER)
     }
-  }, [])
-  const unlock = useCallback(() => setIsLocked(false), [])
+  }, [setIsLocked])
+  const unlock = useCallback(() => setIsLocked(false), [setIsLocked])
 
   return (
     <PosAuthContext.Provider
