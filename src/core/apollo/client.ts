@@ -22,7 +22,10 @@ export function createPosApolloClient(): ApolloClient {
   })
 
   return new ApolloClient({
-    link: new HttpLink({ uri, credentials: 'include' }),
+    // x-bb-client: pos lets the API issue / read the bb_session_pos cookie
+    // for this app, so logging in here doesn't clobber the admin or storefront
+    // sessions in the same browser.
+    link: new HttpLink({ uri, credentials: 'include', headers: { 'x-bb-client': 'pos' } }),
     cache,
     assumeImmutableResults: true,
     defaultOptions: {
