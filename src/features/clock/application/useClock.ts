@@ -3,7 +3,14 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
 import type { TimeClockEvent, ShiftTemplate } from '../data/clock.repository.ts'
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10)
+  // Local date — must match how the API and HoyPage interpret "today" so a
+  // clock-in registered at 10am local doesn't disappear from the filter once
+  // local time crosses 18:00 (UTC midnight) into the next UTC day.
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 function todayDayOfWeek(): number {
@@ -105,9 +112,18 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   const doClockIn = useCallback(async () => {
     if (!locationId) return
     try {
-      await clock.clockIn(locationId)
+      const ok = await clock.clockIn(locationId)
+      if (!ok) {
+        setError('Ya tienes una entrada registrada hoy')
+        return
+      }
+      setError(null)
       refresh()
-    } catch {
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('[doClockIn] failed', err)
+      }
       setError('No se pudo registrar entrada')
     }
   }, [clock, locationId, refresh])
@@ -115,9 +131,18 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   const doClockOut = useCallback(async () => {
     if (!locationId) return
     try {
-      await clock.clockOut(locationId)
+      const ok = await clock.clockOut(locationId)
+      if (!ok) {
+        setError('No hay entrada activa para cerrar')
+        return
+      }
+      setError(null)
       refresh()
-    } catch {
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('[doClockOut] failed', err)
+      }
       setError('No se pudo registrar salida')
     }
   }, [clock, locationId, refresh])
