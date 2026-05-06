@@ -14,6 +14,7 @@ import { CobrarCTA } from './CobrarCTA'
 import { PaymentSheet } from './PaymentSheet'
 import { ReceiptScreen } from './ReceiptScreen'
 import { SkeletonRow, SkeletonCard } from '@/shared/pos-ui'
+import { formatMoney } from '@/shared/lib/money'
 
 export function CheckoutPage() {
   const navigate = useNavigate()
@@ -23,6 +24,7 @@ export function CheckoutPage() {
   const [barberSheetOpen, setBarberSheetOpen] = useState(false)
   const [customerSheetOpen, setCustomerSheetOpen] = useState(false)
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false)
+  const [cartSheetOpen, setCartSheetOpen] = useState(false)
   const [splashShown, setSplashShown] = useState(false)
 
   // Splash for 2s after success, then receipt screen
@@ -34,6 +36,7 @@ export function CheckoutPage() {
 
   const totals = computeTotals(ck.cartState.lines)
   const defaultBarber = ck.barbers.find((b) => b.id === ck.cartState.defaultBarberId) ?? ck.barbers[0]
+  const cartItemCount = ck.cartState.lines.reduce((sum, l) => sum + l.qty, 0)
 
   if (ck.successSale) {
     return (
@@ -65,7 +68,7 @@ export function CheckoutPage() {
             <SkeletonCard />
           </div>
         </div>
-        <div className="flex w-[40%] min-w-[360px] flex-col gap-4 border-l border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-4">
+        <div className="hidden w-[40%] min-w-[360px] flex-col gap-4 border-l border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-4 sm:flex">
           <SkeletonRow heightPx={64} />
           <SkeletonRow heightPx={36} />
           <SkeletonRow heightPx={56} />
@@ -74,10 +77,45 @@ export function CheckoutPage() {
     )
   }
 
+  // Shared cart panel content. Rendered in two places:
+  //   - tablet+ sidebar (always visible)
+  //   - mobile full-screen sheet (when user taps the bottom bar)
+  const cartContent = (
+    <>
+      <div className="flex flex-col gap-3 p-4">
+        <AtendiendoHeader barber={defaultBarber} onTap={() => setBarberSheetOpen(true)} />
+        <CustomerChip
+          customer={ck.cartState.customer}
+          onTap={() => setCustomerSheetOpen(true)}
+          onClear={() => ck.dispatch({ type: 'setCustomer', customer: null })}
+        />
+      </div>
+      <CartList
+        lines={ck.cartState.lines}
+        barbers={ck.barbers}
+        onIncQty={(lineId) => ck.dispatch({ type: 'incQty', lineId })}
+        onDecQty={(lineId) => ck.dispatch({ type: 'decQty', lineId })}
+        onSetBarber={(lineId, barberId) => ck.dispatch({ type: 'setLineBarber', lineId, staffUserId: barberId })}
+        onRemove={(lineId) => ck.dispatch({ type: 'removeLine', lineId })}
+      />
+      <CartTotals subtotalCents={totals.subtotalCents} />
+      {ck.error && (
+        <div role="alert" className="mx-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
+          <p className="text-[13px] text-[var(--color-bravo)]">{ck.error}</p>
+        </div>
+      )}
+      <CobrarCTA
+        totalCents={totals.subtotalCents}
+        disabled={ck.cartState.lines.length === 0 || ck.submitting}
+        onTap={() => setPaymentSheetOpen(true)}
+      />
+    </>
+  )
+
   return (
     <div className="flex h-full">
-      {/* Catalog (left, 60%) */}
-      <div className="flex flex-1 flex-col">
+      {/* Catalog column. Full width on mobile; ~60% on tablet+ */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <CatalogChips
           categories={ck.categories}
           selectedCategoryId={selectedCategoryId}
@@ -91,38 +129,47 @@ export function CheckoutPage() {
           searchQuery={searchQuery}
           onAdd={(item) => ck.dispatch({ type: 'add', item: { kind: item.kind, itemId: item.id, name: item.name, unitPriceCents: item.priceCents } })}
         />
+
+        {/* Mobile-only sticky bottom CTA bar. Tap to open the cart sheet. */}
+        {cartItemCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setCartSheetOpen(true)}
+            className="flex shrink-0 items-center justify-between border-t border-[var(--color-bravo)] bg-[var(--color-bravo)] px-5 py-4 text-[var(--color-bone)] transition-colors hover:bg-[var(--color-bravo-hover)] sm:hidden"
+          >
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
+              {cartItemCount} {cartItemCount === 1 ? 'item' : 'items'} · {formatMoney(totals.subtotalCents)}
+            </span>
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
+              Ver carrito →
+            </span>
+          </button>
+        )}
       </div>
 
-      {/* Cart (right, ~40%) */}
-      <div className="flex w-[40%] min-w-[360px] flex-col border-l border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)]">
-        <div className="flex flex-col gap-3 p-4">
-          <AtendiendoHeader barber={defaultBarber} onTap={() => setBarberSheetOpen(true)} />
-          <CustomerChip
-            customer={ck.cartState.customer}
-            onTap={() => setCustomerSheetOpen(true)}
-            onClear={() => ck.dispatch({ type: 'setCustomer', customer: null })}
-          />
-        </div>
-        <CartList
-          lines={ck.cartState.lines}
-          barbers={ck.barbers}
-          onIncQty={(lineId) => ck.dispatch({ type: 'incQty', lineId })}
-          onDecQty={(lineId) => ck.dispatch({ type: 'decQty', lineId })}
-          onSetBarber={(lineId, barberId) => ck.dispatch({ type: 'setLineBarber', lineId, staffUserId: barberId })}
-          onRemove={(lineId) => ck.dispatch({ type: 'removeLine', lineId })}
-        />
-        <CartTotals subtotalCents={totals.subtotalCents} />
-        {ck.error && (
-          <div role="alert" className="mx-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
-            <p className="text-[13px] text-[var(--color-bravo)]">{ck.error}</p>
+      {/* Cart sidebar — tablet+ only */}
+      <aside className="hidden flex-col border-l border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] sm:flex sm:w-[40%] sm:min-w-[360px]">
+        {cartContent}
+      </aside>
+
+      {/* Mobile full-screen cart sheet */}
+      {cartSheetOpen && (
+        <aside className="fixed inset-0 z-40 flex flex-col bg-[var(--color-carbon-elevated)] sm:hidden">
+          <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-leather-muted)]/40 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setCartSheetOpen(false)}
+              className="cursor-pointer font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:text-[var(--color-bone)]"
+            >
+              ← Cerrar
+            </button>
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+              Carrito
+            </span>
           </div>
-        )}
-        <CobrarCTA
-          totalCents={totals.subtotalCents}
-          disabled={ck.cartState.lines.length === 0 || ck.submitting}
-          onTap={() => setPaymentSheetOpen(true)}
-        />
-      </div>
+          {cartContent}
+        </aside>
+      )}
 
       {/* Sheets */}
       <BarberSelectorSheet
