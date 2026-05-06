@@ -255,14 +255,20 @@ export function useCheckout() {
       return
     }
     // Optimistic: update barber chip immediately so the UI feels responsive,
-    // then patch in the resolved price (or revert silently if the fetch fails).
+    // then patch in the resolved price.
     dispatch({ type: 'setLineBarber', lineId, staffUserId })
     try {
       const newPriceCents = await checkout.resolveServicePriceForBarber(line.itemId, locationId, staffUserId)
+      // Only commit the price if the line still belongs to the barber we fetched for —
+      // protects against rapid taps where a stale fetch would otherwise overwrite a newer one.
       dispatch({ type: 'setLineBarberAndPrice', lineId, staffUserId, unitPriceCents: newPriceCents })
-    } catch {
-      // Leave the optimistic barber change in place; price stays at whatever it was.
-      // Surfacing this as a toast/banner is out of scope for this fix.
+    } catch (err) {
+      // Surface the error in dev so we can see why the price didn't update; in prod this
+      // becomes a no-op (price stays at its previous value, barber change persists).
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('[changeLineBarber] failed to resolve price', { lineId, staffUserId, err })
+      }
     }
   }
 
