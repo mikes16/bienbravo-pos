@@ -1,4 +1,4 @@
-import { type ApolloClient } from '@apollo/client'
+import { type ApolloClient, gql } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
 import type {
   CatalogCategory,
@@ -94,7 +94,10 @@ const SERVICES_QUERY = graphql(`
   }
 `)
 
-const RESOLVE_SERVICE_PRICE_QUERY = graphql(`
+// Use gql directly here (not the codegen graphql() tag) so the query parses at
+// runtime even when client-preset codegen hasn't been re-run. After the next
+// `npm run codegen`, this can be migrated back to graphql() for typed variables.
+const RESOLVE_SERVICE_PRICE_QUERY = gql`
   query PosResolveServicePrice($id: ID!, $locationId: ID!, $staffUserId: ID) {
     service(id: $id) {
       id
@@ -104,7 +107,7 @@ const RESOLVE_SERVICE_PRICE_QUERY = graphql(`
       }
     }
   }
-`)
+`
 
 const PRODUCTS_QUERY = graphql(`
   query PosProducts($locationId: ID!) {
@@ -298,7 +301,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     const { data } = await this.#client.query<{
       service: { id: string; basePriceCents: number; pricingFor: { priceCents: number } | null } | null
     }>({
-      query: RESOLVE_SERVICE_PRICE_QUERY as any,
+      query: RESOLVE_SERVICE_PRICE_QUERY,
       variables: { id: serviceId, locationId, staffUserId },
       fetchPolicy: 'cache-first',
     })
