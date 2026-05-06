@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
 import { cn } from '@/shared/lib/cn'
 import type { CustomerResult, BarberResult, CustomerHistoryEntry } from '@/features/checkout/data/checkout.repository'
-import type { CatalogService } from '@/features/checkout/domain/checkout.types'
+import type { CatalogService, CatalogCombo, CatalogCategory } from '@/features/checkout/domain/checkout.types'
+
+type PickerSelection =
+  | { kind: 'service'; id: string }
+  | { kind: 'combo'; id: string }
+
+const COMBOS_CATEGORY_ID = '__combos__'
 
 interface AddWalkInSheetProps {
   open: boolean
@@ -29,7 +35,10 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
   const [barbers, setBarbers] = useState<BarberResult[]>([])
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null)
   const [services, setServices] = useState<CatalogService[]>([])
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+  const [combos, setCombos] = useState<CatalogCombo[]>([])
+  const [categories, setCategories] = useState<CatalogCategory[]>([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [selection, setSelection] = useState<PickerSelection | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,26 +52,31 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setHistory(null)
     setHistoryLoading(false)
     setSelectedBarberId(null)
-    setSelectedServiceId(null)
+    setSelectedCategoryId(null)
+    setSelection(null)
     setSubmitting(false)
     setError(null)
   }, [open])
 
-  // Load the location's barbers + services once the sheet opens. cache-first
-  // under the hood, so reopening is instant.
+  // Load the location's barbers + services + combos + categories once the sheet
+  // opens. cache-first under the hood, so reopening is instant.
   useEffect(() => {
     if (!open || !locationId) return
     let cancelled = false
     Promise.all([
       checkout.getBarbers(locationId),
       checkout.getServices(locationId, null),
+      checkout.getCombos(),
+      checkout.getCategories(),
     ])
-      .then(([b, s]) => {
+      .then(([b, s, c, cats]) => {
         if (cancelled) return
         setBarbers(b)
         // Only show non-add-on services in the picker (add-ons are upsells, not
         // standalone visit reasons).
         setServices(s.filter((svc) => !svc.isAddOn))
+        setCombos(c)
+        setCategories(cats)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -122,7 +136,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       setError('Nombre requerido')
       return
     }
-    if (!selectedServiceId) {
+    if (!selection) {
       setError('Selecciona el servicio que viene a hacerse')
       return
     }
@@ -134,7 +148,8 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         customerId: selectedCustomer?.id ?? null,
         customerName: trimmedName,
         customerPhone: phone.trim() || null,
-        requestedServiceId: selectedServiceId,
+        requestedServiceId: selection.kind === 'service' ? selection.id : null,
+        requestedCatalogComboId: selection.kind === 'combo' ? selection.id : null,
       })
       let assignedBarberName: string | null = null
       if (selectedBarberId) {
@@ -294,37 +309,15 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             />
           </div>
 
-          {/* Service selector — required so the live agenda shows the walk-in
-              as a block with a real duration estimate. */}
-          <div className="flex flex-col gap-2">
-            <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-              Servicio
-            </label>
-            {services.length === 0 ? (
-              <p className="text-[12px] text-[var(--color-bone-muted)]">Cargando servicios…</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {services.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSelectedServiceId(s.id)}
-                    className={cn(
-                      'flex cursor-pointer flex-col items-start gap-0.5 border px-3 py-2 text-left',
-                      selectedServiceId === s.id
-                        ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
-                        : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
-                    )}
-                  >
-                    <span className="text-[13px] font-bold text-[var(--color-bone)]">{s.name}</span>
-                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">
-                      {s.durationMin} min
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ServicePicker
+            services={services}
+            combos={combos}
+            categories={categories}
+            selectedCategoryId={selectedCategoryId}
+            onCategoryChange={setSelectedCategoryId}
+            selection={selection}
+            onSelectionChange={setSelection}
+          />
 
           {/* Barber selector */}
           <div className="flex flex-col gap-2">
@@ -372,7 +365,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             variant="primary"
             size="primary"
             onClick={handleSubmit}
-            disabled={submitting || !name.trim() || !selectedServiceId}
+            disabled={submitting || !name.trim() || !selection}
             className="w-full rounded-none uppercase tracking-[0.06em]"
           >
             {submitting ? 'Agregando…' : 'Agregar walk-in →'}
@@ -380,5 +373,189 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         </div>
       </div>
     </div>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * ServicePicker — category chips + filtered cards.
+ *
+ * Mirrors the checkout grid pattern operators already use dozens of times a
+ * day: a row of sticky-ish chips at the top picks a category; cards below
+ * show services + combos that match. "Todo" shows everything; "Combos" is a
+ * virtual chip showing only combos.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function comboDurationMin(combo: CatalogCombo, services: CatalogService[]): number {
+  let total = 0
+  for (const item of combo.items) {
+    if (!item.serviceId) continue
+    const svc = services.find((s) => s.id === item.serviceId)
+    if (svc) total += svc.durationMin * (item.qty ?? 1)
+  }
+  return total
+}
+
+interface ServicePickerProps {
+  services: CatalogService[]
+  combos: CatalogCombo[]
+  categories: CatalogCategory[]
+  selectedCategoryId: string | null
+  onCategoryChange: (id: string | null) => void
+  selection: PickerSelection | null
+  onSelectionChange: (s: PickerSelection) => void
+}
+
+function ServicePicker({
+  services,
+  combos,
+  categories,
+  selectedCategoryId,
+  onCategoryChange,
+  selection,
+  onSelectionChange,
+}: ServicePickerProps) {
+  const visibleCategories = useMemo(() => {
+    // Only show categories that actually have at least one service (or
+    // a combo that effectiveCategorizes into them). Avoids empty chips.
+    const usedIds = new Set<string>()
+    for (const s of services) if (s.categoryId) usedIds.add(s.categoryId)
+    for (const c of combos) for (const cid of c.effectiveCategoryIds) usedIds.add(cid)
+    return categories
+      .filter((c) => usedIds.has(c.id))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+  }, [services, combos, categories])
+
+  const filteredServices = useMemo(() => {
+    if (selectedCategoryId === COMBOS_CATEGORY_ID) return []
+    if (selectedCategoryId === null) return services
+    return services.filter((s) => s.categoryId === selectedCategoryId)
+  }, [services, selectedCategoryId])
+
+  const filteredCombos = useMemo(() => {
+    if (selectedCategoryId === null || selectedCategoryId === COMBOS_CATEGORY_ID) return combos
+    return combos.filter((c) => c.effectiveCategoryIds.includes(selectedCategoryId))
+  }, [combos, selectedCategoryId])
+
+  const isLoading = services.length === 0 && combos.length === 0
+  const totalShown = filteredServices.length + filteredCombos.length
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+        Servicio
+      </label>
+
+      {/* Category chips */}
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <CategoryChip
+          label="Todo"
+          active={selectedCategoryId === null}
+          onClick={() => onCategoryChange(null)}
+        />
+        {visibleCategories.map((c) => (
+          <CategoryChip
+            key={c.id}
+            label={c.name}
+            active={selectedCategoryId === c.id}
+            onClick={() => onCategoryChange(c.id)}
+          />
+        ))}
+        {combos.length > 0 && (
+          <CategoryChip
+            label="Combos"
+            active={selectedCategoryId === COMBOS_CATEGORY_ID}
+            onClick={() => onCategoryChange(COMBOS_CATEGORY_ID)}
+          />
+        )}
+      </div>
+
+      {/* Cards */}
+      {isLoading ? (
+        <p className="text-[12px] text-[var(--color-bone-muted)]">Cargando servicios…</p>
+      ) : totalShown === 0 ? (
+        <p className="text-[12px] text-[var(--color-bone-muted)]">Sin opciones en esta categoría.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {filteredServices.map((s) => {
+            const active = selection?.kind === 'service' && selection.id === s.id
+            return (
+              <PickerCard
+                key={`svc-${s.id}`}
+                title={s.name}
+                meta={`${s.durationMin} min`}
+                active={active}
+                onClick={() => onSelectionChange({ kind: 'service', id: s.id })}
+              />
+            )
+          })}
+          {filteredCombos.map((c) => {
+            const active = selection?.kind === 'combo' && selection.id === c.id
+            const dur = comboDurationMin(c, services)
+            return (
+              <PickerCard
+                key={`combo-${c.id}`}
+                title={c.name}
+                meta={dur > 0 ? `${dur} min` : 'Combo'}
+                eyebrow="COMBO"
+                active={active}
+                onClick={() => onSelectionChange({ kind: 'combo', id: c.id })}
+              />
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CategoryChip({
+  label,
+  active,
+  onClick,
+}: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'shrink-0 cursor-pointer border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] transition-colors',
+        active
+          ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
+          : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
+      )}
+    >
+      {label}
+    </button>
+  )
+}
+
+function PickerCard({
+  title,
+  meta,
+  eyebrow,
+  active,
+  onClick,
+}: { title: string; meta: string; eyebrow?: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex cursor-pointer flex-col items-start gap-0.5 border px-3 py-2 text-left',
+        active
+          ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08]'
+          : 'border-[var(--color-leather-muted)] hover:bg-[var(--color-cuero-viejo)]',
+      )}
+    >
+      {eyebrow && (
+        <span className="font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-[var(--color-bravo)]">
+          {eyebrow}
+        </span>
+      )}
+      <span className="text-[13px] font-bold text-[var(--color-bone)]">{title}</span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">
+        {meta}
+      </span>
+    </button>
   )
 }

@@ -740,7 +740,7 @@ type Mutation {
   createStaffVacation(input: CreateStaffVacationInput!): StaffVacation!
   createStockLocation(input: CreateStockLocationInput!): StockLocation!
   createStripePaymentIntent(saleId: ID!): StripePaymentIntentResult!
-  createWalkIn(customerEmail: String, customerId: ID, customerName: String, customerPhone: String, locationId: ID!, requestedServiceId: ID): WalkIn!
+  createWalkIn(customerEmail: String, customerId: ID, customerName: String, customerPhone: String, locationId: ID!, requestedCatalogComboId: ID, requestedServiceId: ID): WalkIn!
   customerLogin(email: String!, password: String!): AuthResult!
   customerRegister(input: CustomerRegisterInput!): AuthResult!
   deactivateProduct(id: ID!): Product!
@@ -1857,6 +1857,8 @@ type WalkIn {
   customerName: String
   customerPhone: String
   id: ID!
+  requestedCatalogCombo: CatalogCombo
+  requestedCatalogComboId: ID
   requestedService: Service
   requestedServiceId: ID
   status: WalkInStatus!

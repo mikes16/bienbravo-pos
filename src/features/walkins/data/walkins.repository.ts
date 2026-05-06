@@ -24,6 +24,7 @@ const CREATE_WALKIN = gql`
     $customerPhone: String
     $customerEmail: String
     $requestedServiceId: ID
+    $requestedCatalogComboId: ID
   ) {
     createWalkIn(
       locationId: $locationId
@@ -32,10 +33,12 @@ const CREATE_WALKIN = gql`
       customerPhone: $customerPhone
       customerEmail: $customerEmail
       requestedServiceId: $requestedServiceId
+      requestedCatalogComboId: $requestedCatalogComboId
     ) {
       id status customerName customerPhone customerEmail createdAt
       customer { id fullName email phone }
       requestedService { id name baseDurationMin }
+      requestedCatalogCombo { id name }
     }
   }
 `
@@ -65,7 +68,10 @@ export interface CreateWalkInInput {
   customerName: string | null
   customerPhone?: string | null
   customerEmail?: string | null
+  // Pick service OR combo, not both. The API gives combo precedence if both
+  // are sent, but the client should keep the contract clean.
   requestedServiceId?: string | null
+  requestedCatalogComboId?: string | null
 }
 
 export interface WalkInsRepository {
@@ -104,6 +110,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
         customerPhone: input.customerPhone ?? null,
         customerEmail: input.customerEmail ?? null,
         requestedServiceId: input.requestedServiceId ?? null,
+        requestedCatalogComboId: input.requestedCatalogComboId ?? null,
       },
     })
     return data!.createWalkIn
