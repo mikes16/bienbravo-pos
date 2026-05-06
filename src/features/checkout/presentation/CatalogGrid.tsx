@@ -35,7 +35,7 @@ export function CatalogGrid({ items, selectedCategoryId, searchQuery, onAdd }: C
   }
 
   return (
-    <div className="grid grid-cols-3 gap-3 overflow-y-auto p-5">
+    <div className="grid grid-cols-3 items-start gap-3 overflow-y-auto p-5">
       {filtered.map((item) => (
         <CatalogTile
           key={item.id}
