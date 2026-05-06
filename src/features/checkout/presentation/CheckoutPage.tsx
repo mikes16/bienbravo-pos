@@ -95,7 +95,7 @@ export function CheckoutPage() {
         barbers={ck.barbers}
         onIncQty={(lineId) => ck.dispatch({ type: 'incQty', lineId })}
         onDecQty={(lineId) => ck.dispatch({ type: 'decQty', lineId })}
-        onSetBarber={(lineId, barberId) => ck.dispatch({ type: 'setLineBarber', lineId, staffUserId: barberId })}
+        onSetBarber={(lineId, barberId) => void ck.changeLineBarber(lineId, barberId)}
         onRemove={(lineId) => ck.dispatch({ type: 'removeLine', lineId })}
       />
       <CartTotals subtotalCents={totals.subtotalCents} />

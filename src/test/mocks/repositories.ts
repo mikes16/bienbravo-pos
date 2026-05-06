@@ -101,6 +101,10 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return []
   }
 
+  async resolveServicePriceForBarber(_serviceId: string, _locationId: string, _staffUserId: string): Promise<number> {
+    return 0
+  }
+
   async createSale(_input: CreateSaleInput): Promise<SaleResult> {
     return { id: 'sale-1', status: 'PAID', paymentStatus: 'PAID', totalCents: 50000, paidTotalCents: 50000 }
   }

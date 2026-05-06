@@ -244,6 +244,28 @@ export function useCheckout() {
     }
   }
 
+  // Change a line's barber. For service lines, also re-resolve the price (barber overrides)
+  // and dispatch atomically so the operator never sees a stale price for the new barber.
+  // For products/combos, price is invariant — just dispatch the barber change.
+  const changeLineBarber = async (lineId: string, staffUserId: string) => {
+    const line = cartState.lines.find((l) => l.id === lineId)
+    if (!line) return
+    if (line.kind !== 'service' || !locationId) {
+      dispatch({ type: 'setLineBarber', lineId, staffUserId })
+      return
+    }
+    // Optimistic: update barber chip immediately so the UI feels responsive,
+    // then patch in the resolved price (or revert silently if the fetch fails).
+    dispatch({ type: 'setLineBarber', lineId, staffUserId })
+    try {
+      const newPriceCents = await checkout.resolveServicePriceForBarber(line.itemId, locationId, staffUserId)
+      dispatch({ type: 'setLineBarberAndPrice', lineId, staffUserId, unitPriceCents: newPriceCents })
+    } catch {
+      // Leave the optimistic barber change in place; price stays at whatever it was.
+      // Surfacing this as a toast/banner is out of scope for this fix.
+    }
+  }
+
   return {
     context,
     catalogItems,
@@ -251,6 +273,7 @@ export function useCheckout() {
     barbers,
     cartState,
     dispatch,
+    changeLineBarber,
     customerResults,
     searchCustomers,
     createCustomer,

@@ -30,6 +30,7 @@ export type CartAction =
   | { type: 'decQty'; lineId: string }
   | { type: 'removeLine'; lineId: string }
   | { type: 'setLineBarber'; lineId: string; staffUserId: string }
+  | { type: 'setLineBarberAndPrice'; lineId: string; staffUserId: string; unitPriceCents: number }
   | { type: 'setDefaultBarber'; staffUserId: string }
   | { type: 'setCustomer'; customer: CustomerLite | null }
   | { type: 'clear' }
@@ -78,6 +79,15 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         ...state,
         lines: state.lines.map((l) =>
           l.id === action.lineId ? { ...l, staffUserId: action.staffUserId } : l,
+        ),
+      }
+    case 'setLineBarberAndPrice':
+      return {
+        ...state,
+        lines: state.lines.map((l) =>
+          l.id === action.lineId
+            ? { ...l, staffUserId: action.staffUserId, unitPriceCents: action.unitPriceCents }
+            : l,
         ),
       }
     case 'setDefaultBarber':

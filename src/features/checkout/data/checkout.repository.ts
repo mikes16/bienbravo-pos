@@ -94,6 +94,18 @@ const SERVICES_QUERY = graphql(`
   }
 `)
 
+const RESOLVE_SERVICE_PRICE_QUERY = graphql(`
+  query PosResolveServicePrice($id: ID!, $locationId: ID!, $staffUserId: ID) {
+    service(id: $id) {
+      id
+      basePriceCents
+      pricingFor(locationId: $locationId, staffUserId: $staffUserId) {
+        priceCents
+      }
+    }
+  }
+`)
+
 const PRODUCTS_QUERY = graphql(`
   query PosProducts($locationId: ID!) {
     products(locationId: $locationId) {
@@ -198,6 +210,7 @@ export interface CheckoutRepository {
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
   getProducts(locationId: string): Promise<CatalogProduct[]>
   getCombos(): Promise<CatalogCombo[]>
+  resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string): Promise<number>
   getStockLevels(locationId: string): Promise<StockLevel[]>
   createSale(input: CreateSaleInput): Promise<SaleResult>
   searchCustomers(query: string, limit?: number): Promise<CustomerResult[]>
@@ -279,6 +292,19 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         categoryId: s.categoryId ?? null,
         extras: s.pricingFor?.extras ?? [],
       }))
+  }
+
+  async resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string): Promise<number> {
+    const { data } = await this.#client.query<{
+      service: { id: string; basePriceCents: number; pricingFor: { priceCents: number } | null } | null
+    }>({
+      query: RESOLVE_SERVICE_PRICE_QUERY as any,
+      variables: { id: serviceId, locationId, staffUserId },
+      fetchPolicy: 'cache-first',
+    })
+    const svc = data?.service
+    if (!svc) throw new Error(`Service ${serviceId} not found`)
+    return svc.pricingFor?.priceCents ?? svc.basePriceCents
   }
 
   async getStockLevels(locationId: string): Promise<StockLevel[]> {
