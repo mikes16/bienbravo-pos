@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
 import { BarberPickerInline } from './BarberPickerInline'
@@ -21,8 +21,18 @@ interface CartLineRowProps {
 
 export function CartLineRow({ line, barbers, onIncQty, onDecQty, onSetBarber, onRemove }: CartLineRowProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement | null>(null)
   const currentBarber = barbers.find((b) => b.id === line.staffUserId)
   const lineTotalCents = line.unitPriceCents * line.qty
+
+  // When the picker opens, ensure it's visible inside the cart's scroll area —
+  // otherwise lines near the bottom render the picker behind TOTAL/Cobrar.
+  // (Optional chain on scrollIntoView so jsdom in tests doesn't throw.)
+  useEffect(() => {
+    if (pickerOpen) {
+      pickerRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [pickerOpen])
 
   return (
     <div className="flex flex-col gap-2 border-b border-[var(--color-leather-muted)]/30 px-4 py-3">
@@ -73,14 +83,16 @@ export function CartLineRow({ line, barbers, onIncQty, onDecQty, onSetBarber, on
         </button>
       </div>
       {pickerOpen && (
-        <BarberPickerInline
-          barbers={barbers}
-          currentBarberId={line.staffUserId}
-          onSelect={(id) => {
-            onSetBarber(line.id, id)
-            setPickerOpen(false)
-          }}
-        />
+        <div ref={pickerRef}>
+          <BarberPickerInline
+            barbers={barbers}
+            currentBarberId={line.staffUserId}
+            onSelect={(id) => {
+              onSetBarber(line.id, id)
+              setPickerOpen(false)
+            }}
+          />
+        </div>
       )}
     </div>
   )
