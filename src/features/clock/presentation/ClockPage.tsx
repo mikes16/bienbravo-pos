@@ -132,6 +132,11 @@ export function ClockPage() {
             </p>
           </div>
         </div>
+        {shiftStatus.scheduledStartMin === null && (
+          <p className="mt-2 border-t border-[var(--color-leather-muted)]/40 pt-2 text-[12px] leading-snug text-[var(--color-bone-muted)]">
+            Sin horario asignado en esta sucursal. Pídele al admin que configure tu turno para que el sistema detecte llegadas y retardos.
+          </p>
+        )}
       </div>
 
       {/* Today's history */}

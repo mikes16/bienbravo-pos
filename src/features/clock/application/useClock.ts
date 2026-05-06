@@ -52,16 +52,37 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     if (!staffUserId || !locationId) return
     const d = todayISO()
     setLoading(true)
-    Promise.all([
+    setError(null)
+    // Independent fetches: events and shift templates fail / succeed for
+    // different reasons (permissions vs setup), and a missing shift template is
+    // not a hard error — it just means the admin hasn't assigned a schedule yet.
+    void Promise.allSettled([
       clock.getEvents(staffUserId, locationId, d, d),
       clock.getShiftTemplates(staffUserId, locationId),
-    ])
-      .then(([evts, templates]) => {
-        setEvents(evts)
-        setShiftTemplates(templates)
-      })
-      .catch(() => setError('No se pudo cargar el reloj'))
-      .finally(() => setLoading(false))
+    ]).then(([evtsRes, templatesRes]) => {
+      if (evtsRes.status === 'fulfilled') {
+        setEvents(evtsRes.value)
+      } else {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.error('[useClock] getEvents failed', evtsRes.reason)
+        }
+        // Events are critical — without them we can't tell clock-in state. Surface as an error.
+        setError('No se pudo cargar el historial. Reintenta.')
+      }
+      if (templatesRes.status === 'fulfilled') {
+        setShiftTemplates(templatesRes.value)
+      } else {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.error('[useClock] getShiftTemplates failed', templatesRes.reason)
+        }
+        // Templates are optional — fall back to empty so the page still works
+        // and the "sin turno programado" guidance kicks in.
+        setShiftTemplates([])
+      }
+      setLoading(false)
+    })
   }, [clock, staffUserId, locationId])
 
   useEffect(() => { refresh() }, [refresh])
