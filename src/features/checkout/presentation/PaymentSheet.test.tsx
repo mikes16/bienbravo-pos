@@ -53,6 +53,25 @@ describe('PaymentSheet', () => {
     expect(onConfirm).toHaveBeenCalledWith({ method: 'CASH', tipCents: 0 })
   })
 
+  it('shows Procesando… and locks the CTA while submitting', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <PaymentSheet
+        open
+        totalCents={50000}
+        submitting
+        onClose={() => {}}
+        onConfirm={onConfirm}
+      />,
+    )
+    // Method chips disabled, primary CTA shows the in-flight label.
+    expect(screen.getByRole('button', { name: /efectivo/i })).toBeDisabled()
+    const cta = screen.getByRole('button', { name: /procesando/i })
+    expect(cta).toBeDisabled()
+    // Status line for the operator.
+    expect(screen.getByRole('status')).toHaveTextContent(/registrando venta/i)
+  })
+
   it('Confirmar is disabled for CASH when received < total', async () => {
     const onConfirm = vi.fn()
     const user = userEvent.setup()

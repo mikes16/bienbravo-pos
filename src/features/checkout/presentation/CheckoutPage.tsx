@@ -199,6 +199,7 @@ export function CheckoutPage() {
       <PaymentSheet
         open={paymentSheetOpen}
         totalCents={totals.subtotalCents}
+        submitting={ck.submitting}
         onClose={() => setPaymentSheetOpen(false)}
         onConfirm={async (input) => {
           const result = await ck.submit(input)
