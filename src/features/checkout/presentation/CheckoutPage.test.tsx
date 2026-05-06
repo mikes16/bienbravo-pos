@@ -60,9 +60,9 @@ describe('CheckoutPage (integration)', () => {
       repos: { ...repos, auth: new TestAuthRepo() },
     })
     // Wait for catalog to load
-    await screen.findByText('Corte', {}, { timeout: 3000 })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
     // Add corte to cart
-    await user.click(screen.getByText('Corte'))
+    await user.click(screen.getAllByText('Corte')[0])
     // Open payment sheet via Cobrar CTA
     const cobrarBtn = await screen.findByRole('button', { name: /cobrar.*280/i })
     await user.click(cobrarBtn)
@@ -99,7 +99,7 @@ describe('CheckoutPage (integration)', () => {
       initialRoute: '/checkout',
       repos: { ...repos, auth: new TestAuthRepo() },
     })
-    await screen.findByText('Corte', {}, { timeout: 3000 })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
     // Add 3 cortes — click the catalog tile button (role=button, containing 'Corte')
     // After first click, 'Corte' appears in both catalog and cart; use getAllByText
     await user.click(screen.getAllByText('Corte')[0])
@@ -130,8 +130,8 @@ describe('CheckoutPage (integration)', () => {
       initialRoute: '/checkout',
       repos: { ...repos, auth: new TestAuthRepo() },
     })
-    await screen.findByText('Corte', {}, { timeout: 3000 })
-    await user.click(screen.getByText('Corte'))
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
     // Don't touch customer chip
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
@@ -151,8 +151,8 @@ describe('CheckoutPage (integration)', () => {
       initialRoute: '/checkout',
       repos: { ...repos, auth: new TestAuthRepo() },
     })
-    await screen.findByText('Shampoo', {}, { timeout: 3000 })
-    await user.click(screen.getByText('Shampoo'))
+    await screen.findAllByText('Shampoo', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Shampoo')[0])
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
@@ -167,8 +167,8 @@ describe('CheckoutPage (integration)', () => {
       initialRoute: '/checkout',
       repos: { ...repos, auth: new TestAuthRepo() },
     })
-    await screen.findByText('Corte', {}, { timeout: 3000 })
-    await user.click(screen.getByText('Corte'))
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
     await user.click(screen.getByRole('button', { name: /confirmar/i }))

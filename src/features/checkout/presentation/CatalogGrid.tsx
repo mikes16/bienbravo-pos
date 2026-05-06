@@ -1,4 +1,5 @@
 import { CatalogTile } from './CatalogTile'
+import { CatalogListRow } from './CatalogListRow'
 
 interface CatalogItem {
   id: string
@@ -35,18 +36,36 @@ export function CatalogGrid({ items, selectedCategoryId, searchQuery, onAdd }: C
   }
 
   return (
-    <div className="grid grid-cols-3 items-start gap-3 overflow-y-auto p-5">
-      {filtered.map((item) => (
-        <CatalogTile
-          key={item.id}
-          kind={item.kind}
-          name={item.name}
-          priceCents={item.priceCents}
-          stockQty={item.stockQty}
-          imageUrl={item.imageUrl}
-          onAdd={() => onAdd(item)}
-        />
-      ))}
+    <div className="overflow-y-auto">
+      {/* Mobile (< sm): list rows. Denser layout for phone-sized screens. */}
+      <div className="flex flex-col border-t border-[var(--color-leather-muted)]/40 sm:hidden">
+        {filtered.map((item) => (
+          <CatalogListRow
+            key={item.id}
+            kind={item.kind}
+            name={item.name}
+            priceCents={item.priceCents}
+            stockQty={item.stockQty}
+            imageUrl={item.imageUrl}
+            onAdd={() => onAdd(item)}
+          />
+        ))}
+      </div>
+
+      {/* Tablet (sm) 3 cols, desktop (lg) 4 cols. */}
+      <div className="hidden grid-cols-3 items-start gap-3 p-5 sm:grid lg:grid-cols-4">
+        {filtered.map((item) => (
+          <CatalogTile
+            key={item.id}
+            kind={item.kind}
+            name={item.name}
+            priceCents={item.priceCents}
+            stockQty={item.stockQty}
+            imageUrl={item.imageUrl}
+            onAdd={() => onAdd(item)}
+          />
+        ))}
+      </div>
     </div>
   )
 }
