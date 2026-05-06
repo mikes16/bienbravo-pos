@@ -107,8 +107,10 @@ export function HoyPage() {
     return () => { window.removeEventListener('focus', onFocus) }
   }, [refetch])
 
-  const handleCtaClick = useCallback(() => {
-    if (!vm) return
+  const [ctaBusy, setCtaBusy] = useState(false)
+
+  const handleCtaClick = useCallback(async () => {
+    if (!vm || ctaBusy) return
     switch (vm.cta.variant) {
       case 'abrir-caja':
         navigate('/caja')
@@ -116,8 +118,32 @@ export function HoyPage() {
       case 'nueva-venta':
         navigate('/checkout')
         break
-      case 'cobrar':
       case 'atender': {
+        // Atender = take the turn. For appointments, transition to IN_SERVICE;
+        // for walk-ins, claim them (PENDING → ASSIGNED). Doesn't go to checkout —
+        // the CTA flips to "Cobrar a X" once the row turns active, which the
+        // operator taps separately when the service is done.
+        const { targetId, targetKind } = vm.cta
+        if (!targetId || !targetKind || !viewer?.staff?.id) return
+        setCtaBusy(true)
+        try {
+          if (targetKind === 'appointment') {
+            await agenda.startService(targetId)
+          } else {
+            await walkins.assign(targetId, viewer.staff.id)
+          }
+          await refetch()
+        } catch (err) {
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.error('[atender] failed', { targetId, targetKind, err })
+          }
+        } finally {
+          setCtaBusy(false)
+        }
+        break
+      }
+      case 'cobrar': {
         const { targetId, targetKind, targetCustomerId } = vm.cta
         if (!targetId || !targetKind) {
           navigate('/checkout')
@@ -134,7 +160,7 @@ export function HoyPage() {
         break
       }
     }
-  }, [vm, navigate])
+  }, [vm, ctaBusy, navigate, viewer, agenda, walkins, refetch])
 
   const handleGateAction = useCallback(() => {
     if (!vm?.gate) return
