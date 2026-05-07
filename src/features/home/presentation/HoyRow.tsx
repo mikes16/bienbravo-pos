@@ -14,6 +14,13 @@ export interface HoyRowProps {
   sourceKind: 'appointment' | 'walk-in'
   sourceId: string
   onClick?: () => void
+  /**
+   * Trailing-edge "Finalizar" button. Surfaced for active walk-ins so the
+   * operator can close out a row that was already paid as part of another
+   * sale — e.g. a hijo that was billed on the papá's ticket. Calls the
+   * `completeWalkIn` mutation, no checkout involved.
+   */
+  onFinalize?: () => void
 }
 
 export function HoyRow({
@@ -27,14 +34,18 @@ export function HoyRow({
   pillLabel,
   pillTone,
   onClick,
+  onFinalize,
 }: HoyRowProps) {
   const isActive = kind === 'active'
   const isNext = kind === 'next'
   const isQueue = kind === 'queue'
   const isInteractive = typeof onClick === 'function'
 
-  const Tag = isInteractive ? 'button' : 'div'
-  const interactiveProps = isInteractive
+  // Render the row as a div whenever the trailing Finalizar button is shown —
+  // a button-inside-button is invalid HTML and the trailing action is the
+  // only interactive element in that case anyway.
+  const Tag = isInteractive && !onFinalize ? 'button' : 'div'
+  const interactiveProps = isInteractive && !onFinalize
     ? ({ type: 'button' as const, onClick })
     : {}
 
@@ -98,16 +109,27 @@ export function HoyRow({
         </p>
       </div>
 
-      <span
-        className={cn(
-          'border px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.18em]',
-          pillTone === 'serving' && 'border-[var(--color-bravo)] text-[var(--color-bravo)]',
-          pillTone === 'appt' && 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)]',
-          pillTone === 'walkin' && 'border-[var(--color-leather)] text-[var(--color-leather)]',
+      <div className="flex items-center gap-3">
+        <span
+          className={cn(
+            'border px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.18em]',
+            pillTone === 'serving' && 'border-[var(--color-bravo)] text-[var(--color-bravo)]',
+            pillTone === 'appt' && 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)]',
+            pillTone === 'walkin' && 'border-[var(--color-leather)] text-[var(--color-leather)]',
+          )}
+        >
+          {pillLabel}
+        </span>
+        {onFinalize && (
+          <button
+            type="button"
+            onClick={onFinalize}
+            className="cursor-pointer border border-[var(--color-leather-muted)] px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:border-[var(--color-bone)] hover:text-[var(--color-bone)]"
+          >
+            Finalizar
+          </button>
         )}
-      >
-        {pillLabel}
-      </span>
+      </div>
     </Tag>
   )
 }

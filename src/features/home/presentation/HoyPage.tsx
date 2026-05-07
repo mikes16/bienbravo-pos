@@ -4,9 +4,11 @@ import { useNavigate } from 'react-router-dom'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
+import { useToast } from '@/core/toast/useToast'
 import { POS_HOME_COMMISSION, POS_HOME_CAJA_STATUS } from '../data/home.queries'
 import { deriveHoyViewModel, type HoyViewModel } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
+import { FinalizeWalkInSheet } from './FinalizeWalkInSheet'
 import { AddWalkInSheet } from '@/features/walkins/presentation/AddWalkInSheet'
 import { SkeletonRow } from '@/shared/pos-ui'
 import type { Appointment } from '@/features/agenda/domain/agenda.types'
@@ -37,6 +39,11 @@ export function HoyPage() {
 
   const [vm, setVm] = useState<HoyViewModel | null>(null)
   const [addWalkInOpen, setAddWalkInOpen] = useState(false)
+  // Companion close-out: papá pays for both, hijo's walk-in stays open. The
+  // operator picks "Finalizar" on the hijo row → confirms here → row drops.
+  const [finalizeTarget, setFinalizeTarget] = useState<{ id: string; name: string } | null>(null)
+  const [finalizing, setFinalizing] = useState(false)
+  const { addToast } = useToast()
 
   const refetch = useCallback(async () => {
     if (!viewer || !locationId) return
@@ -176,6 +183,26 @@ export function HoyPage() {
     }
   }, [vm, navigate])
 
+  const handleFinalizeWalkIn = useCallback((walkInId: string, customerName: string) => {
+    setFinalizeTarget({ id: walkInId, name: customerName })
+  }, [])
+
+  const confirmFinalize = useCallback(async () => {
+    if (!finalizeTarget || finalizing) return
+    setFinalizing(true)
+    try {
+      await walkins.complete(finalizeTarget.id)
+      addToast(`${finalizeTarget.name} finalizado`, 'success')
+      setFinalizeTarget(null)
+      void refetch()
+    } catch (e) {
+      const msg = (e as { message?: string }).message ?? 'No se pudo finalizar.'
+      addToast(msg, 'error')
+    } finally {
+      setFinalizing(false)
+    }
+  }, [finalizeTarget, finalizing, walkins, addToast, refetch])
+
   if (!vm) {
     return (
       <div className="flex h-full flex-col gap-4 px-6 py-5">
@@ -196,6 +223,7 @@ export function HoyPage() {
         onCtaClick={handleCtaClick}
         onGateAction={handleGateAction}
         onAddWalkIn={() => setAddWalkInOpen(true)}
+        onFinalizeWalkIn={handleFinalizeWalkIn}
       />
       {locationId && (
         <AddWalkInSheet
@@ -205,6 +233,12 @@ export function HoyPage() {
           onCreated={() => { void refetch() }}
         />
       )}
+      <FinalizeWalkInSheet
+        target={finalizeTarget}
+        submitting={finalizing}
+        onConfirm={confirmFinalize}
+        onClose={() => { if (!finalizing) setFinalizeTarget(null) }}
+      />
     </>
   )
 }

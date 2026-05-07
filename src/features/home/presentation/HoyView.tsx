@@ -9,6 +9,12 @@ interface HoyViewProps {
   onCtaClick: () => void
   onGateAction: () => void
   onAddWalkIn: () => void
+  /**
+   * Operator wants to close out a walk-in without going through checkout
+   * (e.g. an acompañante that was already paid on someone else's ticket).
+   * Surfaced only for active walk-in rows.
+   */
+  onFinalizeWalkIn?: (walkInId: string, customerName: string) => void
 }
 
 function pluralizeServicios(n: number): string {
@@ -22,7 +28,7 @@ function commissionCaption(amountCents: number, serviceCount: number): string {
   return pluralizeServicios(serviceCount)
 }
 
-export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn }: HoyViewProps) {
+export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn }: HoyViewProps) {
   if (vm.gate) {
     return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
   }
@@ -72,9 +78,16 @@ export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn }: HoyViewPr
             </p>
           </div>
         ) : (
-          vm.rows.map((row) => (
-            <HoyRow key={row.id} {...row} />
-          ))
+          vm.rows.map((row) => {
+            const finalizable = row.kind === 'active' && row.sourceKind === 'walk-in' && onFinalizeWalkIn
+            return (
+              <HoyRow
+                key={row.id}
+                {...row}
+                onFinalize={finalizable ? () => onFinalizeWalkIn(row.sourceId, row.customerName) : undefined}
+              />
+            )
+          })
         )}
       </div>
 
