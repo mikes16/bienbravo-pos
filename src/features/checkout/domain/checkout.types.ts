@@ -101,6 +101,14 @@ export interface SaleItemInput {
   catalogComboId: string | null
   qty: number
   unitPriceCents: number
+  /**
+   * Barber attributed to this specific line. Required for commission math:
+   * the dashboard reads commissions from DailyStaffMetrics which is
+   * populated per (staffUserId, locationId, date). Without this, every
+   * SaleItem lands with staffUserId=null and commissions stay $0 even
+   * though sales are recorded.
+   */
+  staffUserId: string | null
 }
 
 export interface SaleResult {

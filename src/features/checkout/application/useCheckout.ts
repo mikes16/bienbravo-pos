@@ -223,6 +223,10 @@ export function useCheckout() {
           catalogComboId: l.kind === 'combo' ? l.itemId : null,
           qty: l.qty,
           unitPriceCents: l.unitPriceCents,
+          // Per-line barber attribution drives commission math. Falls back to
+          // the cart's default barber when an item wasn't reassigned by the
+          // operator (which is the dominant case — single-barber sale).
+          staffUserId: l.staffUserId ?? (cartState.defaultBarberId || null),
         })),
         tipCents: payment.tipCents,
         paymentMethod: payment.method,
