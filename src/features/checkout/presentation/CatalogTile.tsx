@@ -23,11 +23,22 @@ export function CatalogTile({ kind, name, priceCents, stockQty, imageUrl, onAdd 
         disabled={isOutOfStock}
         onClick={onAdd}
         className={cn(
-          'absolute inset-0 flex flex-col items-start justify-between overflow-hidden bg-[var(--color-carbon-elevated)] p-3 text-left transition-colors',
-          !imageUrl && 'border border-[var(--color-leather-muted)]/40',
+          // Border is always 1px so the hover state can change colour
+          // without shifting the content (box-sizing: border-box was
+          // visibly compressing each tile by 1px on tap, leaving a thin
+          // light line operators read as a "weird white margin"). Default
+          // colour is transparent for image tiles (no visible chrome) and
+          // leather-muted for empty / no-image tiles to keep the existing
+          // visual. focus-visible only — touch / mouse taps don't show an
+          // outline because the persistent ring on tablet looked like a
+          // border bug.
+          'absolute inset-0 flex flex-col items-start justify-between overflow-hidden border bg-[var(--color-carbon-elevated)] p-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bravo)]',
+          imageUrl
+            ? 'border-transparent'
+            : 'border-[var(--color-leather-muted)]/40',
           isOutOfStock
             ? 'cursor-not-allowed opacity-50'
-            : 'cursor-pointer hover:border hover:border-[var(--color-bravo)]',
+            : 'cursor-pointer hover:border-[var(--color-bravo)]',
         )}
         style={
           imageUrl
