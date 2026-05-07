@@ -7,6 +7,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
 import { POS_HOME_COMMISSION } from '@/features/home/data/home.queries'
 import type { Appointment } from '@/features/agenda/domain/agenda.types.ts'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository.ts'
+import type { WalkIn } from '@/features/walkins/domain/walkins.types.ts'
 
 function todayISO(): string {
   // Local date so it matches HoyPage and the API's "today" interpretation —
@@ -26,30 +27,67 @@ interface DaySummary {
   clockedIn: boolean
 }
 
+/**
+ * Walk through clock events as a state machine instead of pairing by index.
+ * The old pair-by-index approach assumed alternating IN/OUT but real data has
+ * duplicates (e.g. operator double-taps clock-in) and orphans (an IN with no
+ * OUT before the next IN). Treating it as a state machine — start the timer
+ * on the first IN, ignore further INs until the next OUT, accumulate the
+ * span on OUT — gives a correct total under any sequence.
+ */
+export function computeWorkedMinutes(events: TimeClockEvent[], now: Date = new Date()): number {
+  // Defensive: accept events in any order, sort ascending by timestamp.
+  const sorted = [...events].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+  let total = 0
+  let inAt: Date | null = null
+  for (const evt of sorted) {
+    const at = new Date(evt.at)
+    if (evt.type === 'CLOCK_IN') {
+      if (inAt === null) inAt = at // ignore duplicate INs
+    } else if (evt.type === 'CLOCK_OUT') {
+      if (inAt !== null) {
+        total += (at.getTime() - inAt.getTime()) / 60000
+        inAt = null
+      }
+      // CLOCK_OUT without a preceding IN is dropped silently
+    }
+  }
+  // Currently clocked in: count the open span up to "now".
+  if (inAt !== null) total += (now.getTime() - inAt.getTime()) / 60000
+  return Math.max(0, total)
+}
+
 function computeWorkSummary(
   appointments: Appointment[],
+  walkIns: WalkIn[],
   clockEvents: TimeClockEvent[],
+  staffUserId: string,
   revenueCents: number,
   commissionCents: number,
 ): DaySummary {
-  const completed = appointments.filter((a) => a.status === 'COMPLETED')
+  // "Citas completadas" reads as "servicios cerrados hoy" to the operator —
+  // include their finished walk-ins, otherwise a barber whose day is pure
+  // walk-ins shows 0 and the page reads broken.
+  const completedAppts = appointments.filter(
+    (a) => a.status === 'COMPLETED' && a.staffUser?.id === staffUserId,
+  ).length
+  const completedWalkIns = walkIns.filter(
+    (w) => w.status === 'DONE' && w.assignedStaffUser?.id === staffUserId,
+  ).length
+  const completedCount = completedAppts + completedWalkIns
 
-  let totalMinutes = 0
-  for (let i = 0; i < clockEvents.length; i += 2) {
-    const inEvt = clockEvents[i]
-    const outEvt = clockEvents[i + 1]
-    if (inEvt?.type === 'CLOCK_IN') {
-      const end = outEvt ? new Date(outEvt.at) : new Date()
-      totalMinutes += (end.getTime() - new Date(inEvt.at).getTime()) / 60000
-    }
-  }
-
+  const totalMinutes = computeWorkedMinutes(clockEvents)
   const h = Math.floor(totalMinutes / 60)
   const m = Math.round(totalMinutes % 60)
-  const clockedIn = clockEvents.length > 0 && clockEvents[clockEvents.length - 1].type === 'CLOCK_IN'
+
+  // Clocked-in iff the most recent event (by timestamp, not array order) is
+  // an IN. Sort defensively in case the API returns descending.
+  const sorted = [...clockEvents].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+  const last = sorted[sorted.length - 1]
+  const clockedIn = !!last && last.type === 'CLOCK_IN'
 
   return {
-    completedCount: completed.length,
+    completedCount,
     revenueCents,
     commissionCents,
     hoursWorked: `${h}h ${m}m`,
@@ -84,7 +122,7 @@ export function MyDayPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
-  const { agenda, clock } = useRepositories()
+  const { agenda, clock, walkins } = useRepositories()
   const [summary, setSummary] = useState<DaySummary | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -98,6 +136,7 @@ export function MyDayPage() {
     Promise.allSettled([
       agenda.getAppointments(d, d, locationId),
       clock.getEvents(viewer.staff.id, locationId, d, d),
+      walkins.getWalkIns(locationId),
       apollo.query<{
         staffServiceRevenueToday: number
         staffProductRevenueToday: number
@@ -108,16 +147,19 @@ export function MyDayPage() {
         fetchPolicy: 'network-only',
       }),
     ])
-      .then(([apptsRes, eventsRes, commRes]) => {
+      .then(([apptsRes, eventsRes, walkinsRes, commRes]) => {
         const appts = apptsRes.status === 'fulfilled' ? apptsRes.value : []
         const events = eventsRes.status === 'fulfilled' ? eventsRes.value : []
+        const wkins = walkinsRes.status === 'fulfilled' ? walkinsRes.value : []
         const comm = commRes.status === 'fulfilled' ? commRes.value.data : null
         const revenueCents = (comm?.staffServiceRevenueToday ?? 0) + (comm?.staffProductRevenueToday ?? 0)
         const commissionCents = comm?.staffCommissionToday ?? 0
-        setSummary(computeWorkSummary(appts, events, revenueCents, commissionCents))
+        setSummary(
+          computeWorkSummary(appts, wkins, events, viewer.staff.id, revenueCents, commissionCents),
+        )
       })
       .finally(() => setLoading(false))
-  }, [agenda, clock, viewer, locationId, apollo])
+  }, [agenda, clock, walkins, viewer, locationId, apollo])
 
   return (
     <div className="flex h-full flex-col gap-6 px-6 py-5">
