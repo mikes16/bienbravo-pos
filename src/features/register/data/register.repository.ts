@@ -42,10 +42,14 @@ export class ApolloRegisterRepository implements RegisterRepository {
   }
 
   async getRegisters(locationId: string): Promise<Register[]> {
+    // network-only: register state mutates from sales, opens, closes — any
+    // of which can land while the page is mounted. cache-first kept showing
+    // a closed register right after openSession because the previous fetch
+    // (pre-open) was still served from Apollo's normalized store.
     const { data } = await this.#client.query<{ registers: Register[] }>({
       query: REGISTERS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: 'network-only',
     })
     return data!.registers.filter((r: Register) => r.isActive)
   }
@@ -54,6 +58,14 @@ export class ApolloRegisterRepository implements RegisterRepository {
     const { data } = await this.#client.mutate<{ openRegisterSession: RegisterSession }>({
       mutation: OPEN_SESSION,
       variables: { registerId, openingCashCents },
+      // Evict the registers root field so any other consumer (HoyPage, the
+      // POS shell's caja gate) refetches on its next mount instead of
+      // serving the pre-open snapshot.
+      update: (cache) => {
+        cache.evict({ fieldName: 'registers' })
+        cache.evict({ fieldName: 'posCajaStatusHome' })
+        cache.gc()
+      },
     })
     return data!.openRegisterSession
   }
@@ -62,6 +74,11 @@ export class ApolloRegisterRepository implements RegisterRepository {
     const { data } = await this.#client.mutate<{ closeRegisterSession: RegisterSession }>({
       mutation: CLOSE_SESSION,
       variables: { input },
+      update: (cache) => {
+        cache.evict({ fieldName: 'registers' })
+        cache.evict({ fieldName: 'posCajaStatusHome' })
+        cache.gc()
+      },
     })
     return data!.closeRegisterSession
   }
