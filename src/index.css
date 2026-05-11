@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "../design-system/tokens/dist/bienbravo.tokens.css";
+@import "./styles/design-tokens/bienbravo.tokens.css";
 
 /* ─────────────────────────────────────────────────────────────────────
  * POS Visual Language tokens (sub-project #0)

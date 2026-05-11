@@ -37,3 +37,18 @@ export const MY_QUERY = graphql(`
 ## TypeScript project references
 
 `tsconfig.generated.json` aísla `src/core/graphql/generated/` con flags relajados (`erasableSyntaxOnly: false`, `noUnusedLocals: false`) porque client-preset emite enums y exports que violan las reglas estrictas del resto del repo. `tsconfig.app.json` excluye ese directorio y lo referencia como proyecto separado. No tocar esta estructura salvo que sepas que lo necesitas.
+
+## Design tokens (vendoring)
+
+Los design tokens viven físicamente en `src/styles/design-tokens/bienbravo.tokens.css`. Antes era un symlink a `../bienbravo-admin/design-system/tokens/dist/`, pero el deploy a Vercel rompe symlinks cross-repo. Ahora es una copia.
+
+**Cuando los tokens cambien en `bienbravo-admin`:**
+
+1. En `bienbravo-admin/`, regenerar tokens: `npm run ds:build-tokens`
+2. Copiar el archivo nuevo:
+   ```bash
+   cp /path/to/bienbravo-admin/design-system/tokens/dist/bienbravo.tokens.css src/styles/design-tokens/bienbravo.tokens.css
+   ```
+3. Commit en este repo
+
+Nota: solo se vendoriza `bienbravo.tokens.css` (base). `bienbravo.admin.tokens.css` es específica del admin y no aplica aquí.
