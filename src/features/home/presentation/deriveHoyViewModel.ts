@@ -26,6 +26,11 @@ export interface HoyRowData {
   pillTone: 'serving' | 'appt' | 'walkin'
   sourceKind: 'appointment' | 'walk-in'
   sourceId: string
+  // True when the appointment/walk-in is assigned to the viewing barber.
+  // Used to highlight "tuyo" rows when we show the full queue (not just mine).
+  isMine: boolean
+  // Who's assigned (for showing "asignado a Juan" on rows that aren't mine).
+  assignedToName: string | null
 }
 
 export interface ContextualCTAData {
@@ -87,16 +92,19 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
   // DONE walk-ins, CANCELLED/NO_SHOW) shouldn't crowd the queue or get picked as
   // the "next" target — the API rejects retrying those, and the operator can't
   // act on them anyway.
-  const myAppts = appointments.filter(
+  // Owner feedback (1.7): mostrar toda la fila a todos los barberos. El que
+  // ejecuta puede ser cualquiera — el barbero asignado, o cualquier compañero
+  // que tome el cliente si quien estaba asignado no está disponible. Marcamos
+  // visualmente con `isMine` cuáles son del viewer.
+  const activeAppts = appointments.filter(
     (a) =>
-      a.staffUser?.id === staffId &&
       a.status !== 'COMPLETED' &&
       a.status !== 'CANCELLED' &&
       a.status !== 'NO_SHOW',
   )
-  const myWalkIns = walkIns.filter(
+  const assignedWalkIns = walkIns.filter(
     (w) =>
-      w.assignedStaffUser?.id === staffId &&
+      w.assignedStaffUser != null &&
       w.status !== 'DONE' &&
       w.status !== 'CANCELLED',
   )
@@ -107,7 +115,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
   type Candidate = { row: HoyRowData; sortKey: string; isActive: boolean; isPending: boolean }
   const candidates: Candidate[] = []
 
-  for (const a of myAppts) {
+  for (const a of activeAppts) {
     const customer = (a.customer ?? null) as { id?: string; fullName?: string; photoUrl?: string | null } | null
     const customerId = customer?.id ?? null
     const customerName = customer?.fullName ?? 'Cliente'
@@ -133,6 +141,8 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         pillTone: isInService ? 'serving' : 'appt',
         sourceKind: 'appointment',
         sourceId: a.id,
+        isMine: a.staffUser?.id === staffId,
+        assignedToName: a.staffUser?.fullName ?? null,
       },
       sortKey: startAt,
       isActive: isInService,
@@ -140,7 +150,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     })
   }
 
-  for (const w of myWalkIns) {
+  for (const w of assignedWalkIns) {
     const customer = w.customer ?? null
     const customerId = customer?.id ?? null
     const customerName = customer?.fullName ?? w.customerName ?? 'Walk-in'
@@ -163,6 +173,8 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         pillTone: isAssigned ? 'serving' : 'walkin',
         sourceKind: 'walk-in',
         sourceId: w.id,
+        isMine: w.assignedStaffUser?.id === staffId,
+        assignedToName: w.assignedStaffUser?.fullName ?? null,
       },
       sortKey: w.createdAt,
       isActive: isAssigned,
@@ -191,6 +203,8 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         pillTone: 'walkin',
         sourceKind: 'walk-in',
         sourceId: w.id,
+        isMine: false, // queue items are unassigned by definition
+        assignedToName: null,
       },
       sortKey: w.createdAt,
       isActive: false,

@@ -34,8 +34,10 @@ export interface ShiftStatus {
   scheduledStartMin: number | null
   scheduledEndMin: number | null
   arrivalMin: number | null
+  departureMin: number | null
   scheduledStartLabel: string | null
   arrivalLabel: string | null
+  departureLabel: string | null
   latenessMin: number
   isLate: boolean
   statusLabel: string
@@ -118,13 +120,22 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     const latestClockIn = events.filter((e) => e.type === 'CLOCK_IN').at(-1)
     const arrivalMin = latestClockIn ? minutesFromMidnight(latestClockIn.at) : null
 
+    // Surface the latest CLOCK_OUT once the barber has clocked out — without
+    // this, there's no way to see "when did I leave?" on the reloj screen.
+    const latestClockOut = events.filter((e) => e.type === 'CLOCK_OUT').at(-1)
+    const departureMin =
+      !isClockedIn && latestClockOut ? minutesFromMidnight(latestClockOut.at) : null
+    const departureLabel = departureMin !== null ? formatMinToTime(departureMin) : null
+
     if (!todayShift) {
       return {
         scheduledStartMin: null,
         scheduledEndMin: null,
         arrivalMin,
+        departureMin,
         scheduledStartLabel: null,
         arrivalLabel: arrivalMin !== null ? formatMinToTime(arrivalMin) : null,
+        departureLabel,
         latenessMin: 0,
         isLate: false,
         statusLabel: 'Sin turno programado',
@@ -144,13 +155,15 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
       scheduledStartMin: scheduledStart,
       scheduledEndMin: todayShift.endMin,
       arrivalMin,
+      departureMin,
       scheduledStartLabel: formatMinToTime(scheduledStart),
       arrivalLabel: arrivalMin !== null ? formatMinToTime(arrivalMin) : null,
+      departureLabel,
       latenessMin,
       isLate,
       statusLabel,
     }
-  }, [events, shiftTemplates])
+  }, [events, shiftTemplates, isClockedIn])
 
   const doClockIn = useCallback(async () => {
     if (!locationId) return

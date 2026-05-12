@@ -115,7 +115,7 @@ export function ClockPage() {
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
           Turno hoy
         </p>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="flex flex-col gap-1">
             <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Programado</p>
             <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
@@ -126,6 +126,12 @@ export function ClockPage() {
             <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Llegada</p>
             <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
               {shiftStatus.arrivalLabel ?? '—'}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Salida</p>
+            <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
+              {shiftStatus.departureLabel ?? '—'}
             </p>
           </div>
           <div className="flex flex-col gap-1">

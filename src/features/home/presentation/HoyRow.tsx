@@ -21,6 +21,14 @@ export interface HoyRowProps {
    * `completeWalkIn` mutation, no checkout involved.
    */
   onFinalize?: () => void
+  /**
+   * True if this row is assigned to the viewing staff. We show the queue to
+   * all barbers (so anyone can pick anyone up), but visually emphasize the
+   * ones that "belong" to the viewer.
+   */
+  isMine?: boolean
+  /** Name of the barber currently assigned, when it's not the viewer. */
+  assignedToName?: string | null
 }
 
 export function HoyRow({
@@ -35,6 +43,8 @@ export function HoyRow({
   pillTone,
   onClick,
   onFinalize,
+  isMine = true,
+  assignedToName,
 }: HoyRowProps) {
   const isActive = kind === 'active'
   const isNext = kind === 'next'
@@ -106,6 +116,9 @@ export function HoyRow({
         <p className="mt-0.5 truncate text-[12px] text-[var(--color-bone-muted)]">
           <strong className="font-semibold text-[var(--color-bone-muted)]">{serviceLabel}</strong>
           {meta && <span> · {meta}</span>}
+          {!isMine && assignedToName && (
+            <span className="text-[var(--color-leather)]"> · asignado a {assignedToName}</span>
+          )}
         </p>
       </div>
 
