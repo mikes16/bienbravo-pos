@@ -279,42 +279,6 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             )}
           </div>
 
-          {/* History preview when an existing customer is linked */}
-          {selectedCustomer && (
-            <div className="flex flex-col gap-2 border border-[var(--color-leather-muted)]/40 px-4 py-3">
-              <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-                Historial
-              </span>
-              {historyLoading ? (
-                <span className="text-[12px] text-[var(--color-bone-muted)]">Cargando…</span>
-              ) : history && history.length > 0 ? (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[13px] text-[var(--color-bone)]">
-                    {completedHistoryCount > 0
-                      ? `${completedHistoryCount} servicio${completedHistoryCount === 1 ? '' : 's'} en BienBravo`
-                      : 'Cliente registrado · sin servicios completados'}
-                  </span>
-                  {recentVisit && (
-                    <span className="text-[12px] text-[var(--color-bone-muted)]">
-                      Último: {recentVisit.itemLabels[0] ?? 'Servicio'} · {formatHistoryDate(recentVisit.startAt)}
-                    </span>
-                  )}
-                  {history.length > 1 && (
-                    <ul className="mt-1 flex flex-col gap-0.5">
-                      {history.slice(0, 5).map((h) => (
-                        <li key={h.id} className="font-mono text-[10px] text-[var(--color-bone-muted)]">
-                          {formatHistoryDate(h.startAt)} · {h.itemLabels.join(', ') || 'Servicio'}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : (
-                <span className="text-[12px] text-[var(--color-bone-muted)]">Sin visitas previas</span>
-              )}
-            </div>
-          )}
-
           {/* Phone */}
           <div className="flex flex-col gap-2">
             <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
