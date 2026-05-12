@@ -137,6 +137,10 @@ export function HoyPage() {
         setCtaBusy(true)
         try {
           if (targetKind === 'appointment') {
+            // checkIn transitions CONFIRMED→CHECKED_IN; startService needs CHECKED_IN.
+            // Swallow the checkIn error if the appointment already moved past that
+            // state (e.g. front-desk checked them in) — startService still works.
+            try { await agenda.checkIn(targetId) } catch { /* already past CONFIRMED */ }
             await agenda.startService(targetId)
           } else {
             await walkins.assign(targetId, viewer.staff.id)

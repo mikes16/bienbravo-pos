@@ -112,8 +112,11 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     const dow = todayDayOfWeek()
     const todayShift = shiftTemplates.find((t) => t.dayOfWeek === dow)
 
-    const firstClockIn = events.find((e) => e.type === 'CLOCK_IN')
-    const arrivalMin = firstClockIn ? minutesFromMidnight(firstClockIn.at) : null
+    // Use the LATEST CLOCK_IN, not the first. With double shifts (IN→OUT→IN),
+    // the first CLOCK_IN belongs to the morning shift; for the afternoon shift
+    // the operator expects to see the 3pm entry, not the 8am one.
+    const latestClockIn = events.filter((e) => e.type === 'CLOCK_IN').at(-1)
+    const arrivalMin = latestClockIn ? minutesFromMidnight(latestClockIn.at) : null
 
     if (!todayShift) {
       return {
