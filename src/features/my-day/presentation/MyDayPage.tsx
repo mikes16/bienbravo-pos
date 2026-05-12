@@ -125,6 +125,7 @@ export function MyDayPage() {
   const { agenda, clock, walkins } = useRepositories()
   const [summary, setSummary] = useState<DaySummary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const staffName = viewer?.staff?.fullName ?? ''
 
@@ -133,6 +134,7 @@ export function MyDayPage() {
     const d = todayISO()
     setLoading(true)
 
+    setLoadError(null)
     Promise.allSettled([
       agenda.getAppointments(d, d, locationId),
       clock.getEvents(viewer.staff.id, locationId, d, d),
@@ -157,6 +159,22 @@ export function MyDayPage() {
         setSummary(
           computeWorkSummary(appts, wkins, events, viewer.staff.id, revenueCents, commissionCents),
         )
+
+        // Surface partial failures so the operator doesn't see "$0 ventas" silently
+        // when the network/server actually failed. The view still renders with
+        // whatever data did come through.
+        const failures: string[] = []
+        if (apptsRes.status === 'rejected') failures.push('citas')
+        if (eventsRes.status === 'rejected') failures.push('reloj')
+        if (walkinsRes.status === 'rejected') failures.push('fila')
+        if (commRes.status === 'rejected') failures.push('ventas')
+        if (failures.length > 0) {
+          setLoadError(`No se pudo cargar: ${failures.join(', ')}. Refresca o avisa al admin si persiste.`)
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.error('[MyDayPage] partial load failure', { apptsRes, eventsRes, walkinsRes, commRes })
+          }
+        }
       })
       .finally(() => setLoading(false))
   }, [agenda, clock, walkins, viewer, locationId, apollo])
@@ -171,6 +189,14 @@ export function MyDayPage() {
           {staffName}
         </p>
       </div>
+
+      {loadError && (
+        <div className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/10 px-4 py-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--color-bravo)]">
+            {loadError}
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KPICard
