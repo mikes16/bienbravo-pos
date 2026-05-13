@@ -62,14 +62,17 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     if (!open || !locationId) return
     let cancelled = false
     Promise.all([
-      checkout.getBarbers(locationId),
+      // Owner feedback (1.5): show only barbers who clocked in and aren't
+      // currently in service. The enriched query also returns hasClockedIn
+      // and isOccupied so we can filter here without a second hop.
+      checkout.getAvailableBarbers(locationId),
       checkout.getServices(locationId, null),
       checkout.getCombos(),
       checkout.getCategories(),
     ])
       .then(([b, s, c, cats]) => {
         if (cancelled) return
-        setBarbers(b)
+        setBarbers(b.filter((bb) => bb.hasClockedIn && !bb.isOccupied))
         // Only show non-add-on services in the picker (add-ons are upsells, not
         // standalone visit reasons).
         setServices(s.filter((svc) => !svc.isAddOn))

@@ -128,6 +128,13 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     ]
   }
 
+  async getAvailableBarbers(_locationId: string): Promise<{ id: string; fullName: string; photoUrl: string | null; hasClockedIn: boolean; isOccupied: boolean }[]> {
+    return [
+      { id: 'staff-1', fullName: 'Carlos', photoUrl: null, hasClockedIn: true, isOccupied: false },
+      { id: 'staff-2', fullName: 'Antonio', photoUrl: null, hasClockedIn: true, isOccupied: false },
+    ]
+  }
+
   async getCustomer(_id: string): Promise<CustomerResult | null> {
     return null
   }

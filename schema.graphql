@@ -333,6 +333,7 @@ input CreateProductInput {
   hsCode: String
   imagePublicId: String
   imageUrl: String
+  initialStock: [InitialStockInput!]
   lengthMm: Int
   locationIds: [ID!]!
   name: String!
@@ -556,6 +557,12 @@ input GroupBookingAppointmentInput {
   startAt: DateTime!
 }
 
+input InitialStockInput {
+  productVariantId: ID
+  quantity: Int!
+  stockLocationId: ID!
+}
+
 type InventoryAlertRow {
   lowStockThreshold: Int
   productId: ID!
@@ -570,7 +577,51 @@ type InventoryLevel {
   id: ID!
   product: Product!
   productId: ID!
+  productVariant: ProductVariant
+  productVariantId: ID
   quantity: Int!
+  stockLocationId: ID!
+}
+
+type InventoryMatrixConnection {
+  edges: [InventoryMatrixEdge!]!
+  pageInfo: InventoryMatrixPageInfo!
+  totalCount: Int!
+}
+
+type InventoryMatrixEdge {
+  cursor: String!
+  node: InventoryMatrixRow!
+}
+
+type InventoryMatrixLevel {
+  quantity: Int!
+  stockLocationId: ID!
+}
+
+type InventoryMatrixPageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+}
+
+type InventoryMatrixRow {
+  levels: [InventoryMatrixLevel!]!
+  product: Product!
+  productId: ID!
+  productVariantId: ID
+  totalQuantity: Int!
+  variant: ProductVariant
+}
+
+type InventoryMovement {
+  createdAt: DateTime!
+  delta: Int!
+  id: ID!
+  productId: ID!
+  productVariantId: ID
+  reason: String
+  stockLocationId: ID!
+  type: String!
 }
 
 """Arbitrary JSON value"""
@@ -765,6 +816,7 @@ type Mutation {
   findOrCreateMostradorCustomer: Customer!
   fulfillOrder(orderId: ID!, stockLocationId: ID!): Order!
   inventoryAdjust(delta: Int!, productId: ID!, reason: String, stockLocationId: ID!): InventoryLevel!
+  inventorySet(productId: ID!, productVariantId: ID, quantity: Int!, reason: String, stockLocationId: ID!): InventoryLevel!
   inventoryTransfer(fromStockLocationId: ID!, productId: ID!, qty: Int!, toStockLocationId: ID!): Boolean!
   logout: Boolean!
   noShow(appointmentId: ID!): Appointment!
@@ -879,6 +931,14 @@ type PayoutRunEntry {
   staffUserId: ID!
 }
 
+type PosAvailableBarber {
+  fullName: String!
+  hasClockedIn: Boolean!
+  id: ID!
+  isOccupied: Boolean!
+  photoUrl: String
+}
+
 type PosCajaStatusHome {
   accumulatedCents: Int
   isOpen: Boolean!
@@ -896,6 +956,14 @@ type PosPinLockoutStatus {
 type PosPublicLocation {
   id: ID!
   name: String!
+}
+
+type PosRevenueSummary {
+  cardCents: Int!
+  cashCents: Int!
+  salesCount: Int!
+  totalCents: Int!
+  transferCents: Int!
 }
 
 type Product {
@@ -1001,6 +1069,8 @@ type Query {
   dailyStaffMetrics(dateFrom: String!, dateTo: String!, locationId: ID, staffUserId: ID): [DailyStaffMetrics!]!
   dashboardSummary(filters: DashboardFiltersInput!): DashboardSummary!
   inventoryLevels(limit: Int, offset: Int, stockLocationId: ID!): [InventoryLevel!]!
+  inventoryMatrix(after: String, first: Int = 50, search: String, stockLocationIds: [ID!]): InventoryMatrixConnection!
+  inventoryMovements(first: Int = 10, productId: ID!, productVariantId: ID): [InventoryMovement!]!
   latenessExcuses(fromDate: String!, locationId: ID, staffUserId: ID, toDate: String!): [LatenessExcuse!]!
   latenessOverrides(locationId: ID, staffUserId: ID): [LatenessOverride!]!
   latenessRule(locationId: ID!): LatenessRule
@@ -1022,10 +1092,12 @@ type Query {
   payoutRun(id: ID!): PayoutRun
   payoutRuns(periodEnd: DateTime, periodStart: DateTime): [PayoutRun!]!
   permissions: [String!]!
+  posAvailableBarbers(locationId: ID!): [PosAvailableBarber!]!
   posCajaStatusHome(locationId: ID!): PosCajaStatusHome!
   posInventoryLevels(limit: Int, locationId: ID!): [InventoryLevel!]!
   posPinLockoutStatus(email: String!): PosPinLockoutStatus!
   posPublicLocations: [PosPublicLocation!]!
+  posRevenueSummary(dateFrom: String!, dateTo: String!, locationId: ID!): PosRevenueSummary!
   product(id: ID!): Product
   products(locationId: ID): [Product!]!
   productsPaged(after: String, categoryId: String, first: Int! = 24, search: String, sort: ProductsSort! = UPDATED_DESC, status: ProductStatus): ProductConnection!
@@ -1059,6 +1131,7 @@ type Query {
   staffLocationsWithSchedules(staffUserId: ID!): [StaffLocationScheduleSummary!]!
   staffMemberships(locationId: ID, staffUserId: ID): [StaffMembership!]!
   staffProductRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
+  staffRegisterSessions(dateFrom: String, dateTo: String, first: Int! = 50, staffUserId: ID!): [RegisterSession!]!
   staffRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffRoleAssignments(staffUserId: ID): [StaffRoleAssignmentRow!]!
   staffServiceRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
@@ -1140,6 +1213,7 @@ type RegisterSession {
   expectedCashCents: Int!
   expectedTransferCents: Int!
   id: ID!
+  locationName: String
   openedAt: DateTime!
   status: RegisterSessionStatus!
 }

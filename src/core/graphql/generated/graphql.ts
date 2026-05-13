@@ -375,6 +375,7 @@ export type CreateProductInput = {
   hsCode?: InputMaybe<Scalars['String']['input']>;
   imagePublicId?: InputMaybe<Scalars['String']['input']>;
   imageUrl?: InputMaybe<Scalars['String']['input']>;
+  initialStock?: InputMaybe<Array<InitialStockInput>>;
   lengthMm?: InputMaybe<Scalars['Int']['input']>;
   locationIds: Array<Scalars['ID']['input']>;
   name: Scalars['String']['input'];
@@ -600,6 +601,12 @@ export type GroupBookingAppointmentInput = {
   startAt: Scalars['DateTime']['input'];
 };
 
+export type InitialStockInput = {
+  productVariantId?: InputMaybe<Scalars['ID']['input']>;
+  quantity: Scalars['Int']['input'];
+  stockLocationId: Scalars['ID']['input'];
+};
+
 export type InventoryAlertRow = {
   __typename?: 'InventoryAlertRow';
   lowStockThreshold?: Maybe<Scalars['Int']['output']>;
@@ -616,7 +623,57 @@ export type InventoryLevel = {
   id: Scalars['ID']['output'];
   product: Product;
   productId: Scalars['ID']['output'];
+  productVariant?: Maybe<ProductVariant>;
+  productVariantId?: Maybe<Scalars['ID']['output']>;
   quantity: Scalars['Int']['output'];
+  stockLocationId: Scalars['ID']['output'];
+};
+
+export type InventoryMatrixConnection = {
+  __typename?: 'InventoryMatrixConnection';
+  edges: Array<InventoryMatrixEdge>;
+  pageInfo: InventoryMatrixPageInfo;
+  totalCount: Scalars['Int']['output'];
+};
+
+export type InventoryMatrixEdge = {
+  __typename?: 'InventoryMatrixEdge';
+  cursor: Scalars['String']['output'];
+  node: InventoryMatrixRow;
+};
+
+export type InventoryMatrixLevel = {
+  __typename?: 'InventoryMatrixLevel';
+  quantity: Scalars['Int']['output'];
+  stockLocationId: Scalars['ID']['output'];
+};
+
+export type InventoryMatrixPageInfo = {
+  __typename?: 'InventoryMatrixPageInfo';
+  endCursor?: Maybe<Scalars['String']['output']>;
+  hasNextPage: Scalars['Boolean']['output'];
+};
+
+export type InventoryMatrixRow = {
+  __typename?: 'InventoryMatrixRow';
+  levels: Array<InventoryMatrixLevel>;
+  product: Product;
+  productId: Scalars['ID']['output'];
+  productVariantId?: Maybe<Scalars['ID']['output']>;
+  totalQuantity: Scalars['Int']['output'];
+  variant?: Maybe<ProductVariant>;
+};
+
+export type InventoryMovement = {
+  __typename?: 'InventoryMovement';
+  createdAt: Scalars['DateTime']['output'];
+  delta: Scalars['Int']['output'];
+  id: Scalars['ID']['output'];
+  productId: Scalars['ID']['output'];
+  productVariantId?: Maybe<Scalars['ID']['output']>;
+  reason?: Maybe<Scalars['String']['output']>;
+  stockLocationId: Scalars['ID']['output'];
+  type: Scalars['String']['output'];
 };
 
 export type LatenessExcuse = {
@@ -820,6 +877,7 @@ export type Mutation = {
   findOrCreateMostradorCustomer: Customer;
   fulfillOrder: Order;
   inventoryAdjust: InventoryLevel;
+  inventorySet: InventoryLevel;
   inventoryTransfer: Scalars['Boolean']['output'];
   logout: Scalars['Boolean']['output'];
   noShow: Appointment;
@@ -1222,6 +1280,15 @@ export type MutationInventoryAdjustArgs = {
 };
 
 
+export type MutationInventorySetArgs = {
+  productId: Scalars['ID']['input'];
+  productVariantId?: InputMaybe<Scalars['ID']['input']>;
+  quantity: Scalars['Int']['input'];
+  reason?: InputMaybe<Scalars['String']['input']>;
+  stockLocationId: Scalars['ID']['input'];
+};
+
+
 export type MutationInventoryTransferArgs = {
   fromStockLocationId: Scalars['ID']['input'];
   productId: Scalars['ID']['input'];
@@ -1587,6 +1654,15 @@ export type PayoutRunEntry = {
   staffUserId: Scalars['ID']['output'];
 };
 
+export type PosAvailableBarber = {
+  __typename?: 'PosAvailableBarber';
+  fullName: Scalars['String']['output'];
+  hasClockedIn: Scalars['Boolean']['output'];
+  id: Scalars['ID']['output'];
+  isOccupied: Scalars['Boolean']['output'];
+  photoUrl?: Maybe<Scalars['String']['output']>;
+};
+
 export type PosCajaStatusHome = {
   __typename?: 'PosCajaStatusHome';
   accumulatedCents?: Maybe<Scalars['Int']['output']>;
@@ -1606,6 +1682,15 @@ export type PosPublicLocation = {
   __typename?: 'PosPublicLocation';
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
+};
+
+export type PosRevenueSummary = {
+  __typename?: 'PosRevenueSummary';
+  cardCents: Scalars['Int']['output'];
+  cashCents: Scalars['Int']['output'];
+  salesCount: Scalars['Int']['output'];
+  totalCents: Scalars['Int']['output'];
+  transferCents: Scalars['Int']['output'];
 };
 
 export type Product = {
@@ -1717,6 +1802,8 @@ export type Query = {
   dailyStaffMetrics: Array<DailyStaffMetrics>;
   dashboardSummary: DashboardSummary;
   inventoryLevels: Array<InventoryLevel>;
+  inventoryMatrix: InventoryMatrixConnection;
+  inventoryMovements: Array<InventoryMovement>;
   latenessExcuses: Array<LatenessExcuse>;
   latenessOverrides: Array<LatenessOverride>;
   latenessRule?: Maybe<LatenessRule>;
@@ -1738,10 +1825,12 @@ export type Query = {
   payoutRun?: Maybe<PayoutRun>;
   payoutRuns: Array<PayoutRun>;
   permissions: Array<Scalars['String']['output']>;
+  posAvailableBarbers: Array<PosAvailableBarber>;
   posCajaStatusHome: PosCajaStatusHome;
   posInventoryLevels: Array<InventoryLevel>;
   posPinLockoutStatus: PosPinLockoutStatus;
   posPublicLocations: Array<PosPublicLocation>;
+  posRevenueSummary: PosRevenueSummary;
   product?: Maybe<Product>;
   products: Array<Product>;
   productsPaged: ProductConnection;
@@ -1775,6 +1864,7 @@ export type Query = {
   staffLocationsWithSchedules: Array<StaffLocationScheduleSummary>;
   staffMemberships: Array<StaffMembership>;
   staffProductRevenueToday: Scalars['Int']['output'];
+  staffRegisterSessions: Array<RegisterSession>;
   staffRevenueToday: Scalars['Int']['output'];
   staffRoleAssignments: Array<StaffRoleAssignmentRow>;
   staffServiceRevenueToday: Scalars['Int']['output'];
@@ -1904,6 +1994,21 @@ export type QueryInventoryLevelsArgs = {
 };
 
 
+export type QueryInventoryMatrixArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  first?: InputMaybe<Scalars['Int']['input']>;
+  search?: InputMaybe<Scalars['String']['input']>;
+  stockLocationIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+};
+
+
+export type QueryInventoryMovementsArgs = {
+  first?: InputMaybe<Scalars['Int']['input']>;
+  productId: Scalars['ID']['input'];
+  productVariantId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type QueryLatenessExcusesArgs = {
   fromDate: Scalars['String']['input'];
   locationId?: InputMaybe<Scalars['ID']['input']>;
@@ -2009,6 +2114,11 @@ export type QueryPayoutRunsArgs = {
 };
 
 
+export type QueryPosAvailableBarbersArgs = {
+  locationId: Scalars['ID']['input'];
+};
+
+
 export type QueryPosCajaStatusHomeArgs = {
   locationId: Scalars['ID']['input'];
 };
@@ -2022,6 +2132,13 @@ export type QueryPosInventoryLevelsArgs = {
 
 export type QueryPosPinLockoutStatusArgs = {
   email: Scalars['String']['input'];
+};
+
+
+export type QueryPosRevenueSummaryArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId: Scalars['ID']['input'];
 };
 
 
@@ -2225,6 +2342,14 @@ export type QueryStaffProductRevenueTodayArgs = {
 };
 
 
+export type QueryStaffRegisterSessionsArgs = {
+  dateFrom?: InputMaybe<Scalars['String']['input']>;
+  dateTo?: InputMaybe<Scalars['String']['input']>;
+  first?: Scalars['Int']['input'];
+  staffUserId: Scalars['ID']['input'];
+};
+
+
 export type QueryStaffRevenueTodayArgs = {
   date: Scalars['String']['input'];
   locationId: Scalars['ID']['input'];
@@ -2349,6 +2474,7 @@ export type RegisterSession = {
   expectedCashCents: Scalars['Int']['output'];
   expectedTransferCents: Scalars['Int']['output'];
   id: Scalars['ID']['output'];
+  locationName?: Maybe<Scalars['String']['output']>;
   openedAt: Scalars['DateTime']['output'];
   status: RegisterSessionStatus;
 };

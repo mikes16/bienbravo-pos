@@ -34,6 +34,19 @@ const BARBERS_QUERY = graphql(`
 `) as any
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+const POS_AVAILABLE_BARBERS_QUERY = graphql(`
+  query PosAvailableBarbers($locationId: ID!) {
+    posAvailableBarbers(locationId: $locationId) {
+      id
+      fullName
+      photoUrl
+      hasClockedIn
+      isOccupied
+    }
+  }
+`) as any
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CUSTOMER_QUERY = graphql(`
   query PosCustomer($id: ID!) {
     customer(id: $id) {
@@ -210,6 +223,10 @@ export interface BarberResult {
   id: string
   fullName: string
   photoUrl: string | null
+  // Set by getAvailableBarbers (walk-in modal). The base getBarbers leaves
+  // these undefined so callers using the legacy shape keep working.
+  hasClockedIn?: boolean
+  isOccupied?: boolean
 }
 
 export interface WalkInLite {
@@ -231,6 +248,7 @@ export interface CheckoutRepository {
   findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult | null>
   findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }>
   getBarbers(locationId: string): Promise<BarberResult[]>
+  getAvailableBarbers(locationId: string): Promise<BarberResult[]>
   getCustomer(id: string): Promise<CustomerResult | null>
   getCustomerHistory(customerId: string, limit?: number): Promise<CustomerHistoryEntry[]>
   getWalkIn(walkInId: string, locationId: string): Promise<WalkInLite | null>
@@ -419,6 +437,17 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       fetchPolicy: 'cache-first',
     })
     return (data as { barbers: BarberResult[] }).barbers
+  }
+
+  async getAvailableBarbers(locationId: string): Promise<BarberResult[]> {
+    // network-only so the walk-in modal always sees fresh status. Operators
+    // open the sheet right after a barber clocks in / starts a service.
+    const { data } = await this.#client.query({
+      query: POS_AVAILABLE_BARBERS_QUERY,
+      variables: { locationId },
+      fetchPolicy: 'network-only',
+    })
+    return (data as { posAvailableBarbers: BarberResult[] }).posAvailableBarbers
   }
 
   async getCustomer(id: string): Promise<CustomerResult | null> {
