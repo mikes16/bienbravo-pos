@@ -130,8 +130,8 @@ export function ConfirmDigitalStep({
         Confirma los totales digitales
       </p>
       <p className="max-w-[540px] text-[13px] text-[var(--color-bone-muted)]">
-        Tarjeta y Stripe los reconcilias contra el sistema externo. Solo confirmar; ajustar si hubo
-        un cobro fallido o reverso.
+        Tarjeta la reconcilias contra la terminal física. Solo confirmar; ajustar si hubo un cobro
+        fallido o reverso. Stripe queda registrado automáticamente y no requiere confirmación.
       </p>
 
       <ConfirmRow
@@ -140,13 +140,6 @@ export function ConfirmDigitalStep({
         counted={counted.cardCents}
         onConfirm={() => onChange({ ...counted, cardCents: expectedCardCents })}
         onAdjust={(cents) => onChange({ ...counted, cardCents: cents })}
-      />
-      <ConfirmRow
-        label="STRIPE"
-        expected={expectedTransferCents}
-        counted={counted.transferCents}
-        onConfirm={() => onChange({ ...counted, transferCents: expectedTransferCents })}
-        onAdjust={(cents) => onChange({ ...counted, transferCents: cents })}
       />
     </div>
   )

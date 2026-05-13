@@ -228,6 +228,7 @@ export function HoyPage() {
         onGateAction={handleGateAction}
         onAddWalkIn={() => setAddWalkInOpen(true)}
         onFinalizeWalkIn={handleFinalizeWalkIn}
+        ctaBusy={ctaBusy}
       />
       {locationId && (
         <AddWalkInSheet

@@ -258,23 +258,29 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
               />
             )}
 
-            {!selectedCustomer && searchResults.length > 0 && (
+            {!selectedCustomer && name.trim().length >= 2 && (
               <div className="flex flex-col border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon)]">
-                {searchResults.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => linkExisting(c)}
-                    className="flex cursor-pointer flex-col items-start gap-0.5 border-b border-[var(--color-leather-muted)]/30 px-3 py-2 text-left last:border-b-0 hover:bg-[var(--color-cuero-viejo)]"
-                  >
-                    <span className="text-[13px] font-bold text-[var(--color-bone)]">{c.fullName}</span>
-                    {(c.phone || c.email) && (
-                      <span className="font-mono text-[10px] text-[var(--color-bone-muted)]">
-                        {[c.phone, c.email].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {searchResults.length > 0 ? (
+                  searchResults.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => linkExisting(c)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 border-b border-[var(--color-leather-muted)]/30 px-3 py-2 text-left last:border-b-0 hover:bg-[var(--color-cuero-viejo)]"
+                    >
+                      <span className="text-[13px] font-bold text-[var(--color-bone)]">{c.fullName}</span>
+                      {(c.phone || c.email) && (
+                        <span className="font-mono text-[10px] text-[var(--color-bone-muted)]">
+                          {[c.phone, c.email].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-leather-muted)]">
+                    Sin coincidencias · se creará nuevo cliente con este nombre
+                  </div>
+                )}
               </div>
             )}
           </div>

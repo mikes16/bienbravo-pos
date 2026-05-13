@@ -15,6 +15,8 @@ interface HoyViewProps {
    * Surfaced only for active walk-in rows.
    */
   onFinalizeWalkIn?: (walkInId: string, customerName: string) => void
+  /** True while the CTA action is in-flight — dims + spinner on the bar. */
+  ctaBusy?: boolean
 }
 
 function pluralizeServicios(n: number): string {
@@ -28,7 +30,7 @@ function commissionCaption(amountCents: number, serviceCount: number): string {
   return pluralizeServicios(serviceCount)
 }
 
-export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn }: HoyViewProps) {
+export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn, ctaBusy = false }: HoyViewProps) {
   if (vm.gate) {
     return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
   }
@@ -96,6 +98,7 @@ export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeW
         actionLabel={vm.cta.actionLabel}
         variant={vm.cta.variant}
         onClick={onCtaClick}
+        busy={ctaBusy}
       />
     </div>
   )

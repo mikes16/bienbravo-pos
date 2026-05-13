@@ -12,7 +12,7 @@ import { formatMoney } from '@/shared/lib/money'
 
 const PENDING_DIGITAL: DigitalCounted = { cardCents: null, transferCents: null }
 const SUCCESS_REDIRECT_DELAY_MS = 2000
-const STEPS = ['Contar efectivo', 'Tarjeta · Stripe', 'Cerrar']
+const STEPS = ['Contar efectivo', 'Tarjeta', 'Cerrar']
 
 export function CloseCajaWizard() {
   const navigate = useNavigate()
@@ -27,6 +27,14 @@ export function CloseCajaWizard() {
   const [step, setStep] = useState(0)
   const [counts, setCounts] = useState<CashCounts>(emptyCashCounts())
   const [digital, setDigital] = useState<DigitalCounted>(PENDING_DIGITAL)
+  // Stripe gets confirmed automatically against the API's expected — the cashier
+  // can't verify it manually anyway. Auto-fill transferCents once the session
+  // arrives so step 1 only blocks on the TARJETA input.
+  useEffect(() => {
+    if (session && digital.transferCents === null) {
+      setDigital((d) => ({ ...d, transferCents: session.expectedTransferCents }))
+    }
+  }, [session, digital.transferCents])
   const [confirmAck, setConfirmAck] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
