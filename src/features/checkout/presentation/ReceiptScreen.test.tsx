@@ -6,7 +6,7 @@ import { ReceiptScreen } from './ReceiptScreen'
 const SALE = {
   id: 'sale-1',
   totalCents: 81000,
-  paymentMethod: 'CASH' as const,
+  payments: [{ provider: 'CASH' as const, amountCents: 81000 }],
   createdAt: '2026-05-04T16:18:00.000Z',
   customer: { id: 'c1', fullName: 'Carlos Méndez', email: 'carlos@test.com' },
   items: [

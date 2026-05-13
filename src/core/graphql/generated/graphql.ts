@@ -185,6 +185,7 @@ export type CatalogCombo = {
   __typename?: 'CatalogCombo';
   commissionCents: Scalars['Int']['output'];
   description?: Maybe<Scalars['String']['output']>;
+  durationMinutes?: Maybe<Scalars['Int']['output']>;
   effectiveCategories: Array<CatalogCategory>;
   effectiveCategoryIds: Array<Scalars['ID']['output']>;
   extraCategoryIds: Array<Scalars['ID']['output']>;
@@ -292,6 +293,7 @@ export type CreateCatalogCategoryInput = {
 export type CreateCatalogComboInput = {
   commissionCents: Scalars['Int']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
+  durationMinutes?: InputMaybe<Scalars['Int']['input']>;
   extraCategoryIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   imagePublicId?: InputMaybe<Scalars['String']['input']>;
   imageUrl?: InputMaybe<Scalars['String']['input']>;
@@ -358,7 +360,7 @@ export type CreatePosSaleInput = {
   customerId?: InputMaybe<Scalars['ID']['input']>;
   items: Array<PosSaleItemInput>;
   locationId: Scalars['ID']['input'];
-  paymentMethod?: InputMaybe<Scalars['String']['input']>;
+  payments: Array<PosPaymentInput>;
   registerSessionId?: InputMaybe<Scalars['ID']['input']>;
   staffUserId?: InputMaybe<Scalars['ID']['input']>;
   tipCents?: InputMaybe<Scalars['Int']['input']>;
@@ -1619,6 +1621,11 @@ export type OrderItem = {
   variantId?: Maybe<Scalars['ID']['output']>;
 };
 
+export type PosPaymentInput = {
+  amountCents: Scalars['Int']['input'];
+  provider: PaymentProvider;
+};
+
 export type PosSaleItemInput = {
   catalogComboId?: InputMaybe<Scalars['ID']['input']>;
   productId?: InputMaybe<Scalars['ID']['input']>;
@@ -1636,6 +1643,16 @@ export type PageInfo = {
   startCursor?: Maybe<Scalars['String']['output']>;
 };
 
+export enum PaymentProvider {
+  CardTerminal = 'CARD_TERMINAL',
+  Cash = 'CASH',
+  Mercadopago = 'MERCADOPAGO',
+  Other = 'OTHER',
+  Paypal = 'PAYPAL',
+  Stripe = 'STRIPE',
+  Transfer = 'TRANSFER'
+}
+
 export type PayoutRun = {
   __typename?: 'PayoutRun';
   entries: Array<PayoutRunEntry>;
@@ -1651,6 +1668,14 @@ export type PayoutRunEntry = {
   amountCents: Scalars['Int']['output'];
   breakdownJson?: Maybe<Scalars['JSON']['output']>;
   id: Scalars['ID']['output'];
+  staffUserId: Scalars['ID']['output'];
+};
+
+export type PayrollPreviewRow = {
+  __typename?: 'PayrollPreviewRow';
+  commissionCents: Scalars['Int']['output'];
+  fullName: Scalars['String']['output'];
+  revenueCents: Scalars['Int']['output'];
   staffUserId: Scalars['ID']['output'];
 };
 
@@ -1824,6 +1849,7 @@ export type Query = {
   orders: Array<Order>;
   payoutRun?: Maybe<PayoutRun>;
   payoutRuns: Array<PayoutRun>;
+  payrollPreview: Array<PayrollPreviewRow>;
   permissions: Array<Scalars['String']['output']>;
   posAvailableBarbers: Array<PosAvailableBarber>;
   posCajaStatusHome: PosCajaStatusHome;
@@ -2111,6 +2137,13 @@ export type QueryPayoutRunArgs = {
 export type QueryPayoutRunsArgs = {
   periodEnd?: InputMaybe<Scalars['DateTime']['input']>;
   periodStart?: InputMaybe<Scalars['DateTime']['input']>;
+};
+
+
+export type QueryPayrollPreviewArgs = {
+  locationIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  periodEnd: Scalars['DateTime']['input'];
+  periodStart: Scalars['DateTime']['input'];
 };
 
 
@@ -2798,6 +2831,7 @@ export type ServiceLocation = {
   extraServiceIds: Array<Scalars['ID']['output']>;
   isActive: Scalars['Boolean']['output'];
   locationId: Scalars['ID']['output'];
+  penaltyCommissionCentsOverride?: Maybe<Scalars['Int']['output']>;
   priceCentsOverride?: Maybe<Scalars['Int']['output']>;
   serviceId: Scalars['ID']['output'];
 };
@@ -2916,6 +2950,8 @@ export type StaffRoleAssignmentRow = {
 export type StaffServicePrice = {
   __typename?: 'StaffServicePrice';
   commissionCentsOverride?: Maybe<Scalars['Int']['output']>;
+  durationMinOverride?: Maybe<Scalars['Int']['output']>;
+  isExcluded: Scalars['Boolean']['output'];
   priceCents: Scalars['Int']['output'];
   serviceId: Scalars['ID']['output'];
   staffUserId: Scalars['ID']['output'];
@@ -3008,6 +3044,7 @@ export type UpdateCatalogCategoryInput = {
 export type UpdateCatalogComboInput = {
   commissionCents?: InputMaybe<Scalars['Int']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
+  durationMinutes?: InputMaybe<Scalars['Int']['input']>;
   extraCategoryIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   imagePublicId?: InputMaybe<Scalars['String']['input']>;
   imageUrl?: InputMaybe<Scalars['String']['input']>;
@@ -3183,6 +3220,7 @@ export type UpsertServiceLocationInput = {
   extraServiceIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   isActive?: InputMaybe<Scalars['Boolean']['input']>;
   locationId: Scalars['ID']['input'];
+  penaltyCommissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
   priceCentsOverride?: InputMaybe<Scalars['Int']['input']>;
   serviceId: Scalars['ID']['input'];
 };
@@ -3206,6 +3244,8 @@ export type UpsertShiftTemplatesForWeekInput = {
 
 export type UpsertStaffServicePriceInput = {
   commissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
+  durationMinOverride?: InputMaybe<Scalars['Int']['input']>;
+  isExcluded?: InputMaybe<Scalars['Boolean']['input']>;
   priceCents: Scalars['Int']['input'];
   serviceId: Scalars['ID']['input'];
   staffUserId: Scalars['ID']['input'];

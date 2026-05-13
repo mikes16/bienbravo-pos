@@ -100,6 +100,13 @@ function PayAppointmentModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Map UI method value to API PaymentProvider
+  const UI_TO_PROVIDER: Record<string, 'CASH' | 'CARD_TERMINAL' | 'TRANSFER'> = {
+    CASH: 'CASH',
+    CARD: 'CARD_TERMINAL',
+    TRANSFER: 'TRANSFER',
+  }
+
   async function handlePay() {
     if (!locationId) return
     setSubmitting(true)
@@ -113,7 +120,7 @@ function PayAppointmentModal({
         completeAppointmentId: appt.id,
         items: [{ serviceId: null, productId: null, catalogComboId: null, qty: 1, unitPriceCents: appt.totalCents, staffUserId }],
         tipCents: 0,
-        paymentMethod: method as any,
+        payments: [{ provider: UI_TO_PROVIDER[method] ?? 'CASH', amountCents: appt.totalCents }],
       })
       onPaid()
     } catch (e) {

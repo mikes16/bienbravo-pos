@@ -4,6 +4,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cartReducer, initialCart } from '../lib/cart'
+import type { CheckoutPayment } from '../domain/checkout.types'
 
 interface Customer {
   id: string
@@ -36,7 +37,7 @@ type CheckoutContext =
 export interface SaleResult {
   id: string
   totalCents: number
-  paymentMethod: 'CASH' | 'CARD' | 'TRANSFER'
+  payments: CheckoutPayment[]
   createdAt: string
   customer: Customer | null
   items: Array<{
@@ -197,7 +198,7 @@ export function useCheckout() {
   }
 
   const submit = async (payment: {
-    method: 'CASH' | 'CARD' | 'TRANSFER'
+    payments: CheckoutPayment[]
     tipCents: number
   }): Promise<SaleResult | null> => {
     if (!locationId || cartState.lines.length === 0 || submitting) return null
@@ -229,14 +230,14 @@ export function useCheckout() {
           staffUserId: l.staffUserId ?? (cartState.defaultBarberId || null),
         })),
         tipCents: payment.tipCents,
-        paymentMethod: payment.method,
+        payments: payment.payments,
       })
       // The current SaleResult shape from createSale doesn't include items + payment context
       // for the receipt screen. We reconstruct what we know locally.
       const reconstructed: SaleResult = {
         id: result.id,
         totalCents: result.totalCents,
-        paymentMethod: payment.method,
+        payments: payment.payments,
         createdAt: new Date().toISOString(),
         customer: cartState.customer
           ? { id: cartState.customer.id, fullName: cartState.customer.fullName, email: null, phone: null }

@@ -81,7 +81,17 @@ export interface Cart {
 
 /* ── Sale / Payment ── */
 
+// Mantiene la lista de métodos UI-friendly. Mapea 1:1 a PaymentProvider
+// del API (CASH, CARD_TERMINAL, TRANSFER) — la conversión vive en el
+// repository.
 export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER'
+
+/** Un componente del array de pagos enviado al API. */
+export interface CheckoutPayment {
+  /** Provider del API (PaymentProvider enum). 'CARD' del UI → 'CARD_TERMINAL'. */
+  provider: 'CASH' | 'CARD_TERMINAL' | 'TRANSFER'
+  amountCents: number
+}
 
 export interface CreateSaleInput {
   locationId: string
@@ -92,7 +102,8 @@ export interface CreateSaleInput {
   completeAppointmentId?: string | null
   items: SaleItemInput[]
   tipCents: number
-  paymentMethod: PaymentMethod
+  /** Pagos que cubren items + tax + tip. La suma debe igualar el total. */
+  payments: CheckoutPayment[]
 }
 
 export interface SaleItemInput {

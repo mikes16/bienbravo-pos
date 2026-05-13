@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { PaymentSheet } from './PaymentSheet'
@@ -32,16 +32,19 @@ describe('PaymentSheet', () => {
     expect(screen.getByText(/propina/i)).toBeInTheDocument()
   })
 
-  it('Confirmar fires onConfirm with method + tip (CARD)', async () => {
+  it('Confirmar fires onConfirm with payments array + tip (CARD)', async () => {
     const onConfirm = vi.fn()
     const user = userEvent.setup()
     render(<PaymentSheet open totalCents={100000} onClose={() => {}} onConfirm={onConfirm} />)
     await user.click(screen.getByRole('button', { name: /tarjeta/i }))
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
-    expect(onConfirm).toHaveBeenCalledWith({ method: 'CARD', tipCents: 0 })
+    expect(onConfirm).toHaveBeenCalledWith({
+      payments: [{ provider: 'CARD_TERMINAL', amountCents: 100000 }],
+      tipCents: 0,
+    })
   })
 
-  it('Confirmar fires onConfirm with tipCents=0 for CASH (cash never includes tip)', async () => {
+  it('Confirmar fires onConfirm with payments array + tipCents=0 for CASH (cash never includes tip)', async () => {
     const onConfirm = vi.fn()
     const user = userEvent.setup()
     render(<PaymentSheet open totalCents={50000} onClose={() => {}} onConfirm={onConfirm} />)
@@ -50,7 +53,10 @@ describe('PaymentSheet', () => {
     const plusButtons = screen.getAllByRole('button', { name: /aumentar/i })
     await user.click(plusButtons[0])
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
-    expect(onConfirm).toHaveBeenCalledWith({ method: 'CASH', tipCents: 0 })
+    expect(onConfirm).toHaveBeenCalledWith({
+      payments: [{ provider: 'CASH', amountCents: 50000 }],
+      tipCents: 0,
+    })
   })
 
   it('renders the API error inline and flips the CTA to Reintentar', () => {
@@ -123,6 +129,46 @@ describe('PaymentSheet', () => {
     await user.click(plusButtons[1])
     expect(confirmBtn).not.toBeDisabled()
     await user.click(confirmBtn)
-    expect(onConfirm).toHaveBeenCalledWith({ method: 'CASH', tipCents: 0 })
+    expect(onConfirm).toHaveBeenCalledWith({
+      payments: [{ provider: 'CASH', amountCents: 81000 }],
+      tipCents: 0,
+    })
+  })
+})
+
+describe('PaymentSheet — split mode', () => {
+  it('reveals split UI when "Dividir pago" button is tapped', () => {
+    render(<PaymentSheet open totalCents={85000} onClose={() => {}} onConfirm={() => {}} />)
+    fireEvent.click(screen.getByText(/Dividir pago/i))
+    expect(screen.getByText(/División de pago/i)).toBeInTheDocument()
+    expect(screen.getAllByLabelText(/Monto/i).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('disables confirm when split sum does not equal total', () => {
+    render(<PaymentSheet open totalCents={85000} onClose={() => {}} onConfirm={() => {}} />)
+    fireEvent.click(screen.getByText(/Dividir pago/i))
+    const inputs = screen.getAllByLabelText(/Monto/i)
+    fireEvent.change(inputs[0], { target: { value: '500' } })
+    fireEvent.change(inputs[1], { target: { value: '200' } })
+    const confirmBtn = screen.getByText(/Cobrar/i).closest('button')!
+    expect(confirmBtn).toBeDisabled()
+    expect(screen.getByText(/Falta/i)).toBeInTheDocument()
+  })
+
+  it('enables confirm and emits split payments when sum matches', () => {
+    const onConfirm = vi.fn()
+    render(<PaymentSheet open totalCents={85000} onClose={() => {}} onConfirm={onConfirm} />)
+    fireEvent.click(screen.getByText(/Dividir pago/i))
+    const inputs = screen.getAllByLabelText(/Monto/i)
+    fireEvent.change(inputs[0], { target: { value: '500' } })
+    fireEvent.change(inputs[1], { target: { value: '350' } })
+    fireEvent.click(screen.getByText(/Cobrar/i))
+    expect(onConfirm).toHaveBeenCalledWith({
+      payments: expect.arrayContaining([
+        { provider: 'CASH', amountCents: 50000 },
+        { provider: 'CARD_TERMINAL', amountCents: 35000 },
+      ]),
+      tipCents: 0,
+    })
   })
 })

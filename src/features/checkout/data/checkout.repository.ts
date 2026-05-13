@@ -416,7 +416,10 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
           completeAppointmentId: input.completeAppointmentId ?? null,
           items: input.items,
           tipCents: input.tipCents,
-          paymentMethod: input.paymentMethod,
+          payments: input.payments.map((p) => ({
+            provider: p.provider,
+            amountCents: p.amountCents,
+          })),
         },
       },
     })

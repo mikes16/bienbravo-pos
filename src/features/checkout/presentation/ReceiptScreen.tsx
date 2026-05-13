@@ -16,10 +16,17 @@ interface CustomerLite {
   email: string | null
 }
 
+type ApiProvider = 'CASH' | 'CARD_TERMINAL' | 'TRANSFER'
+
+interface PaymentEntry {
+  provider: ApiProvider
+  amountCents: number
+}
+
 interface SaleData {
   id: string
   totalCents: number
-  paymentMethod: 'CASH' | 'CARD' | 'TRANSFER'
+  payments: PaymentEntry[]
   createdAt: string
   customer: CustomerLite | null
   items: SaleItem[]
@@ -30,10 +37,19 @@ interface ReceiptScreenProps {
   onListo: () => void
 }
 
-const METHOD_LABEL: Record<SaleData['paymentMethod'], string> = {
+const PROVIDER_LABEL: Record<ApiProvider, string> = {
   CASH: 'Efectivo',
-  CARD: 'Tarjeta',
+  CARD_TERMINAL: 'Tarjeta',
   TRANSFER: 'Transferencia',
+}
+
+function formatPayments(payments: PaymentEntry[]): string {
+  if (payments.length === 1) {
+    return PROVIDER_LABEL[payments[0].provider]
+  }
+  return payments
+    .map((p) => `${PROVIDER_LABEL[p.provider]} ${formatMoney(p.amountCents)}`)
+    .join(' + ')
 }
 
 function formatDateTimeMx(iso: string): string {
@@ -102,7 +118,7 @@ export function ReceiptScreen({ sale, onListo }: ReceiptScreenProps) {
         </div>
 
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)] print:text-gray-700">
-          Pagado con {METHOD_LABEL[sale.paymentMethod]}
+          Pagado con {formatPayments(sale.payments)}
         </p>
 
         <p className="mt-auto text-center font-mono text-[10px] text-[var(--color-bone-muted)] print:text-gray-700">

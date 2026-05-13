@@ -229,7 +229,11 @@ export function CheckoutPage() {
         error={ck.error}
         onClose={() => setPaymentSheetOpen(false)}
         onConfirm={async (input) => {
-          const result = await ck.submit(input)
+          // input: { payments: [{ provider, amountCents }], tipCents }
+          const result = await ck.submit({
+            payments: input.payments,
+            tipCents: input.tipCents,
+          })
           if (result) setPaymentSheetOpen(false)
         }}
       />

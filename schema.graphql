@@ -153,6 +153,7 @@ type CatalogCategory {
 type CatalogCombo {
   commissionCents: Int!
   description: String
+  durationMinutes: Int
   effectiveCategories: [CatalogCategory!]!
   effectiveCategoryIds: [ID!]!
   extraCategoryIds: [ID!]!
@@ -251,6 +252,7 @@ input CreateCatalogCategoryInput {
 input CreateCatalogComboInput {
   commissionCents: Int!
   description: String
+  durationMinutes: Int
   extraCategoryIds: [ID!]
   imagePublicId: String
   imageUrl: String
@@ -316,7 +318,7 @@ input CreatePOSSaleInput {
   customerId: ID
   items: [POSSaleItemInput!]!
   locationId: ID!
-  paymentMethod: String
+  payments: [POSPaymentInput!]!
   registerSessionId: ID
   staffUserId: ID
   tipCents: Int
@@ -899,6 +901,11 @@ type OrderItem {
   variantId: ID
 }
 
+input POSPaymentInput {
+  amountCents: Int!
+  provider: PaymentProvider!
+}
+
 input POSSaleItemInput {
   catalogComboId: ID
   productId: ID
@@ -915,6 +922,16 @@ type PageInfo {
   startCursor: String
 }
 
+enum PaymentProvider {
+  CARD_TERMINAL
+  CASH
+  MERCADOPAGO
+  OTHER
+  PAYPAL
+  STRIPE
+  TRANSFER
+}
+
 type PayoutRun {
   entries: [PayoutRunEntry!]!
   id: ID!
@@ -928,6 +945,13 @@ type PayoutRunEntry {
   amountCents: Int!
   breakdownJson: JSON
   id: ID!
+  staffUserId: ID!
+}
+
+type PayrollPreviewRow {
+  commissionCents: Int!
+  fullName: String!
+  revenueCents: Int!
   staffUserId: ID!
 }
 
@@ -1091,6 +1115,7 @@ type Query {
   orders(limit: Int, offset: Int): [Order!]!
   payoutRun(id: ID!): PayoutRun
   payoutRuns(periodEnd: DateTime, periodStart: DateTime): [PayoutRun!]!
+  payrollPreview(locationIds: [ID!], periodEnd: DateTime!, periodStart: DateTime!): [PayrollPreviewRow!]!
   permissions: [String!]!
   posAvailableBarbers(locationId: ID!): [PosAvailableBarber!]!
   posCajaStatusHome(locationId: ID!): PosCajaStatusHome!
@@ -1506,6 +1531,7 @@ type ServiceLocation {
   extraServiceIds: [ID!]!
   isActive: Boolean!
   locationId: ID!
+  penaltyCommissionCentsOverride: Int
   priceCentsOverride: Int
   serviceId: ID!
 }
@@ -1615,6 +1641,8 @@ type StaffRoleAssignmentRow {
 
 type StaffServicePrice {
   commissionCentsOverride: Int
+  durationMinOverride: Int
+  isExcluded: Boolean!
   priceCents: Int!
   serviceId: ID!
   staffUserId: ID!
@@ -1702,6 +1730,7 @@ input UpdateCatalogCategoryInput {
 input UpdateCatalogComboInput {
   commissionCents: Int
   description: String
+  durationMinutes: Int
   extraCategoryIds: [ID!]
   imagePublicId: String
   imageUrl: String
@@ -1877,6 +1906,7 @@ input UpsertServiceLocationInput {
   extraServiceIds: [ID!]
   isActive: Boolean
   locationId: ID!
+  penaltyCommissionCentsOverride: Int
   priceCentsOverride: Int
   serviceId: ID!
 }
@@ -1900,6 +1930,8 @@ input UpsertShiftTemplatesForWeekInput {
 
 input UpsertStaffServicePriceInput {
   commissionCentsOverride: Int
+  durationMinOverride: Int
+  isExcluded: Boolean = false
   priceCents: Int!
   serviceId: ID!
   staffUserId: ID!
