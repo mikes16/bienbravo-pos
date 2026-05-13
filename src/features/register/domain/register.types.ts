@@ -11,6 +11,10 @@ export interface RegisterSession {
   status: 'OPEN' | 'CLOSED'
   openedAt: string
   closedAt: string | null
+  // Sticky fondo inicial. expectedCashCents accumulates sales; this stays
+  // put so close-of-register can show "you opened with $X" and compute the
+  // withdraw amount = counted - openingCashCents.
+  openingCashCents: number
   expectedCashCents: number
   expectedCardCents: number
   expectedTransferCents: number

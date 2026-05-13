@@ -25,6 +25,9 @@ interface Channels {
 interface ReviewCloseStepProps {
   expected: Channels
   counted: Channels
+  /** Fondo inicial — the cash float the session opened with. Stays in the
+   *  drawer for tomorrow; the rest is what gets withdrawn. */
+  openingCashCents: number
   confirmAck: boolean
   onConfirmAckChange: (ack: boolean) => void
 }
@@ -32,13 +35,19 @@ interface ReviewCloseStepProps {
 export function ReviewCloseStep({
   expected,
   counted,
+  openingCashCents,
   confirmAck,
   onConfirmAckChange,
 }: ReviewCloseStepProps) {
+  // Stripe is reconciled by the system; cashier never sees a separate row.
+  // We still include its diff in totalDiff because the API tracks the channel.
   const cashDiff = counted.cashCents - expected.cashCents
   const cardDiff = counted.cardCents - expected.cardCents
   const transferDiff = counted.transferCents - expected.transferCents
   const totalDiff = cashDiff + cardDiff + transferDiff
+
+  const cashSalesCents = expected.cashCents - openingCashCents
+  const withdrawalCents = Math.max(0, counted.cashCents - openingCashCents)
 
   const hasDiff = totalDiff !== 0
   const isLargeDiff = Math.abs(totalDiff) > LARGE_DIFF_THRESHOLD_CENTS
@@ -48,6 +57,22 @@ export function ReviewCloseStep({
       <p className="font-[var(--font-pos-display)] text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[var(--color-bone)]">
         Revisa el resumen del cierre
       </p>
+
+      {/* Fondo inicial — owner wants this front-and-center so the operator
+         understands what stays in the drawer vs what gets withdrawn. */}
+      <div className="flex items-baseline justify-between border border-[var(--color-leather-muted)]/40 bg-[var(--color-cuero-viejo)]/20 px-4 py-3">
+        <div className="flex flex-col">
+          <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+            Fondo inicial
+          </span>
+          <span className="text-[11px] text-[var(--color-leather)]">
+            Queda en caja para mañana
+          </span>
+        </div>
+        <span className="tabular-nums text-[18px] font-bold text-[var(--color-bone)]">
+          {formatMoney(openingCashCents)}
+        </span>
+      </div>
 
       <div className="border border-[var(--color-leather-muted)]/40">
         {/* Header row */}
@@ -86,19 +111,8 @@ export function ReviewCloseStep({
           <span className={diffClass(cardDiff)}>{formatDiff(cardDiff)}</span>
         </div>
 
-        {/* Stripe row */}
-        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-6 border-b border-[var(--color-leather-muted)]/30 px-4">
-          <span className="py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
-            Stripe
-          </span>
-          <span className="py-2 text-right tabular-nums text-[14px] text-[var(--color-bone)]">
-            {formatMoney(counted.transferCents)}
-          </span>
-          <span className="py-2 text-right tabular-nums text-[12px] text-[var(--color-bone-muted)]">
-            {formatMoney(expected.transferCents)}
-          </span>
-          <span className={diffClass(transferDiff)}>{formatDiff(transferDiff)}</span>
-        </div>
+        {/* Stripe row hidden per owner — cashier can't confirm it. The diff
+           is still tracked server-side and rolled into totalDiff. */}
 
         {/* Total row */}
         <div className="flex items-baseline justify-between border-t border-[var(--color-leather-muted)]/40 px-4 py-3">
@@ -114,6 +128,31 @@ export function ReviewCloseStep({
             )}
           >
             {totalDiff === 0 ? '$0 exacto' : formatDiff(totalDiff)}
+          </span>
+        </div>
+      </div>
+
+      {/* Retiro de efectivo — lo que se saca dejando el fondo en caja. */}
+      <div className="border border-[var(--color-leather-muted)]/40 px-4 py-3">
+        <div className="flex items-baseline justify-between">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+            Ventas en efectivo
+          </span>
+          <span className="tabular-nums text-[13px] text-[var(--color-bone)]">
+            {formatMoney(cashSalesCents)}
+          </span>
+        </div>
+        <div className="mt-2 flex items-baseline justify-between border-t border-[var(--color-leather-muted)]/30 pt-2">
+          <div className="flex flex-col">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bravo)]">
+              Retirar de la caja
+            </span>
+            <span className="text-[11px] text-[var(--color-leather)]">
+              Contado − fondo inicial · deja {formatMoney(openingCashCents)} en caja
+            </span>
+          </div>
+          <span className="tabular-nums text-[20px] font-extrabold text-[var(--color-bravo)]">
+            {formatMoney(withdrawalCents)}
           </span>
         </div>
       </div>

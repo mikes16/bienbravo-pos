@@ -6,7 +6,11 @@ const REGISTERS_QUERY = graphql(`
   query PosRegisters($locationId: ID!) {
     registers(locationId: $locationId) {
       id name isActive locationId
-      openSession { id status openedAt expectedCashCents expectedCardCents expectedTransferCents }
+      openSession {
+        id status openedAt
+        openingCashCents
+        expectedCashCents expectedCardCents expectedTransferCents
+      }
     }
   }
 `)
@@ -14,7 +18,9 @@ const REGISTERS_QUERY = graphql(`
 const OPEN_SESSION = graphql(`
   mutation OpenRegisterSession($registerId: ID!, $openingCashCents: Int) {
     openRegisterSession(registerId: $registerId, openingCashCents: $openingCashCents) {
-      id status openedAt expectedCashCents expectedCardCents expectedTransferCents
+      id status openedAt
+      openingCashCents
+      expectedCashCents expectedCardCents expectedTransferCents
     }
   }
 `)
@@ -23,6 +29,7 @@ const CLOSE_SESSION = graphql(`
   mutation CloseRegisterSession($input: CloseRegisterSessionInput!) {
     closeRegisterSession(input: $input) {
       id status closedAt
+      openingCashCents
       countedCashCents countedCardCents countedTransferCents
       expectedCashCents expectedCardCents expectedTransferCents
     }

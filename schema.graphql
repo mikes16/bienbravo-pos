@@ -1215,6 +1215,7 @@ type RegisterSession {
   id: ID!
   locationName: String
   openedAt: DateTime!
+  openingCashCents: Int!
   status: RegisterSessionStatus!
 }
 

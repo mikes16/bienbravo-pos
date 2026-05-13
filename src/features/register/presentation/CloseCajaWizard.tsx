@@ -166,6 +166,7 @@ export function CloseCajaWizard() {
         <ReviewCloseStep
           expected={expected}
           counted={counted}
+          openingCashCents={session.openingCashCents}
           confirmAck={confirmAck}
           onConfirmAckChange={setConfirmAck}
         />
