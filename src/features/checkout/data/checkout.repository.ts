@@ -1,5 +1,6 @@
 import { type ApolloClient, gql } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
+import { PaymentProvider } from '@/core/graphql/generated/graphql'
 import type {
   CatalogCategory,
   CatalogService,
@@ -69,6 +70,31 @@ const WALKINS_FOR_LOOKUP_QUERY = graphql(`
     }
   }
 `) as any
+
+// Carga el appointment + su sale asociado para detectar estado prepago en el
+// checkout (Task 15 del plan "Prepago de cita"). El POS solo necesita el
+// sale derivado (paymentStatus + source + primer payment) — no la lista
+// completa de items/payments. CheckoutScreen consume los flags derivados.
+const APPOINTMENT_CHECKOUT_INFO_QUERY = graphql(`
+  query PosAppointmentCheckoutInfo($id: ID!) {
+    appointment(id: $id) {
+      id
+      sale {
+        id
+        source
+        paymentStatus
+        paidTotalCents
+        totalCents
+        payments {
+          provider
+          processedAt
+          createdAt
+          note
+        }
+      }
+    }
+  }
+`)
 
 const CATEGORIES_QUERY = graphql(`
   query PosCatalogCategories {
@@ -254,6 +280,29 @@ export interface WalkInLite {
   customer: CustomerResult | null
 }
 
+/**
+ * Estado prepago derivado del `appointment.sale` para el contexto de checkout.
+ *
+ * - `isPrepaid`: la venta ya está pagada (cliente prepagó por link Stripe o
+ *   manual en admin). El cajero solo confirma entrega vía `closeAppointmentSale`.
+ * - `hasPendingLink`: existe un Sale en estado UNPAID con source BOOKING_PREPAY_LINK
+ *   (el cliente no ha pagado el link). El cajero puede cancelar el link y cobrar
+ *   en persona vía `cancelAppointmentPrepayLink` + flujo normal de POS.
+ * - `prepaidSaleId`: ID del Sale asociado cuando aplica (para llamar las mutations).
+ * - `prepaidMethod`: provider del primer payment (Stripe, Cash, Transfer, etc).
+ * - `prepaidAt`: ISO timestamp del primer payment (processedAt o createdAt fallback).
+ *
+ * Los flags son mutuamente excluyentes: si `isPrepaid=true` entonces
+ * `hasPendingLink=false` y viceversa. Ambos `false` indica checkout normal.
+ */
+export interface AppointmentPrepayState {
+  isPrepaid: boolean
+  hasPendingLink: boolean
+  prepaidSaleId: string | null
+  prepaidMethod: PaymentProvider | null
+  prepaidAt: string | null
+}
+
 export interface CheckoutRepository {
   getCategories(): Promise<CatalogCategory[]>
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
@@ -270,6 +319,12 @@ export interface CheckoutRepository {
   getCustomer(id: string): Promise<CustomerResult | null>
   getCustomerHistory(customerId: string, limit?: number): Promise<CustomerHistoryEntry[]>
   getWalkIn(walkInId: string, locationId: string): Promise<WalkInLite | null>
+  /**
+   * Devuelve el estado prepago derivado de `appointment.sale`. Cuando no hay
+   * appointment, o no tiene sale, devuelve el "default state" (ambos flags
+   * false) — el CheckoutScreen entonces sigue el flujo normal de cobro.
+   */
+  getAppointmentPrepayState(appointmentId: string): Promise<AppointmentPrepayState>
 }
 
 export interface CustomerHistoryEntry {
@@ -504,5 +559,50 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     })
     const list = (data as { walkIns: WalkInLite[] }).walkIns
     return list.find((w) => w.id === walkInId) ?? null
+  }
+
+  async getAppointmentPrepayState(appointmentId: string): Promise<AppointmentPrepayState> {
+    // network-only: el estado de prepago puede cambiar entre cuando el cliente
+    // creó el link y cuando el cajero abre el checkout (cliente paga vía Stripe
+    // en paralelo). No queremos servir cache stale aquí.
+    const { data } = await this.#client.query({
+      query: APPOINTMENT_CHECKOUT_INFO_QUERY,
+      variables: { id: appointmentId },
+      fetchPolicy: 'network-only',
+    })
+    const appointment = (data as {
+      appointment: {
+        id: string
+        sale: {
+          id: string
+          source: string
+          paymentStatus: string
+          paidTotalCents: number
+          totalCents: number
+          payments: Array<{
+            provider: PaymentProvider
+            processedAt: string | null
+            createdAt: string
+            note: string | null
+          }> | null
+        } | null
+      } | null
+    }).appointment
+
+    const sale = appointment?.sale ?? null
+    const isPrepaid = sale?.paymentStatus === 'PAID'
+    const hasPendingLink =
+      sale?.paymentStatus === 'UNPAID' && sale?.source === 'BOOKING_PREPAY_LINK'
+    const prepaidSaleId = sale && (isPrepaid || hasPendingLink) ? sale.id : null
+    const firstPayment = sale?.payments?.[0] ?? null
+    const prepaidMethod = firstPayment?.provider ?? null
+    const prepaidAt = firstPayment?.processedAt ?? firstPayment?.createdAt ?? null
+    return {
+      isPrepaid,
+      hasPendingLink,
+      prepaidSaleId,
+      prepaidMethod,
+      prepaidAt,
+    }
   }
 }

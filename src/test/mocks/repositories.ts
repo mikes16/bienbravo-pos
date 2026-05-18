@@ -151,6 +151,24 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
   } | null> {
     return null
   }
+
+  async getAppointmentPrepayState(_appointmentId: string): Promise<{
+    isPrepaid: boolean
+    hasPendingLink: boolean
+    prepaidSaleId: string | null
+    prepaidMethod: null
+    prepaidAt: string | null
+  }> {
+    // Default: no prepago. Tests específicos del flujo de prepago pueden
+    // sobre-escribir este método con vi.spyOn al armar su escenario.
+    return {
+      isPrepaid: false,
+      hasPendingLink: false,
+      prepaidSaleId: null,
+      prepaidMethod: null,
+      prepaidAt: null,
+    }
+  }
 }
 
 export class InMemoryRegisterRepository implements RegisterRepository {
