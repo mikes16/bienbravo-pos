@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useMutation } from '@apollo/client/react'
 import { useCheckout } from '../application/useCheckout'
 import { computeTotals } from '../lib/cart'
+import { prepayMethodLabel } from '../lib/prepayMethodLabel'
+import {
+  CLOSE_APPOINTMENT_SALE_MUTATION,
+  CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION,
+} from '../data/checkout.repository'
 import { CatalogChips } from './CatalogChips'
 import { CatalogGrid } from './CatalogGrid'
 import { AtendiendoHeader } from './AtendiendoHeader'
@@ -15,10 +21,12 @@ import { PaymentSheet } from './PaymentSheet'
 import { ReceiptScreen } from './ReceiptScreen'
 import { SkeletonRow, SkeletonCard } from '@/shared/pos-ui'
 import { formatMoney } from '@/shared/lib/money'
+import { useToast } from '@/core/toast/useToast'
 
 export function CheckoutPage() {
   const navigate = useNavigate()
   const ck = useCheckout()
+  const { addToast } = useToast()
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [barberSheetOpen, setBarberSheetOpen] = useState(false)
@@ -26,6 +34,39 @@ export function CheckoutPage() {
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false)
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
   const [splashShown, setSplashShown] = useState(false)
+
+  // Prepago: dos branches especiales del checkout. Tipados como `any` por el
+  // mismo motivo que los `graphql()` calls en el repositorio: client-preset
+  // emite un Document genérico que TS no infiere correctamente sobre el
+  // resultado de la mutation. El payload solo necesita `saleId` y devuelve
+  // boolean — no nos perdemos seguridad real aquí.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [closeSale, { loading: closing }] = useMutation(CLOSE_APPOINTMENT_SALE_MUTATION as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [cancelLink, { loading: cancellingLink }] = useMutation(CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION as any)
+
+  const handleCloseSale = async () => {
+    if (!ck.prepaidSaleId) return
+    try {
+      await closeSale({ variables: { saleId: ck.prepaidSaleId } })
+      addToast('Cita cerrada. Servicio completado.', 'success')
+      navigate('/hoy')
+    } catch (e) {
+      addToast((e as { message?: string })?.message ?? 'No se pudo cerrar la cita.', 'error')
+    }
+  }
+
+  const handleCancelLinkAndPayInPerson = async () => {
+    if (!ck.prepaidSaleId) return
+    try {
+      await cancelLink({ variables: { saleId: ck.prepaidSaleId } })
+      // Refrescar el estado prepago — el repo devolverá ahora ambos flags
+      // false (el sale quedó VOID) y el componente caerá al render normal.
+      await ck.refetchPrepayState()
+    } catch (e) {
+      addToast((e as { message?: string })?.message ?? 'No se pudo cancelar el link.', 'error')
+    }
+  }
 
   // Splash for 2s after success, then receipt screen
   useEffect(() => {
@@ -75,6 +116,98 @@ export function CheckoutPage() {
           <SkeletonRow heightPx={64} />
           <SkeletonRow heightPx={36} />
           <SkeletonRow heightPx={56} />
+        </div>
+      </div>
+    )
+  }
+
+  // Cita ya prepagada (admin manual o Stripe link confirmado): el cajero solo
+  // confirma entrega del servicio, no se cobra. Tiene prioridad sobre el caso
+  // "no hay barberos" — si la cita está pagada, el cajero debe poder cerrarla
+  // aunque el roster esté vacío.
+  if (ck.isPrepaid && ck.prepaidSaleId) {
+    const totalCents = ck.cartState.lines.reduce(
+      (sum, l) => sum + l.unitPriceCents * l.qty,
+      0,
+    )
+    const prepaidDate = ck.prepaidAt
+      ? new Date(ck.prepaidAt).toLocaleDateString('es-MX')
+      : null
+    const methodLabel = prepayMethodLabel(ck.prepaidMethod)
+    return (
+      <div className="flex h-full flex-col bg-[var(--color-carbon)]">
+        <PrepayHeader
+          customer={ck.cartState.customer}
+          lines={ck.cartState.lines}
+          onBack={() => navigate('/hoy')}
+        />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="w-full max-w-md border border-[var(--color-bone)] bg-[var(--color-bone)] p-8 text-[var(--color-carbon)]">
+            <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-carbon)]/60">
+              Prepagado
+            </div>
+            <div className="mb-4 font-mono text-4xl font-extrabold tabular-nums">
+              {formatMoney(totalCents)}
+            </div>
+            <p className="text-[15px] leading-snug text-[var(--color-carbon)]/80">
+              Esta cita ya fue cobrada por adelantado
+              {prepaidDate ? ` el ${prepaidDate}` : ''}
+              {methodLabel ? ` vía ${methodLabel}` : ''}.
+            </p>
+          </div>
+        </div>
+        <div className="border-t border-[var(--color-leather-muted)]/40 p-4">
+          <button
+            type="button"
+            onClick={handleCloseSale}
+            disabled={closing}
+            className="w-full cursor-pointer bg-[var(--color-success)] py-4 font-mono text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {closing ? 'Cerrando…' : 'Cerrar cita y completar servicio'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Link de prepago pendiente (cliente recibió Stripe link pero no pagó). El
+  // cajero puede cancelar el link y cobrar en persona (cae al flujo normal
+  // de POS via refetch) o salir y dejar que el cliente complete el link.
+  if (ck.hasPendingLink && ck.prepaidSaleId) {
+    return (
+      <div className="flex h-full flex-col bg-[var(--color-carbon)]">
+        <PrepayHeader
+          customer={ck.cartState.customer}
+          lines={ck.cartState.lines}
+          onBack={() => navigate('/hoy')}
+        />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="w-full max-w-md border border-[var(--color-warning)] bg-[var(--color-warning)]/10 p-6 text-[var(--color-bone)]">
+            <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-warning)]">
+              Link de pago pendiente
+            </div>
+            <p className="text-[15px] leading-snug">
+              Hay un link de pago enviado a este cliente que todavía no se ha
+              pagado. Revisa con el cliente antes de cerrar.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 border-t border-[var(--color-leather-muted)]/40 p-4">
+          <button
+            type="button"
+            onClick={handleCancelLinkAndPayInPerson}
+            disabled={cancellingLink}
+            className="w-full cursor-pointer bg-[var(--color-bravo)] py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:bg-[var(--color-bravo-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {cancellingLink ? 'Cancelando link…' : 'Cobrar ahora en POS'}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/hoy')}
+            className="w-full cursor-pointer bg-[var(--color-cuero-viejo)] py-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo-hover)]"
+          >
+            Volver al inicio
+          </button>
         </div>
       </div>
     )
@@ -238,5 +371,39 @@ export function CheckoutPage() {
         }}
       />
     </div>
+  )
+}
+
+// Header simplificado para los branches de prepago. No usa los componentes
+// principales del checkout (AtendiendoHeader, CustomerChip) porque esos
+// dependen de un barbero asignado — irrelevante cuando la cita ya fue
+// cobrada (o cuando un link está pendiente y aún no hay caja abierta).
+interface PrepayHeaderProps {
+  customer: { id: string; fullName: string } | null
+  lines: Array<{ id: string; name: string; qty: number }>
+  onBack: () => void
+}
+
+function PrepayHeader({ customer, lines, onBack }: PrepayHeaderProps) {
+  return (
+    <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-3">
+      <button
+        type="button"
+        onClick={onBack}
+        className="cursor-pointer font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:text-[var(--color-bone)]"
+      >
+        ← Hoy
+      </button>
+      <div className="flex min-w-0 flex-col items-end gap-0.5">
+        <span className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
+          {customer?.fullName ?? 'Sin cliente'}
+        </span>
+        <span className="truncate text-[12px] text-[var(--color-bone)]">
+          {lines.length === 0
+            ? 'Cita'
+            : lines.map((l) => `${l.qty}× ${l.name}`).join(' · ')}
+        </span>
+      </div>
+    </header>
   )
 }

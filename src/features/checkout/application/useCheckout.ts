@@ -1,10 +1,11 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cartReducer, initialCart } from '../lib/cart'
 import type { CheckoutPayment } from '../domain/checkout.types'
+import type { AppointmentPrepayState } from '../data/checkout.repository'
 
 interface Customer {
   id: string
@@ -83,6 +84,19 @@ export function useCheckout() {
   const [successSale, setSuccessSale] = useState<SaleResult | null>(null)
 
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
+
+  // Estado prepago derivado del appointment.sale cuando el checkout viene
+  // desde una cita ("completeAppointmentId" param). Default = "no prepago",
+  // que deja el flujo normal de POS intacto. Se refresca con `refetchPrepayState`
+  // después de cancelar un link pendiente, para caer en el flujo normal.
+  const DEFAULT_PREPAY_STATE: AppointmentPrepayState = {
+    isPrepaid: false,
+    hasPendingLink: false,
+    prepaidSaleId: null,
+    prepaidMethod: null,
+    prepaidAt: null,
+  }
+  const [prepayState, setPrepayState] = useState<AppointmentPrepayState>(DEFAULT_PREPAY_STATE)
 
   // Resolve entry context from query params
   useEffect(() => {
@@ -179,6 +193,30 @@ export function useCheckout() {
       })
     }
   }, [context, checkout, locationId])
+
+  // Load prepay state for the appointment-completion entry. When there's no
+  // appointment id (free sale / walk-in / preselected-customer), reset to the
+  // default state so the normal flow runs.
+  const refetchPrepayState = useCallback(async () => {
+    if (!completeAppointmentId) {
+      setPrepayState(DEFAULT_PREPAY_STATE)
+      return
+    }
+    try {
+      const state = await checkout.getAppointmentPrepayState(completeAppointmentId)
+      setPrepayState(state)
+    } catch {
+      // Si la lectura falla no bloqueamos el checkout — el cajero puede seguir
+      // el flujo normal. El error queda en consola en dev vía Apollo.
+      setPrepayState(DEFAULT_PREPAY_STATE)
+    }
+    // DEFAULT_PREPAY_STATE is a stable literal, safe to omit from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkout, completeAppointmentId])
+
+  useEffect(() => {
+    void refetchPrepayState()
+  }, [refetchPrepayState])
 
   const searchCustomers = async (query: string) => {
     if (!query.trim()) {
@@ -311,5 +349,14 @@ export function useCheckout() {
     setSuccessSale,
     registerSessionId,
     loaded,
+    // Prepay (cita prepagada o con link pendiente) — solo aplica cuando el
+    // checkout viene desde una cita. `refetchPrepayState` se llama tras
+    // cancelar el link para caer al flujo normal de POS.
+    isPrepaid: prepayState.isPrepaid,
+    hasPendingLink: prepayState.hasPendingLink,
+    prepaidSaleId: prepayState.prepaidSaleId,
+    prepaidMethod: prepayState.prepaidMethod,
+    prepaidAt: prepayState.prepaidAt,
+    refetchPrepayState,
   }
 }
