@@ -210,6 +210,24 @@ const CREATE_POS_SALE = graphql(`
   }
 `)
 
+// Cierra una venta prepagada (paymentStatus=PAID): el cajero solo confirma
+// que el servicio se entregó, no se vuelve a cobrar. Mutation expuesta por el
+// API en el plan "Prepago de cita" (task 13).
+export const CLOSE_APPOINTMENT_SALE_MUTATION = graphql(`
+  mutation CloseAppointmentSale($saleId: ID!) {
+    closeAppointmentSale(saleId: $saleId)
+  }
+`)
+
+// Cancela un link de prepago pendiente cuando el cajero decide cobrar en
+// persona. Namespaced FromPos para evitar colisión con el equivalente del
+// admin si algún día comparten Apollo cache.
+export const CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION = graphql(`
+  mutation CancelAppointmentPrepayLinkFromPos($saleId: ID!) {
+    cancelAppointmentPrepayLink(saleId: $saleId)
+  }
+`)
+
 /* ── Interface ── */
 
 export interface CustomerResult {

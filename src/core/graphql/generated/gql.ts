@@ -41,6 +41,8 @@ type Documents = {
     "\n  query PosSearchCustomers($query: String!, $limit: Int) {\n    searchCustomers(query: $query, limit: $limit) {\n      id\n      fullName\n      email\n      phone\n    }\n  }\n": typeof types.PosSearchCustomersDocument,
     "\n  mutation FindOrCreateCustomer($name: String!, $email: String, $phone: String) {\n    findOrCreateCustomer(name: $name, email: $email, phone: $phone) {\n      id fullName email phone\n    }\n  }\n": typeof types.FindOrCreateCustomerDocument,
     "\n  mutation CreatePosSale($input: CreatePOSSaleInput!) {\n    createPOSSale(input: $input) {\n      id\n      status\n      paymentStatus\n      totalCents\n      paidTotalCents\n    }\n  }\n": typeof types.CreatePosSaleDocument,
+    "\n  mutation CloseAppointmentSale($saleId: ID!) {\n    closeAppointmentSale(saleId: $saleId)\n  }\n": typeof types.CloseAppointmentSaleDocument,
+    "\n  mutation CancelAppointmentPrepayLinkFromPos($saleId: ID!) {\n    cancelAppointmentPrepayLink(saleId: $saleId)\n  }\n": typeof types.CancelAppointmentPrepayLinkFromPosDocument,
     "\n  mutation ClockIn($locationId: ID!) { clockIn(locationId: $locationId) }\n": typeof types.ClockInDocument,
     "\n  mutation ClockOut($locationId: ID!) { clockOut(locationId: $locationId) }\n": typeof types.ClockOutDocument,
     "\n  query TimeClockEvents($staffUserId: ID!, $locationId: ID!, $fromDate: String!, $toDate: String!) {\n    timeClockEvents(staffUserId: $staffUserId, locationId: $locationId, fromDate: $fromDate, toDate: $toDate) {\n      id type at\n    }\n  }\n": typeof types.TimeClockEventsDocument,
@@ -84,6 +86,8 @@ const documents: Documents = {
     "\n  query PosSearchCustomers($query: String!, $limit: Int) {\n    searchCustomers(query: $query, limit: $limit) {\n      id\n      fullName\n      email\n      phone\n    }\n  }\n": types.PosSearchCustomersDocument,
     "\n  mutation FindOrCreateCustomer($name: String!, $email: String, $phone: String) {\n    findOrCreateCustomer(name: $name, email: $email, phone: $phone) {\n      id fullName email phone\n    }\n  }\n": types.FindOrCreateCustomerDocument,
     "\n  mutation CreatePosSale($input: CreatePOSSaleInput!) {\n    createPOSSale(input: $input) {\n      id\n      status\n      paymentStatus\n      totalCents\n      paidTotalCents\n    }\n  }\n": types.CreatePosSaleDocument,
+    "\n  mutation CloseAppointmentSale($saleId: ID!) {\n    closeAppointmentSale(saleId: $saleId)\n  }\n": types.CloseAppointmentSaleDocument,
+    "\n  mutation CancelAppointmentPrepayLinkFromPos($saleId: ID!) {\n    cancelAppointmentPrepayLink(saleId: $saleId)\n  }\n": types.CancelAppointmentPrepayLinkFromPosDocument,
     "\n  mutation ClockIn($locationId: ID!) { clockIn(locationId: $locationId) }\n": types.ClockInDocument,
     "\n  mutation ClockOut($locationId: ID!) { clockOut(locationId: $locationId) }\n": types.ClockOutDocument,
     "\n  query TimeClockEvents($staffUserId: ID!, $locationId: ID!, $fromDate: String!, $toDate: String!) {\n    timeClockEvents(staffUserId: $staffUserId, locationId: $locationId, fromDate: $fromDate, toDate: $toDate) {\n      id type at\n    }\n  }\n": types.TimeClockEventsDocument,
@@ -222,6 +226,14 @@ export function graphql(source: "\n  mutation FindOrCreateCustomer($name: String
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  mutation CreatePosSale($input: CreatePOSSaleInput!) {\n    createPOSSale(input: $input) {\n      id\n      status\n      paymentStatus\n      totalCents\n      paidTotalCents\n    }\n  }\n"): (typeof documents)["\n  mutation CreatePosSale($input: CreatePOSSaleInput!) {\n    createPOSSale(input: $input) {\n      id\n      status\n      paymentStatus\n      totalCents\n      paidTotalCents\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation CloseAppointmentSale($saleId: ID!) {\n    closeAppointmentSale(saleId: $saleId)\n  }\n"): (typeof documents)["\n  mutation CloseAppointmentSale($saleId: ID!) {\n    closeAppointmentSale(saleId: $saleId)\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation CancelAppointmentPrepayLinkFromPos($saleId: ID!) {\n    cancelAppointmentPrepayLink(saleId: $saleId)\n  }\n"): (typeof documents)["\n  mutation CancelAppointmentPrepayLinkFromPos($saleId: ID!) {\n    cancelAppointmentPrepayLink(saleId: $saleId)\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

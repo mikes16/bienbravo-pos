@@ -15,6 +15,7 @@ type Appointment {
   items: [AppointmentItem!]!
   locationId: ID
   locationName: String
+  sale: Sale
   salePaymentStatus: SalePaymentStatus
   staffUser: StaffUser
   startAt: DateTime!
@@ -221,6 +222,10 @@ type CloudinaryUploadSignature {
   timestamp: Int!
 }
 
+input CreateAppointmentPrepayLinkInput {
+  appointmentId: ID!
+}
+
 input CreateBlogPostInput {
   contentJson: JSON
   slug: String!
@@ -374,6 +379,7 @@ input CreateResourceInput {
 
 input CreateRoleInput {
   description: String
+  kind: RoleKind!
   name: String!
 }
 
@@ -708,6 +714,13 @@ type LocationPolicy {
   walkinBlockWithinMinutes: Int!
 }
 
+input MarkAppointmentPrepaidManualInput {
+  appointmentId: ID!
+  note: String
+  paymentProvider: PaymentProvider!
+  receivedAt: DateTime
+}
+
 type MessageLog {
   channel: String!
   id: ID!
@@ -761,15 +774,18 @@ type Mutation {
   bulkUpdateProductStatus(ids: [ID!]!, status: ProductStatus!): BulkProductResult!
   cancelAppointment(appointmentId: ID!, overridePolicy: Boolean): CancelAppointmentResult!
   cancelAppointmentByToken(token: String!): CancelAppointmentByTokenResult!
+  cancelAppointmentPrepayLink(saleId: ID!): Boolean!
   cancelOrder(orderId: ID!): Order!
   checkIn(appointmentId: ID!): Appointment!
   clearStaffPin(staffUserId: ID!): Boolean!
   clockIn(locationId: ID!): Boolean!
   clockOut(locationId: ID!): Boolean!
+  closeAppointmentSale(saleId: ID!): Boolean!
   closeRegisterSession(input: CloseRegisterSessionInput!): RegisterSession!
   complete(appointmentId: ID!): Appointment!
   completeWalkIn(walkInId: ID!): Boolean!
   confirmAppointment(appointmentId: ID!): Appointment!
+  createAppointmentPrepayLink(input: CreateAppointmentPrepayLinkInput!): PrepayLink!
   createBlogPost(input: CreateBlogPostInput!): BlogPost!
   createBookingDraft(input: CreateBookingDraftInput!): BookingDraftResult!
   createCatalogCategory(input: CreateCatalogCategoryInput!): CatalogCategory!
@@ -821,6 +837,7 @@ type Mutation {
   inventorySet(productId: ID!, productVariantId: ID, quantity: Int!, reason: String, stockLocationId: ID!): InventoryLevel!
   inventoryTransfer(fromStockLocationId: ID!, productId: ID!, qty: Int!, toStockLocationId: ID!): Boolean!
   logout: Boolean!
+  markAppointmentPrepaidManual(input: MarkAppointmentPrepaidManualInput!): Sale!
   noShow(appointmentId: ID!): Appointment!
   openRegisterSession(openingCashCents: Int, registerId: ID!): RegisterSession!
   publishBlogPost(id: ID!): BlogPost!
@@ -846,7 +863,7 @@ type Mutation {
   staffLogin(email: String!, password: String!): AuthResult!
   staffPinLogin(email: String!, pin4: String!): AuthResult!
   startService(appointmentId: ID!): Appointment!
-  unassignRoleFromStaff(staffUserId: ID!): Boolean!
+  unassignRoleFromStaff(kind: RoleKind, staffUserId: ID!): Boolean!
   updateBlogPost(id: ID!, input: UpdateBlogPostInput!): BlogPost!
   updateCatalogCategory(id: ID!, input: UpdateCatalogCategoryInput!): CatalogCategory!
   updateCatalogCombo(id: ID!, input: UpdateCatalogComboInput!): CatalogCombo!
@@ -932,6 +949,26 @@ enum PaymentProvider {
   TRANSFER
 }
 
+enum PaymentStatus {
+  DISPUTED
+  FAILED
+  PENDING
+  REFUNDED
+  SUCCEEDED
+  VOID
+}
+
+type PaymentTransaction {
+  amountCents: Int!
+  createdAt: DateTime!
+  id: ID!
+  note: String
+  processedAt: DateTime
+  provider: PaymentProvider!
+  providerRef: String
+  status: PaymentStatus!
+}
+
 type PayoutRun {
   entries: [PayoutRunEntry!]!
   id: ID!
@@ -988,6 +1025,12 @@ type PosRevenueSummary {
   salesCount: Int!
   totalCents: Int!
   transferCents: Int!
+}
+
+type PrepayLink {
+  expiresAt: DateTime!
+  saleId: ID!
+  url: String!
 }
 
 type Product {
@@ -1143,7 +1186,7 @@ type Query {
   reportWeekOverWeek(dateFrom: String!, locationId: ID): ReportWeekOverWeek!
   reportsExportCsv(dateFrom: String!, dateTo: String!, type: String!): String!
   role(id: ID!): Role
-  roles: [Role!]!
+  roles(kind: RoleKind): [Role!]!
   searchCustomers(limit: Int, query: String!): [Customer!]!
   service(id: ID!): Service
   serviceDistribution(filters: DashboardFiltersInput!): [ServiceDistributionRow!]!
@@ -1159,6 +1202,7 @@ type Query {
   staffRegisterSessions(dateFrom: String, dateTo: String, first: Int! = 50, staffUserId: ID!): [RegisterSession!]!
   staffRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffRoleAssignments(staffUserId: ID): [StaffRoleAssignmentRow!]!
+  staffRoleSummary(staffUserId: ID!): StaffRoleSummary!
   staffServiceRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffShiftOverridesAllLocations(fromDate: String!, locationIds: [ID!]!, staffUserIds: [ID!]!, toDate: String!): [ShiftOverride!]!
   staffShiftTemplatesAllLocations(locationIds: [ID!]!, staffUserIds: [ID!]!): [ShiftTemplate!]!
@@ -1417,8 +1461,14 @@ type Resource {
 type Role {
   description: String
   id: ID!
+  kind: RoleKind!
   name: String!
   permissionKeys: [String!]!
+}
+
+enum RoleKind {
+  ADMIN
+  POS
 }
 
 input RotateServiceTokenInput {
@@ -1444,6 +1494,7 @@ type Sale {
   items: [SaleItem!]!
   paidTotalCents: Int!
   paymentStatus: SalePaymentStatus!
+  payments: [PaymentTransaction!]
   source: String!
   status: SaleStatus!
   subtotalCents: Int!
@@ -1482,6 +1533,8 @@ enum SalePaymentStatus {
 enum SaleSource {
   ADMIN_ADJUSTMENT
   BOOKING_NO_PAY
+  BOOKING_PREPAY_LINK
+  BOOKING_PREPAY_MANUAL
   ONLINE_PREPAY
   POS
 }
@@ -1637,6 +1690,14 @@ type StaffRoleAssignmentRow {
   roleName: String!
   scopeType: ScopeType!
   staffUserId: ID!
+}
+
+type StaffRoleSummary {
+  adminRoleId: ID
+  adminRoleName: String
+  posRoleId: ID
+  posRoleName: String
+  rolesCount: Int!
 }
 
 type StaffServicePrice {
@@ -1807,6 +1868,7 @@ input UpdateResourceInput {
 
 input UpdateRoleInput {
   description: String
+  kind: RoleKind
   name: String
 }
 

@@ -34,6 +34,7 @@ export type Appointment = {
   items: Array<AppointmentItem>;
   locationId?: Maybe<Scalars['ID']['output']>;
   locationName?: Maybe<Scalars['String']['output']>;
+  sale?: Maybe<Sale>;
   salePaymentStatus?: Maybe<SalePaymentStatus>;
   staffUser?: Maybe<StaffUser>;
   startAt: Scalars['DateTime']['output'];
@@ -262,6 +263,10 @@ export type CloudinaryUploadSignature = {
   timestamp: Scalars['Int']['output'];
 };
 
+export type CreateAppointmentPrepayLinkInput = {
+  appointmentId: Scalars['ID']['input'];
+};
+
 export type CreateBlogPostInput = {
   contentJson?: InputMaybe<Scalars['JSON']['input']>;
   slug: Scalars['String']['input'];
@@ -416,6 +421,7 @@ export type CreateResourceInput = {
 
 export type CreateRoleInput = {
   description?: InputMaybe<Scalars['String']['input']>;
+  kind: RoleKind;
   name: Scalars['String']['input'];
 };
 
@@ -764,6 +770,13 @@ export type LocationPolicy = {
   walkinBlockWithinMinutes: Scalars['Int']['output'];
 };
 
+export type MarkAppointmentPrepaidManualInput = {
+  appointmentId: Scalars['ID']['input'];
+  note?: InputMaybe<Scalars['String']['input']>;
+  paymentProvider: PaymentProvider;
+  receivedAt?: InputMaybe<Scalars['DateTime']['input']>;
+};
+
 export type MessageLog = {
   __typename?: 'MessageLog';
   channel: Scalars['String']['output'];
@@ -822,15 +835,18 @@ export type Mutation = {
   bulkUpdateProductStatus: BulkProductResult;
   cancelAppointment: CancelAppointmentResult;
   cancelAppointmentByToken: CancelAppointmentByTokenResult;
+  cancelAppointmentPrepayLink: Scalars['Boolean']['output'];
   cancelOrder: Order;
   checkIn: Appointment;
   clearStaffPin: Scalars['Boolean']['output'];
   clockIn: Scalars['Boolean']['output'];
   clockOut: Scalars['Boolean']['output'];
+  closeAppointmentSale: Scalars['Boolean']['output'];
   closeRegisterSession: RegisterSession;
   complete: Appointment;
   completeWalkIn: Scalars['Boolean']['output'];
   confirmAppointment: Appointment;
+  createAppointmentPrepayLink: PrepayLink;
   createBlogPost: BlogPost;
   createBookingDraft: BookingDraftResult;
   createCatalogCategory: CatalogCategory;
@@ -882,6 +898,7 @@ export type Mutation = {
   inventorySet: InventoryLevel;
   inventoryTransfer: Scalars['Boolean']['output'];
   logout: Scalars['Boolean']['output'];
+  markAppointmentPrepaidManual: Sale;
   noShow: Appointment;
   openRegisterSession: RegisterSession;
   publishBlogPost: BlogPost;
@@ -991,6 +1008,11 @@ export type MutationCancelAppointmentByTokenArgs = {
 };
 
 
+export type MutationCancelAppointmentPrepayLinkArgs = {
+  saleId: Scalars['ID']['input'];
+};
+
+
 export type MutationCancelOrderArgs = {
   orderId: Scalars['ID']['input'];
 };
@@ -1016,6 +1038,11 @@ export type MutationClockOutArgs = {
 };
 
 
+export type MutationCloseAppointmentSaleArgs = {
+  saleId: Scalars['ID']['input'];
+};
+
+
 export type MutationCloseRegisterSessionArgs = {
   input: CloseRegisterSessionInput;
 };
@@ -1033,6 +1060,11 @@ export type MutationCompleteWalkInArgs = {
 
 export type MutationConfirmAppointmentArgs = {
   appointmentId: Scalars['ID']['input'];
+};
+
+
+export type MutationCreateAppointmentPrepayLinkArgs = {
+  input: CreateAppointmentPrepayLinkInput;
 };
 
 
@@ -1299,6 +1331,11 @@ export type MutationInventoryTransferArgs = {
 };
 
 
+export type MutationMarkAppointmentPrepaidManualArgs = {
+  input: MarkAppointmentPrepaidManualInput;
+};
+
+
 export type MutationNoShowArgs = {
   appointmentId: Scalars['ID']['input'];
 };
@@ -1443,6 +1480,7 @@ export type MutationStartServiceArgs = {
 
 
 export type MutationUnassignRoleFromStaffArgs = {
+  kind?: InputMaybe<RoleKind>;
   staffUserId: Scalars['ID']['input'];
 };
 
@@ -1653,6 +1691,27 @@ export enum PaymentProvider {
   Transfer = 'TRANSFER'
 }
 
+export enum PaymentStatus {
+  Disputed = 'DISPUTED',
+  Failed = 'FAILED',
+  Pending = 'PENDING',
+  Refunded = 'REFUNDED',
+  Succeeded = 'SUCCEEDED',
+  Void = 'VOID'
+}
+
+export type PaymentTransaction = {
+  __typename?: 'PaymentTransaction';
+  amountCents: Scalars['Int']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  note?: Maybe<Scalars['String']['output']>;
+  processedAt?: Maybe<Scalars['DateTime']['output']>;
+  provider: PaymentProvider;
+  providerRef?: Maybe<Scalars['String']['output']>;
+  status: PaymentStatus;
+};
+
 export type PayoutRun = {
   __typename?: 'PayoutRun';
   entries: Array<PayoutRunEntry>;
@@ -1716,6 +1775,13 @@ export type PosRevenueSummary = {
   salesCount: Scalars['Int']['output'];
   totalCents: Scalars['Int']['output'];
   transferCents: Scalars['Int']['output'];
+};
+
+export type PrepayLink = {
+  __typename?: 'PrepayLink';
+  expiresAt: Scalars['DateTime']['output'];
+  saleId: Scalars['ID']['output'];
+  url: Scalars['String']['output'];
 };
 
 export type Product = {
@@ -1893,6 +1959,7 @@ export type Query = {
   staffRegisterSessions: Array<RegisterSession>;
   staffRevenueToday: Scalars['Int']['output'];
   staffRoleAssignments: Array<StaffRoleAssignmentRow>;
+  staffRoleSummary: StaffRoleSummary;
   staffServiceRevenueToday: Scalars['Int']['output'];
   staffShiftOverridesAllLocations: Array<ShiftOverride>;
   staffShiftTemplatesAllLocations: Array<ShiftTemplate>;
@@ -2311,6 +2378,11 @@ export type QueryRoleArgs = {
 };
 
 
+export type QueryRolesArgs = {
+  kind?: InputMaybe<RoleKind>;
+};
+
+
 export type QuerySearchCustomersArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   query: Scalars['String']['input'];
@@ -2392,6 +2464,11 @@ export type QueryStaffRevenueTodayArgs = {
 
 export type QueryStaffRoleAssignmentsArgs = {
   staffUserId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryStaffRoleSummaryArgs = {
+  staffUserId: Scalars['ID']['input'];
 };
 
 
@@ -2707,9 +2784,15 @@ export type Role = {
   __typename?: 'Role';
   description?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
+  kind: RoleKind;
   name: Scalars['String']['output'];
   permissionKeys: Array<Scalars['String']['output']>;
 };
+
+export enum RoleKind {
+  Admin = 'ADMIN',
+  Pos = 'POS'
+}
 
 export type RotateServiceTokenInput = {
   /** TTL for the outgoing PREVIOUS slot, in hours. Default 168 (7 days). Range: 1–720. */
@@ -2734,6 +2817,7 @@ export type Sale = {
   items: Array<SaleItem>;
   paidTotalCents: Scalars['Int']['output'];
   paymentStatus: SalePaymentStatus;
+  payments?: Maybe<Array<PaymentTransaction>>;
   source: Scalars['String']['output'];
   status: SaleStatus;
   subtotalCents: Scalars['Int']['output'];
@@ -2773,6 +2857,8 @@ export enum SalePaymentStatus {
 export enum SaleSource {
   AdminAdjustment = 'ADMIN_ADJUSTMENT',
   BookingNoPay = 'BOOKING_NO_PAY',
+  BookingPrepayLink = 'BOOKING_PREPAY_LINK',
+  BookingPrepayManual = 'BOOKING_PREPAY_MANUAL',
   OnlinePrepay = 'ONLINE_PREPAY',
   Pos = 'POS'
 }
@@ -2945,6 +3031,15 @@ export type StaffRoleAssignmentRow = {
   roleName: Scalars['String']['output'];
   scopeType: ScopeType;
   staffUserId: Scalars['ID']['output'];
+};
+
+export type StaffRoleSummary = {
+  __typename?: 'StaffRoleSummary';
+  adminRoleId?: Maybe<Scalars['ID']['output']>;
+  adminRoleName?: Maybe<Scalars['String']['output']>;
+  posRoleId?: Maybe<Scalars['ID']['output']>;
+  posRoleName?: Maybe<Scalars['String']['output']>;
+  rolesCount: Scalars['Int']['output'];
 };
 
 export type StaffServicePrice = {
@@ -3121,6 +3216,7 @@ export type UpdateResourceInput = {
 
 export type UpdateRoleInput = {
   description?: InputMaybe<Scalars['String']['input']>;
+  kind?: InputMaybe<RoleKind>;
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -3484,6 +3580,20 @@ export type CreatePosSaleMutationVariables = Exact<{
 
 export type CreatePosSaleMutation = { __typename?: 'Mutation', createPOSSale: { __typename?: 'Sale', id: string, status: SaleStatus, paymentStatus: SalePaymentStatus, totalCents: number, paidTotalCents: number } };
 
+export type CloseAppointmentSaleMutationVariables = Exact<{
+  saleId: Scalars['ID']['input'];
+}>;
+
+
+export type CloseAppointmentSaleMutation = { __typename?: 'Mutation', closeAppointmentSale: boolean };
+
+export type CancelAppointmentPrepayLinkFromPosMutationVariables = Exact<{
+  saleId: Scalars['ID']['input'];
+}>;
+
+
+export type CancelAppointmentPrepayLinkFromPosMutation = { __typename?: 'Mutation', cancelAppointmentPrepayLink: boolean };
+
 export type ClockInMutationVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
@@ -3625,6 +3735,8 @@ export const PosCatalogCombosDocument = {"kind":"Document","definitions":[{"kind
 export const PosSearchCustomersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosSearchCustomers"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"query"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"searchCustomers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"query"},"value":{"kind":"Variable","name":{"kind":"Name","value":"query"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}}]}}]} as unknown as DocumentNode<PosSearchCustomersQuery, PosSearchCustomersQueryVariables>;
 export const FindOrCreateCustomerDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"FindOrCreateCustomer"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"name"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"email"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"phone"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findOrCreateCustomer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"name"},"value":{"kind":"Variable","name":{"kind":"Name","value":"name"}}},{"kind":"Argument","name":{"kind":"Name","value":"email"},"value":{"kind":"Variable","name":{"kind":"Name","value":"email"}}},{"kind":"Argument","name":{"kind":"Name","value":"phone"},"value":{"kind":"Variable","name":{"kind":"Name","value":"phone"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}}]}}]} as unknown as DocumentNode<FindOrCreateCustomerMutation, FindOrCreateCustomerMutationVariables>;
 export const CreatePosSaleDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreatePosSale"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreatePOSSaleInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createPOSSale"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"paymentStatus"}},{"kind":"Field","name":{"kind":"Name","value":"totalCents"}},{"kind":"Field","name":{"kind":"Name","value":"paidTotalCents"}}]}}]}}]} as unknown as DocumentNode<CreatePosSaleMutation, CreatePosSaleMutationVariables>;
+export const CloseAppointmentSaleDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CloseAppointmentSale"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"saleId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"closeAppointmentSale"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"saleId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"saleId"}}}]}]}}]} as unknown as DocumentNode<CloseAppointmentSaleMutation, CloseAppointmentSaleMutationVariables>;
+export const CancelAppointmentPrepayLinkFromPosDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CancelAppointmentPrepayLinkFromPos"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"saleId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"cancelAppointmentPrepayLink"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"saleId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"saleId"}}}]}]}}]} as unknown as DocumentNode<CancelAppointmentPrepayLinkFromPosMutation, CancelAppointmentPrepayLinkFromPosMutationVariables>;
 export const ClockInDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ClockIn"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"clockIn"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}]}]}}]} as unknown as DocumentNode<ClockInMutation, ClockInMutationVariables>;
 export const ClockOutDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ClockOut"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"clockOut"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}]}]}}]} as unknown as DocumentNode<ClockOutMutation, ClockOutMutationVariables>;
 export const TimeClockEventsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"TimeClockEvents"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"fromDate"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"toDate"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"timeClockEvents"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"fromDate"},"value":{"kind":"Variable","name":{"kind":"Name","value":"fromDate"}}},{"kind":"Argument","name":{"kind":"Name","value":"toDate"},"value":{"kind":"Variable","name":{"kind":"Name","value":"toDate"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"at"}}]}}]}}]} as unknown as DocumentNode<TimeClockEventsQuery, TimeClockEventsQueryVariables>;
