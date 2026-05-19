@@ -169,6 +169,18 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
       prepaidAt: null,
     }
   }
+
+  // Cupones: el mock por defecto reporta "sin cupones aplicados" para que
+  // los tests existentes del checkout sigan pasando sin tocarse. Tests
+  // específicos del flujo de cupones sobre-escriben con vi.fn al armar el
+  // escenario.
+  async applyCoupon(): Promise<null> {
+    return null
+  }
+
+  async removeCoupon(): Promise<null> {
+    return null
+  }
 }
 
 export class InMemoryRegisterRepository implements RegisterRepository {

@@ -26,6 +26,21 @@ export enum AlertSeverity {
   Warning = 'warning'
 }
 
+export type AppliedCouponPreview = {
+  __typename?: 'AppliedCouponPreview';
+  code: Scalars['String']['output'];
+  discountAmountCents: Scalars['Int']['output'];
+  name: Scalars['String']['output'];
+  scope: CouponScope;
+};
+
+export type ApplyCouponToDraftSaleInput = {
+  code: Scalars['String']['input'];
+  customerId?: InputMaybe<Scalars['ID']['input']>;
+  existingAppliedCouponCodes?: Array<Scalars['String']['input']>;
+  items: Array<DraftSaleItemInput>;
+};
+
 export type Appointment = {
   __typename?: 'Appointment';
   customer?: Maybe<Customer>;
@@ -263,6 +278,81 @@ export type CloudinaryUploadSignature = {
   timestamp: Scalars['Int']['output'];
 };
 
+export type Coupon = {
+  __typename?: 'Coupon';
+  code: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  discountAmountCents?: Maybe<Scalars['Int']['output']>;
+  discountBps?: Maybe<Scalars['Int']['output']>;
+  endsAt?: Maybe<Scalars['DateTime']['output']>;
+  id: Scalars['ID']['output'];
+  isActive: Scalars['Boolean']['output'];
+  maxUses?: Maybe<Scalars['Int']['output']>;
+  maxUsesPerCustomer?: Maybe<Scalars['Int']['output']>;
+  name: Scalars['String']['output'];
+  scope: CouponScope;
+  stackable: Scalars['Boolean']['output'];
+  startsAt?: Maybe<Scalars['DateTime']['output']>;
+  targets: Array<CouponTarget>;
+  type: CouponType;
+  updatedAt: Scalars['DateTime']['output'];
+  usesCount: Scalars['Int']['output'];
+};
+
+export enum CouponInvalidReason {
+  AlreadyApplied = 'ALREADY_APPLIED',
+  Expired = 'EXPIRED',
+  Inactive = 'INACTIVE',
+  MaxUsesPerCustomerReached = 'MAX_USES_PER_CUSTOMER_REACHED',
+  MaxUsesReached = 'MAX_USES_REACHED',
+  NotApplicableToCart = 'NOT_APPLICABLE_TO_CART',
+  NotFound = 'NOT_FOUND',
+  NotStackable = 'NOT_STACKABLE',
+  NotStarted = 'NOT_STARTED'
+}
+
+export enum CouponScope {
+  Cart = 'CART',
+  Category = 'CATEGORY',
+  Product = 'PRODUCT',
+  Service = 'SERVICE'
+}
+
+export type CouponTarget = {
+  __typename?: 'CouponTarget';
+  categoryId?: Maybe<Scalars['ID']['output']>;
+  id: Scalars['ID']['output'];
+  productId?: Maybe<Scalars['ID']['output']>;
+  serviceId?: Maybe<Scalars['ID']['output']>;
+};
+
+export type CouponTargetInput = {
+  categoryId?: InputMaybe<Scalars['ID']['input']>;
+  productId?: InputMaybe<Scalars['ID']['input']>;
+  serviceId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+export enum CouponType {
+  Fixed = 'FIXED',
+  Percent = 'PERCENT'
+}
+
+export type CouponValidationResult = {
+  __typename?: 'CouponValidationResult';
+  computedDiscountCents: Scalars['Int']['output'];
+  coupon?: Maybe<Coupon>;
+  message: Scalars['String']['output'];
+  reason?: Maybe<CouponInvalidReason>;
+  valid: Scalars['Boolean']['output'];
+};
+
+export type CouponsFilterInput = {
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  scope?: InputMaybe<CouponScope>;
+  search?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type CreateAppointmentPrepayLinkInput = {
   appointmentId: Scalars['ID']['input'];
 };
@@ -309,6 +399,23 @@ export type CreateCatalogComboInput = {
   priceCents: Scalars['Int']['input'];
   slug: Scalars['String']['input'];
   sortOrder?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type CreateCouponInput = {
+  code: Scalars['String']['input'];
+  description?: InputMaybe<Scalars['String']['input']>;
+  discountAmountCents?: InputMaybe<Scalars['Int']['input']>;
+  discountBps?: InputMaybe<Scalars['Int']['input']>;
+  endsAt?: InputMaybe<Scalars['DateTime']['input']>;
+  isActive?: Scalars['Boolean']['input'];
+  maxUses?: InputMaybe<Scalars['Int']['input']>;
+  maxUsesPerCustomer?: InputMaybe<Scalars['Int']['input']>;
+  name: Scalars['String']['input'];
+  scope: CouponScope;
+  stackable?: Scalars['Boolean']['input'];
+  startsAt?: InputMaybe<Scalars['DateTime']['input']>;
+  targets?: Array<CouponTargetInput>;
+  type: CouponType;
 };
 
 export type CreateGroupBookingInput = {
@@ -360,6 +467,7 @@ export type CreateOrderItemInput = {
 };
 
 export type CreatePosSaleInput = {
+  appliedCouponCodes?: Array<Scalars['String']['input']>;
   completeAppointmentId?: InputMaybe<Scalars['ID']['input']>;
   completeWalkInId?: InputMaybe<Scalars['ID']['input']>;
   customerId?: InputMaybe<Scalars['ID']['input']>;
@@ -600,6 +708,22 @@ export enum DepositType {
   Percent = 'PERCENT'
 }
 
+export type DraftSaleItemInput = {
+  productId?: InputMaybe<Scalars['ID']['input']>;
+  qty: Scalars['Int']['input'];
+  serviceId?: InputMaybe<Scalars['ID']['input']>;
+  unitPriceCents: Scalars['Int']['input'];
+};
+
+export type DraftSaleWithDiscount = {
+  __typename?: 'DraftSaleWithDiscount';
+  appliedCoupons: Array<AppliedCouponPreview>;
+  subtotalCents: Scalars['Int']['output'];
+  taxTotalCents: Scalars['Int']['output'];
+  totalCents: Scalars['Int']['output'];
+  validationError?: Maybe<CouponValidationResult>;
+};
+
 export type GroupBookingAppointmentInput = {
   customerEmail: Scalars['String']['input'];
   customerFullName: Scalars['String']['input'];
@@ -827,6 +951,8 @@ export type MetafieldValue = {
 export type Mutation = {
   __typename?: 'Mutation';
   addProductImage: Product;
+  applyCouponToDraftSale: DraftSaleWithDiscount;
+  archiveCoupon: Coupon;
   assignPermissionsToRole: Role;
   assignRoleToStaff: Scalars['Boolean']['output'];
   assignWalkIn: AssignWalkInResult;
@@ -852,6 +978,7 @@ export type Mutation = {
   createCatalogCategory: CatalogCategory;
   createCatalogCombo: CatalogCombo;
   createCloudinaryUploadSignature: CloudinaryUploadSignature;
+  createCoupon: Coupon;
   createGroupBooking: CreateGroupBookingResult;
   createLatenessExcuse: LatenessExcuse;
   createLocation: Location;
@@ -906,6 +1033,7 @@ export type Mutation = {
   refundApprove: Scalars['Boolean']['output'];
   refundReject: Scalars['Boolean']['output'];
   refundRequest: Scalars['String']['output'];
+  removeCouponFromDraftSale: DraftSaleWithDiscount;
   removeProductImage: Product;
   reorderProductImages: Product;
   reorderWalkIn: Scalars['Boolean']['output'];
@@ -928,6 +1056,7 @@ export type Mutation = {
   updateBlogPost: BlogPost;
   updateCatalogCategory: CatalogCategory;
   updateCatalogCombo: CatalogCombo;
+  updateCoupon: Coupon;
   updateCustomerReputation: Customer;
   updateLocation: Location;
   updateLocationPolicy: LocationPolicy;
@@ -958,6 +1087,16 @@ export type MutationAddProductImageArgs = {
   productId: Scalars['ID']['input'];
   publicId: Scalars['String']['input'];
   url: Scalars['String']['input'];
+};
+
+
+export type MutationApplyCouponToDraftSaleArgs = {
+  input: ApplyCouponToDraftSaleInput;
+};
+
+
+export type MutationArchiveCouponArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -1090,6 +1229,11 @@ export type MutationCreateCatalogComboArgs = {
 
 export type MutationCreateCloudinaryUploadSignatureArgs = {
   folder?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationCreateCouponArgs = {
+  input: CreateCouponInput;
 };
 
 
@@ -1376,6 +1520,11 @@ export type MutationRefundRequestArgs = {
 };
 
 
+export type MutationRemoveCouponFromDraftSaleArgs = {
+  input: RemoveCouponFromDraftSaleInput;
+};
+
+
 export type MutationRemoveProductImageArgs = {
   imageId: Scalars['ID']['input'];
   productId: Scalars['ID']['input'];
@@ -1500,6 +1649,12 @@ export type MutationUpdateCatalogCategoryArgs = {
 export type MutationUpdateCatalogComboArgs = {
   id: Scalars['ID']['input'];
   input: UpdateCatalogComboInput;
+};
+
+
+export type MutationUpdateCouponArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateCouponInput;
 };
 
 
@@ -1885,6 +2040,8 @@ export type Query = {
   catalogCombo?: Maybe<CatalogCombo>;
   catalogCombos: Array<CatalogCombo>;
   cloudinaryConfig: CloudinaryConfig;
+  coupon?: Maybe<Coupon>;
+  coupons: Array<Coupon>;
   customer?: Maybe<Customer>;
   customerAppointments: Array<Appointment>;
   customers: Array<Customer>;
@@ -2034,6 +2191,16 @@ export type QueryCatalogComboArgs = {
 
 export type QueryCatalogCombosArgs = {
   activeOnly?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+export type QueryCouponArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QueryCouponsArgs = {
+  filter?: InputMaybe<CouponsFilterInput>;
 };
 
 
@@ -2608,6 +2775,13 @@ export enum RegisterSessionStatus {
   Open = 'OPEN'
 }
 
+export type RemoveCouponFromDraftSaleInput = {
+  code: Scalars['String']['input'];
+  customerId?: InputMaybe<Scalars['ID']['input']>;
+  items: Array<DraftSaleItemInput>;
+  remainingAppliedCouponCodes?: Array<Scalars['String']['input']>;
+};
+
 export type ReplaceShiftTemplatesBatchInput = {
   days: Array<ShiftTemplateDayInput>;
   locationId: Scalars['ID']['input'];
@@ -3150,6 +3324,22 @@ export type UpdateCatalogComboInput = {
   priceCents?: InputMaybe<Scalars['Int']['input']>;
   slug?: InputMaybe<Scalars['String']['input']>;
   sortOrder?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type UpdateCouponInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  discountAmountCents?: InputMaybe<Scalars['Int']['input']>;
+  discountBps?: InputMaybe<Scalars['Int']['input']>;
+  endsAt?: InputMaybe<Scalars['DateTime']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  maxUses?: InputMaybe<Scalars['Int']['input']>;
+  maxUsesPerCustomer?: InputMaybe<Scalars['Int']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  scope?: InputMaybe<CouponScope>;
+  stackable?: InputMaybe<Scalars['Boolean']['input']>;
+  startsAt?: InputMaybe<Scalars['DateTime']['input']>;
+  targets?: InputMaybe<Array<CouponTargetInput>>;
+  type?: InputMaybe<CouponType>;
 };
 
 export type UpdateLocationInput = {

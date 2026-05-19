@@ -104,6 +104,12 @@ export interface CreateSaleInput {
   tipCents: number
   /** Pagos que cubren items + tax + tip. La suma debe igualar el total. */
   payments: CheckoutPayment[]
+  /**
+   * Códigos de cupones aplicados al draft (preview vía applyCouponToDraftSale)
+   * que el API debe persistir al crear el Sale. El API recalcula descuentos
+   * server-side — el cliente solo manda los códigos, nunca los montos.
+   */
+  appliedCouponCodes?: string[]
 }
 
 export interface SaleItemInput {

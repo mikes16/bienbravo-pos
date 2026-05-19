@@ -254,6 +254,48 @@ export const CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION = graphql(`
   }
 `)
 
+// Cupones de descuento: el API valida el código contra el draft sale del POS
+// y devuelve los totales actualizados + la lista de cupones aplicados. Si el
+// cupón es inválido para este draft (expired, scope no match, etc.) devuelve
+// `validationError` con un mensaje en español listo para mostrar.
+export const APPLY_COUPON_TO_DRAFT_SALE_MUTATION = graphql(`
+  mutation ApplyCouponToDraftSale($input: ApplyCouponToDraftSaleInput!) {
+    applyCouponToDraftSale(input: $input) {
+      subtotalCents
+      taxTotalCents
+      totalCents
+      appliedCoupons {
+        code
+        name
+        scope
+        discountAmountCents
+      }
+      validationError {
+        valid
+        reason
+        message
+        computedDiscountCents
+      }
+    }
+  }
+`)
+
+export const REMOVE_COUPON_FROM_DRAFT_SALE_MUTATION = graphql(`
+  mutation RemoveCouponFromDraftSale($input: RemoveCouponFromDraftSaleInput!) {
+    removeCouponFromDraftSale(input: $input) {
+      subtotalCents
+      taxTotalCents
+      totalCents
+      appliedCoupons {
+        code
+        name
+        scope
+        discountAmountCents
+      }
+    }
+  }
+`)
+
 /* ── Interface ── */
 
 export interface CustomerResult {
@@ -303,6 +345,57 @@ export interface AppointmentPrepayState {
   prepaidAt: string | null
 }
 
+/* ── Coupon DTOs ── */
+
+export interface DraftSaleItemArg {
+  serviceId?: string | null
+  productId?: string | null
+  qty: number
+  unitPriceCents: number
+}
+
+export interface AppliedCouponPreview {
+  code: string
+  name: string
+  scope: string
+  discountAmountCents: number
+}
+
+/**
+ * Resultado de `applyCouponToDraftSale` / `removeCouponFromDraftSale`.
+ *
+ * Cuando el cupón no es válido para el draft (expirado, scope no match,
+ * etc.) el API devuelve `validationError` y la lista `appliedCoupons` no
+ * incluye el cupón rechazado. El consumidor debe verificar `validationError`
+ * antes de mutar el estado local.
+ */
+export interface DraftSaleWithDiscount {
+  subtotalCents: number
+  taxTotalCents: number
+  totalCents: number
+  appliedCoupons: AppliedCouponPreview[]
+  validationError: {
+    valid: boolean
+    reason: string | null
+    message: string
+    computedDiscountCents: number
+  } | null
+}
+
+export interface ApplyCouponArgs {
+  code: string
+  items: DraftSaleItemArg[]
+  customerId?: string | null
+  existingAppliedCouponCodes: string[]
+}
+
+export interface RemoveCouponArgs {
+  code: string
+  items: DraftSaleItemArg[]
+  customerId?: string | null
+  remainingAppliedCouponCodes: string[]
+}
+
 export interface CheckoutRepository {
   getCategories(): Promise<CatalogCategory[]>
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
@@ -325,6 +418,14 @@ export interface CheckoutRepository {
    * false) — el CheckoutScreen entonces sigue el flujo normal de cobro.
    */
   getAppointmentPrepayState(appointmentId: string): Promise<AppointmentPrepayState>
+  /**
+   * Aplica un cupón al draft del checkout. Devuelve los totales recalculados
+   * + la lista de cupones aplicados, o `validationError` cuando el código
+   * no es válido para este draft.
+   */
+  applyCoupon(args: ApplyCouponArgs): Promise<DraftSaleWithDiscount | null>
+  /** Quita un cupón ya aplicado del draft y devuelve los totales actualizados. */
+  removeCoupon(args: RemoveCouponArgs): Promise<DraftSaleWithDiscount | null>
 }
 
 export interface CustomerHistoryEntry {
@@ -493,10 +594,62 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
             provider: p.provider,
             amountCents: p.amountCents,
           })),
+          // API field tiene defaultValue: [] así que mandar [] es seguro
+          // cuando el cajero no aplicó cupones; cuando sí los aplicó, los
+          // códigos llegan vía el state del hook.
+          appliedCouponCodes: input.appliedCouponCodes ?? [],
         },
       },
     })
     return data!.createPOSSale
+  }
+
+  async applyCoupon(args: ApplyCouponArgs): Promise<DraftSaleWithDiscount | null> {
+    // `as any` mirror del patrón usado para CLOSE_APPOINTMENT_SALE_MUTATION
+    // y CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION arriba — client-preset emite
+    // un Document genérico que TS no infiere correctamente sobre el resultado
+    // de la mutation. Lo casteamos al shape definido en DraftSaleWithDiscount.
+    const { data } = await this.#client.mutate({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mutation: APPLY_COUPON_TO_DRAFT_SALE_MUTATION as any,
+      variables: {
+        input: {
+          code: args.code,
+          items: args.items.map((it) => ({
+            serviceId: it.serviceId ?? null,
+            productId: it.productId ?? null,
+            qty: it.qty,
+            unitPriceCents: it.unitPriceCents,
+          })),
+          customerId: args.customerId ?? null,
+          existingAppliedCouponCodes: args.existingAppliedCouponCodes,
+        },
+      },
+    })
+    const result = (data as { applyCouponToDraftSale?: DraftSaleWithDiscount } | null)?.applyCouponToDraftSale
+    return result ?? null
+  }
+
+  async removeCoupon(args: RemoveCouponArgs): Promise<DraftSaleWithDiscount | null> {
+    const { data } = await this.#client.mutate({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mutation: REMOVE_COUPON_FROM_DRAFT_SALE_MUTATION as any,
+      variables: {
+        input: {
+          code: args.code,
+          items: args.items.map((it) => ({
+            serviceId: it.serviceId ?? null,
+            productId: it.productId ?? null,
+            qty: it.qty,
+            unitPriceCents: it.unitPriceCents,
+          })),
+          customerId: args.customerId ?? null,
+          remainingAppliedCouponCodes: args.remainingAppliedCouponCodes,
+        },
+      },
+    })
+    const result = (data as { removeCouponFromDraftSale?: DraftSaleWithDiscount } | null)?.removeCouponFromDraftSale
+    return result ?? null
   }
 
   async findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }> {

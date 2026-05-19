@@ -8,6 +8,20 @@ enum AlertSeverity {
   warning
 }
 
+type AppliedCouponPreview {
+  code: String!
+  discountAmountCents: Int!
+  name: String!
+  scope: CouponScope!
+}
+
+input ApplyCouponToDraftSaleInput {
+  code: String!
+  customerId: ID
+  existingAppliedCouponCodes: [String!]! = []
+  items: [DraftSaleItemInput!]!
+}
+
 type Appointment {
   customer: Customer
   endAt: DateTime!
@@ -222,6 +236,78 @@ type CloudinaryUploadSignature {
   timestamp: Int!
 }
 
+type Coupon {
+  code: String!
+  createdAt: DateTime!
+  description: String
+  discountAmountCents: Int
+  discountBps: Int
+  endsAt: DateTime
+  id: ID!
+  isActive: Boolean!
+  maxUses: Int
+  maxUsesPerCustomer: Int
+  name: String!
+  scope: CouponScope!
+  stackable: Boolean!
+  startsAt: DateTime
+  targets: [CouponTarget!]!
+  type: CouponType!
+  updatedAt: DateTime!
+  usesCount: Int!
+}
+
+enum CouponInvalidReason {
+  ALREADY_APPLIED
+  EXPIRED
+  INACTIVE
+  MAX_USES_PER_CUSTOMER_REACHED
+  MAX_USES_REACHED
+  NOT_APPLICABLE_TO_CART
+  NOT_FOUND
+  NOT_STACKABLE
+  NOT_STARTED
+}
+
+enum CouponScope {
+  CART
+  CATEGORY
+  PRODUCT
+  SERVICE
+}
+
+type CouponTarget {
+  categoryId: ID
+  id: ID!
+  productId: ID
+  serviceId: ID
+}
+
+input CouponTargetInput {
+  categoryId: ID
+  productId: ID
+  serviceId: ID
+}
+
+enum CouponType {
+  FIXED
+  PERCENT
+}
+
+type CouponValidationResult {
+  computedDiscountCents: Int!
+  coupon: Coupon
+  message: String!
+  reason: CouponInvalidReason
+  valid: Boolean!
+}
+
+input CouponsFilterInput {
+  isActive: Boolean
+  scope: CouponScope
+  search: String
+}
+
 input CreateAppointmentPrepayLinkInput {
   appointmentId: ID!
 }
@@ -268,6 +354,23 @@ input CreateCatalogComboInput {
   priceCents: Int!
   slug: String!
   sortOrder: Int
+}
+
+input CreateCouponInput {
+  code: String!
+  description: String
+  discountAmountCents: Int
+  discountBps: Int
+  endsAt: DateTime
+  isActive: Boolean! = true
+  maxUses: Int
+  maxUsesPerCustomer: Int
+  name: String!
+  scope: CouponScope!
+  stackable: Boolean! = false
+  startsAt: DateTime
+  targets: [CouponTargetInput!]! = []
+  type: CouponType!
 }
 
 input CreateGroupBookingInput {
@@ -318,6 +421,7 @@ input CreateOrderItemInput {
 }
 
 input CreatePOSSaleInput {
+  appliedCouponCodes: [String!]! = []
   completeAppointmentId: ID
   completeWalkInId: ID
   customerId: ID
@@ -556,6 +660,21 @@ enum DepositType {
   PERCENT
 }
 
+input DraftSaleItemInput {
+  productId: ID
+  qty: Int!
+  serviceId: ID
+  unitPriceCents: Int!
+}
+
+type DraftSaleWithDiscount {
+  appliedCoupons: [AppliedCouponPreview!]!
+  subtotalCents: Int!
+  taxTotalCents: Int!
+  totalCents: Int!
+  validationError: CouponValidationResult
+}
+
 input GroupBookingAppointmentInput {
   customerEmail: String!
   customerFullName: String!
@@ -766,6 +885,8 @@ type MetafieldValue {
 
 type Mutation {
   addProductImage(productId: ID!, publicId: String!, url: String!): Product!
+  applyCouponToDraftSale(input: ApplyCouponToDraftSaleInput!): DraftSaleWithDiscount!
+  archiveCoupon(id: ID!): Coupon!
   assignPermissionsToRole(permissionKeys: [String!]!, roleId: ID!): Role!
   assignRoleToStaff(input: AssignRoleToStaffInput!): Boolean!
   assignWalkIn(staffUserId: ID!, walkInId: ID!): AssignWalkInResult!
@@ -791,6 +912,7 @@ type Mutation {
   createCatalogCategory(input: CreateCatalogCategoryInput!): CatalogCategory!
   createCatalogCombo(input: CreateCatalogComboInput!): CatalogCombo!
   createCloudinaryUploadSignature(folder: String): CloudinaryUploadSignature!
+  createCoupon(input: CreateCouponInput!): Coupon!
   createGroupBooking(input: CreateGroupBookingInput!): CreateGroupBookingResult!
   createLatenessExcuse(input: CreateLatenessExcuseInput!): LatenessExcuse!
   createLocation(input: CreateLocationInput!): Location!
@@ -845,6 +967,7 @@ type Mutation {
   refundApprove(refundId: ID!): Boolean!
   refundReject(reason: String, refundId: ID!): Boolean!
   refundRequest(amountCents: Int!, reason: String, saleId: ID!): String!
+  removeCouponFromDraftSale(input: RemoveCouponFromDraftSaleInput!): DraftSaleWithDiscount!
   removeProductImage(imageId: ID!, productId: ID!): Product!
   reorderProductImages(imageIdsInOrder: [ID!]!, productId: ID!): Product!
   reorderWalkIn(afterWalkInId: ID, walkInId: ID!): Boolean!
@@ -867,6 +990,7 @@ type Mutation {
   updateBlogPost(id: ID!, input: UpdateBlogPostInput!): BlogPost!
   updateCatalogCategory(id: ID!, input: UpdateCatalogCategoryInput!): CatalogCategory!
   updateCatalogCombo(id: ID!, input: UpdateCatalogComboInput!): CatalogCombo!
+  updateCoupon(id: ID!, input: UpdateCouponInput!): Coupon!
   updateCustomerReputation(customerId: ID!, reputationNote: String, reputationTag: CustomerReputationTag): Customer!
   updateLocation(id: ID!, input: UpdateLocationInput!): Location!
   updateLocationPolicy(input: UpdateLocationPolicyInput!, locationId: ID!): LocationPolicy!
@@ -1128,6 +1252,8 @@ type Query {
   catalogCombo(id: ID!): CatalogCombo
   catalogCombos(activeOnly: Boolean): [CatalogCombo!]!
   cloudinaryConfig: CloudinaryConfig!
+  coupon(id: ID!): Coupon
+  coupons(filter: CouponsFilterInput): [Coupon!]!
   customer(id: ID!): Customer
   customerAppointments(customerId: ID!, limit: Int): [Appointment!]!
   customers(limit: Int, offset: Int, query: String): [Customer!]!
@@ -1302,6 +1428,13 @@ type RegisterSessionEdge {
 enum RegisterSessionStatus {
   CLOSED
   OPEN
+}
+
+input RemoveCouponFromDraftSaleInput {
+  code: String!
+  customerId: ID
+  items: [DraftSaleItemInput!]!
+  remainingAppliedCouponCodes: [String!]! = []
 }
 
 input ReplaceShiftTemplatesBatchInput {
@@ -1802,6 +1935,22 @@ input UpdateCatalogComboInput {
   priceCents: Int
   slug: String
   sortOrder: Int
+}
+
+input UpdateCouponInput {
+  description: String
+  discountAmountCents: Int
+  discountBps: Int
+  endsAt: DateTime
+  isActive: Boolean
+  maxUses: Int
+  maxUsesPerCustomer: Int
+  name: String
+  scope: CouponScope
+  stackable: Boolean
+  startsAt: DateTime
+  targets: [CouponTargetInput!]
+  type: CouponType
 }
 
 input UpdateLocationInput {
