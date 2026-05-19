@@ -931,7 +931,7 @@ type Mutation {
   createStaffVacation(input: CreateStaffVacationInput!): StaffVacation!
   createStockLocation(input: CreateStockLocationInput!): StockLocation!
   createStripePaymentIntent(saleId: ID!): StripePaymentIntentResult!
-  createWalkIn(customerEmail: String, customerId: ID, customerName: String, customerPhone: String, locationId: ID!, requestedCatalogComboId: ID, requestedServiceId: ID): WalkIn!
+  createWalkIn(customerEmail: String, customerId: ID, customerName: String, customerPhone: String, locationId: ID!, preferredStaffUserId: ID, requestedCatalogComboId: ID, requestedServiceId: ID): WalkIn!
   customerLogin(email: String!, password: String!): AuthResult!
   customerRegister(input: CustomerRegisterInput!): AuthResult!
   deactivateProduct(id: ID!): Product!
@@ -960,8 +960,10 @@ type Mutation {
   inventoryTransfer(fromStockLocationId: ID!, productId: ID!, qty: Int!, toStockLocationId: ID!): Boolean!
   logout: Boolean!
   markAppointmentPrepaidManual(input: MarkAppointmentPrepaidManualInput!): Sale!
+  markWalkInNoShow(walkInId: ID!): WalkIn!
   noShow(appointmentId: ID!): Appointment!
   openRegisterSession(openingCashCents: Int, registerId: ID!): RegisterSession!
+  pauseWalkIn(walkInId: ID!): WalkIn!
   publishBlogPost(id: ID!): BlogPost!
   recalcReportingMetrics(dateFrom: String!, dateTo: String!): Boolean!
   refundApprove(refundId: ID!): Boolean!
@@ -970,7 +972,7 @@ type Mutation {
   removeCouponFromDraftSale(input: RemoveCouponFromDraftSaleInput!): DraftSaleWithDiscount!
   removeProductImage(imageId: ID!, productId: ID!): Product!
   reorderProductImages(imageIdsInOrder: [ID!]!, productId: ID!): Product!
-  reorderWalkIn(afterWalkInId: ID, walkInId: ID!): Boolean!
+  reorderWalkIns(input: ReorderWalkInsInput!): [WalkIn!]!
   replaceShiftTemplatesBatch(input: ReplaceShiftTemplatesBatchInput!): [ShiftTemplate!]!
   replaceShiftTemplatesForWeek(input: ReplaceShiftTemplatesForWeekInput!): [ShiftTemplate!]!
   requestAppointmentManageLink(appointmentId: ID!, email: String!): String!
@@ -978,6 +980,7 @@ type Mutation {
   rescheduleAppointmentByToken(newStartAt: DateTime!, token: String!): RescheduleAppointmentByTokenResult!
   resetLocationBusinessHours(locationId: ID!): [LocationBusinessHour!]!
   resetPosPinAttempts(staffUserId: ID!): Boolean!
+  resumeWalkIn(walkInId: ID!): WalkIn!
   rotateServiceToken(input: RotateServiceTokenInput!): RotateServiceTokenResult!
   runPayout(periodEnd: DateTime!, periodStart: DateTime!): PayoutRun!
   setPosLocationPassword(locationId: ID!, password: String!): Boolean!
@@ -1335,6 +1338,7 @@ type Query {
   staffVacations(locationId: ID, staffUserId: ID): [StaffVacation!]!
   stockLocation(id: ID!): StockLocation
   stockLocations: [StockLocation!]!
+  suggestedNextWalkIn(input: SuggestedNextWalkInInput!): WalkIn
   timeClockEvents(fromDate: String!, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
   viewer: Viewer!
   walkIns(locationId: ID!): [WalkIn!]!
@@ -1435,6 +1439,11 @@ input RemoveCouponFromDraftSaleInput {
   customerId: ID
   items: [DraftSaleItemInput!]!
   remainingAppliedCouponCodes: [String!]! = []
+}
+
+input ReorderWalkInsInput {
+  locationId: ID!
+  orderedIds: [ID!]!
 }
 
 input ReplaceShiftTemplatesBatchInput {
@@ -1885,6 +1894,11 @@ type StripePaymentIntentResult {
   provider: String!
 }
 
+input SuggestedNextWalkInInput {
+  locationId: ID!
+  staffUserId: ID!
+}
+
 type TimeClockEvent {
   at: DateTime!
   id: ID!
@@ -2175,10 +2189,14 @@ type WalkIn {
   customerName: String
   customerPhone: String
   id: ID!
+  pausedAt: DateTime
+  preferredStaffUser: StaffUser
+  preferredStaffUserId: ID
   requestedCatalogCombo: CatalogCombo
   requestedCatalogComboId: ID
   requestedService: Service
   requestedServiceId: ID
+  sortOrder: Int!
   status: WalkInStatus!
 }
 
@@ -2186,5 +2204,6 @@ enum WalkInStatus {
   ASSIGNED
   CANCELLED
   DONE
+  NO_SHOW
   PENDING
 }

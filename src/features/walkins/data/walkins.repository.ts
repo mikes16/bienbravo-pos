@@ -1,22 +1,20 @@
-import { type ApolloClient, gql } from '@apollo/client'
+import { type ApolloClient } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
 import type { WalkIn } from '../domain/walkins.types.ts'
 
 const WALKINS_QUERY = graphql(`
   query PosWalkIns($locationId: ID!) {
     walkIns(locationId: $locationId) {
-      id status customerName customerPhone customerEmail createdAt
+      id status customerName customerPhone customerEmail createdAt sortOrder pausedAt
       assignedStaffUser { id fullName }
       customer { id fullName email phone }
+      preferredStaffUserId
+      preferredStaffUser { id fullName photoUrl }
     }
   }
 `)
 
-// Use gql() at runtime because we extended the mutation to take an optional
-// customerId — codegen hasn't regenerated against the new shape, so the typed
-// graphql() tag would fail to resolve. Migrate back to graphql() after the next
-// sync-schema + codegen run.
-const CREATE_WALKIN = gql`
+const CREATE_WALKIN = graphql(`
   mutation CreateWalkIn(
     $locationId: ID!
     $customerId: ID
@@ -25,6 +23,7 @@ const CREATE_WALKIN = gql`
     $customerEmail: String
     $requestedServiceId: ID
     $requestedCatalogComboId: ID
+    $preferredStaffUserId: ID
   ) {
     createWalkIn(
       locationId: $locationId
@@ -34,14 +33,17 @@ const CREATE_WALKIN = gql`
       customerEmail: $customerEmail
       requestedServiceId: $requestedServiceId
       requestedCatalogComboId: $requestedCatalogComboId
+      preferredStaffUserId: $preferredStaffUserId
     ) {
-      id status customerName customerPhone customerEmail createdAt
+      id status customerName customerPhone customerEmail createdAt sortOrder pausedAt
       customer { id fullName email phone }
       requestedService { id name baseDurationMin }
       requestedCatalogCombo { id name }
+      preferredStaffUserId
+      preferredStaffUser { id fullName photoUrl }
     }
   }
-`
+`)
 
 const ASSIGN_WALKIN = graphql(`
   mutation AssignWalkIn($walkInId: ID!, $staffUserId: ID!) {
@@ -62,6 +64,60 @@ const DROP_WALKIN = graphql(`
   mutation DropWalkIn($walkInId: ID!, $reason: String) { dropWalkIn(walkInId: $walkInId, reason: $reason) }
 `)
 
+export const PAUSE_WALKIN_MUTATION = graphql(`
+  mutation PauseWalkIn($walkInId: ID!) {
+    pauseWalkIn(walkInId: $walkInId) {
+      id
+      pausedAt
+    }
+  }
+`)
+
+export const RESUME_WALKIN_MUTATION = graphql(`
+  mutation ResumeWalkIn($walkInId: ID!) {
+    resumeWalkIn(walkInId: $walkInId) {
+      id
+      pausedAt
+    }
+  }
+`)
+
+export const MARK_WALKIN_NO_SHOW_MUTATION = graphql(`
+  mutation MarkWalkInNoShow($walkInId: ID!) {
+    markWalkInNoShow(walkInId: $walkInId) {
+      id
+      status
+    }
+  }
+`)
+
+export const REORDER_WALKINS_MUTATION = graphql(`
+  mutation ReorderWalkIns($input: ReorderWalkInsInput!) {
+    reorderWalkIns(input: $input) {
+      id
+      sortOrder
+    }
+  }
+`)
+
+export const SUGGESTED_NEXT_WALKIN_QUERY = graphql(`
+  query SuggestedNextWalkIn($input: SuggestedNextWalkInInput!) {
+    suggestedNextWalkIn(input: $input) {
+      id
+      status
+      customerName
+      customer { id fullName }
+      requestedService { id name }
+      requestedCatalogCombo { id name }
+      preferredStaffUserId
+      preferredStaffUser { id fullName photoUrl }
+      pausedAt
+      sortOrder
+      createdAt
+    }
+  }
+`)
+
 export interface CreateWalkInInput {
   locationId: string
   customerId?: string | null
@@ -72,6 +128,7 @@ export interface CreateWalkInInput {
   // are sent, but the client should keep the contract clean.
   requestedServiceId?: string | null
   requestedCatalogComboId?: string | null
+  preferredStaffUserId?: string | null
 }
 
 export interface WalkInsRepository {
@@ -80,6 +137,11 @@ export interface WalkInsRepository {
   assign(walkInId: string, staffUserId: string): Promise<{ walkIn: WalkIn; warning: string | null }>
   complete(walkInId: string): Promise<void>
   drop(walkInId: string, reason?: string | null): Promise<void>
+  pauseWalkIn(walkInId: string): Promise<{ id: string; pausedAt: string | null } | null>
+  resumeWalkIn(walkInId: string): Promise<{ id: string; pausedAt: string | null } | null>
+  markWalkInNoShow(walkInId: string): Promise<{ id: string; status: string } | null>
+  reorderWalkIns(input: { locationId: string; orderedIds: string[] }): Promise<Array<{ id: string; sortOrder: number }> | null>
+  suggestedNextWalkIn(input: { locationId: string; staffUserId: string }): Promise<WalkIn | null>
 }
 
 export class ApolloWalkInsRepository implements WalkInsRepository {
@@ -111,6 +173,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
         customerEmail: input.customerEmail ?? null,
         requestedServiceId: input.requestedServiceId ?? null,
         requestedCatalogComboId: input.requestedCatalogComboId ?? null,
+        preferredStaffUserId: input.preferredStaffUserId ?? null,
       },
     })
     return data!.createWalkIn
@@ -132,5 +195,34 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
 
   async drop(walkInId: string, reason?: string | null): Promise<void> {
     await this.#client.mutate({ mutation: DROP_WALKIN, variables: { walkInId, reason: reason ?? null } })
+  }
+
+  async pauseWalkIn(walkInId: string) {
+    const r = await this.#client.mutate({ mutation: PAUSE_WALKIN_MUTATION as any, variables: { walkInId } })
+    return r.data?.pauseWalkIn ?? null
+  }
+
+  async resumeWalkIn(walkInId: string) {
+    const r = await this.#client.mutate({ mutation: RESUME_WALKIN_MUTATION as any, variables: { walkInId } })
+    return r.data?.resumeWalkIn ?? null
+  }
+
+  async markWalkInNoShow(walkInId: string) {
+    const r = await this.#client.mutate({ mutation: MARK_WALKIN_NO_SHOW_MUTATION as any, variables: { walkInId } })
+    return r.data?.markWalkInNoShow ?? null
+  }
+
+  async reorderWalkIns(input: { locationId: string; orderedIds: string[] }) {
+    const r = await this.#client.mutate({ mutation: REORDER_WALKINS_MUTATION as any, variables: { input } })
+    return r.data?.reorderWalkIns ?? null
+  }
+
+  async suggestedNextWalkIn(input: { locationId: string; staffUserId: string }) {
+    const r = await this.#client.query({
+      query: SUGGESTED_NEXT_WALKIN_QUERY as any,
+      variables: { input },
+      fetchPolicy: 'network-only',
+    })
+    return r.data?.suggestedNextWalkIn ?? null
   }
 }
