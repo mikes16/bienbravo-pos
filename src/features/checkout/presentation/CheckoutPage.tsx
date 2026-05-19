@@ -17,16 +17,23 @@ import { CustomerLookupSheet } from './CustomerLookupSheet'
 import { CartList } from './CartList'
 import { CartTotals } from './CartTotals'
 import { CobrarCTA } from './CobrarCTA'
+import { CouponsBlock } from './CouponsBlock'
 import { PaymentSheet } from './PaymentSheet'
 import { ReceiptScreen } from './ReceiptScreen'
 import { SkeletonRow, SkeletonCard } from '@/shared/pos-ui'
 import { formatMoney } from '@/shared/lib/money'
 import { useToast } from '@/core/toast/useToast'
+import { usePosAuth } from '@/core/auth/usePosAuth'
 
 export function CheckoutPage() {
   const navigate = useNavigate()
   const ck = useCheckout()
   const { addToast } = useToast()
+  const { viewer } = usePosAuth()
+  // Permiso server-side dual: el API también valida pos.discount.apply en
+  // applyCouponToDraftSale. Esconder el bloque en el cliente es solo UX —
+  // no hay risk de bypass.
+  const canApplyCoupon = viewer?.permissions?.includes('pos.discount.apply') ?? false
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [barberSheetOpen, setBarberSheetOpen] = useState(false)
@@ -78,6 +85,10 @@ export function CheckoutPage() {
   const totals = computeTotals(ck.cartState.lines)
   const defaultBarber = ck.barbers.find((b) => b.id === ck.cartState.defaultBarberId) ?? ck.barbers[0]
   const cartItemCount = ck.cartState.lines.reduce((sum, l) => sum + l.qty, 0)
+  // Total real a cobrar = subtotal - cupones. El API recalcula en el server
+  // al cerrar venta, pero el cajero necesita ver el monto correcto en CTA
+  // y PaymentSheet (validación de pagos vs total).
+  const totalAfterDiscountCents = Math.max(0, totals.subtotalCents - ck.discountTotalCents)
 
   if (ck.successSale) {
     return (
@@ -257,14 +268,24 @@ export function CheckoutPage() {
         onSetBarber={(lineId, barberId) => void ck.changeLineBarber(lineId, barberId)}
         onRemove={(lineId) => ck.dispatch({ type: 'removeLine', lineId })}
       />
-      <CartTotals subtotalCents={totals.subtotalCents} />
+      <CouponsBlock
+        appliedCoupons={ck.appliedCoupons}
+        couponError={ck.couponError}
+        onApply={ck.applyCoupon}
+        onRemove={ck.removeCoupon}
+        canApply={canApplyCoupon}
+      />
+      <CartTotals
+        subtotalCents={totals.subtotalCents}
+        discountTotalCents={ck.discountTotalCents}
+      />
       {ck.error && (
         <div role="alert" className="mx-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
           <p className="text-[13px] text-[var(--color-bravo)]">{ck.error}</p>
         </div>
       )}
       <CobrarCTA
-        totalCents={totals.subtotalCents}
+        totalCents={totalAfterDiscountCents}
         disabled={ck.cartState.lines.length === 0 || ck.submitting}
         onTap={() => setPaymentSheetOpen(true)}
       />
@@ -297,7 +318,7 @@ export function CheckoutPage() {
             className="flex shrink-0 items-center justify-between border-t border-[var(--color-bravo)] bg-[var(--color-bravo)] px-5 py-4 text-[var(--color-bone)] transition-colors hover:bg-[var(--color-bravo-hover)] sm:hidden"
           >
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
-              {cartItemCount} {cartItemCount === 1 ? 'item' : 'items'} · {formatMoney(totals.subtotalCents)}
+              {cartItemCount} {cartItemCount === 1 ? 'item' : 'items'} · {formatMoney(totalAfterDiscountCents)}
             </span>
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
               Ver carrito →
@@ -357,7 +378,7 @@ export function CheckoutPage() {
       />
       <PaymentSheet
         open={paymentSheetOpen}
-        totalCents={totals.subtotalCents}
+        totalCents={totalAfterDiscountCents}
         submitting={ck.submitting}
         error={ck.error}
         onClose={() => setPaymentSheetOpen(false)}

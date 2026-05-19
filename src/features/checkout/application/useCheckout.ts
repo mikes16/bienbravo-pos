@@ -5,7 +5,7 @@ import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cartReducer, initialCart } from '../lib/cart'
 import type { CheckoutPayment } from '../domain/checkout.types'
-import type { AppointmentPrepayState } from '../data/checkout.repository'
+import type { AppointmentPrepayState, AppliedCouponPreview, DraftSaleItemArg } from '../data/checkout.repository'
 
 interface Customer {
   id: string
@@ -97,6 +97,13 @@ export function useCheckout() {
     prepaidAt: null,
   }
   const [prepayState, setPrepayState] = useState<AppointmentPrepayState>(DEFAULT_PREPAY_STATE)
+
+  // Cupones aplicados al draft. La fuente de verdad del descuento la calcula
+  // el API en cada llamada a applyCouponToDraftSale (server-side); aquí solo
+  // mantenemos el "preview" para renderizar los chips + el total descontado
+  // local mientras el cajero no cierre la venta.
+  const [appliedCoupons, setAppliedCoupons] = useState<AppliedCouponPreview[]>([])
+  const [couponError, setCouponError] = useState<string | null>(null)
 
   // Resolve entry context from query params
   useEffect(() => {
@@ -218,6 +225,106 @@ export function useCheckout() {
     void refetchPrepayState()
   }, [refetchPrepayState])
 
+  // Mapea las líneas del carrito al shape DraftSaleItemInput esperado por
+  // applyCoupon/removeCoupon. Combos no participan en cupones (Phase 1) —
+  // se omiten de la lista, lo cual cambia el monto descontable. Si en el
+  // futuro habilitamos cupones sobre combos, hay que expandir el combo a
+  // sus items individuales o aceptar combos como su propia categoría.
+  const buildDraftItems = useCallback((): DraftSaleItemArg[] => {
+    return cartState.lines
+      .filter((l) => l.kind === 'service' || l.kind === 'product')
+      .map((l) => ({
+        serviceId: l.kind === 'service' ? l.itemId : null,
+        productId: l.kind === 'product' ? l.itemId : null,
+        qty: l.qty,
+        unitPriceCents: l.unitPriceCents,
+      }))
+  }, [cartState.lines])
+
+  const applyCoupon = useCallback(async (code: string) => {
+    const trimmed = code.trim()
+    if (!trimmed) {
+      setCouponError('Escribe un código de cupón.')
+      return
+    }
+    setCouponError(null)
+    try {
+      const result = await checkout.applyCoupon({
+        code: trimmed,
+        items: buildDraftItems(),
+        customerId: cartState.customer?.id ?? null,
+        existingAppliedCouponCodes: appliedCoupons.map((c) => c.code),
+      })
+      if (!result) {
+        setCouponError('No se pudo validar el cupón. Reintenta.')
+        return
+      }
+      if (result.validationError) {
+        setCouponError(result.validationError.message)
+        return
+      }
+      setAppliedCoupons(
+        result.appliedCoupons.map((c) => ({
+          code: c.code,
+          name: c.name,
+          scope: c.scope,
+          discountAmountCents: c.discountAmountCents,
+        })),
+      )
+    } catch (e) {
+      setCouponError((e as { message?: string }).message ?? 'No se pudo validar el cupón.')
+    }
+  }, [appliedCoupons, buildDraftItems, cartState.customer, checkout])
+
+  const removeCoupon = useCallback(async (code: string) => {
+    setCouponError(null)
+    const remaining = appliedCoupons.filter((c) => c.code !== code).map((c) => c.code)
+    try {
+      const result = await checkout.removeCoupon({
+        code,
+        items: buildDraftItems(),
+        customerId: cartState.customer?.id ?? null,
+        remainingAppliedCouponCodes: remaining,
+      })
+      if (!result) {
+        // Fallback optimista: si el API no devuelve nada, removemos local.
+        // Esto evita dejar un cupón "stuck" en el chip si la red falla.
+        setAppliedCoupons((prev) => prev.filter((c) => c.code !== code))
+        return
+      }
+      setAppliedCoupons(
+        result.appliedCoupons.map((c) => ({
+          code: c.code,
+          name: c.name,
+          scope: c.scope,
+          discountAmountCents: c.discountAmountCents,
+        })),
+      )
+    } catch {
+      // Mismo fallback optimista — el cajero pidió quitar el cupón, hay que
+      // honrar la intención aunque el API no responda.
+      setAppliedCoupons((prev) => prev.filter((c) => c.code !== code))
+    }
+  }, [appliedCoupons, buildDraftItems, cartState.customer, checkout])
+
+  // Invalida cupones cuando cambian las líneas del carrito (qty, items,
+  // precios). La validez de un cupón depende del shape exacto del draft;
+  // mantener cupones "vivos" después de un cambio puede sobre-descontar.
+  // Patrón derived-state para cumplir react-hooks/set-state-in-effect.
+  const itemsKey = JSON.stringify(
+    cartState.lines.map((l) => `${l.kind}:${l.itemId}:${l.qty}:${l.unitPriceCents}`),
+  )
+  const [lastItemsKey, setLastItemsKey] = useState(itemsKey)
+  if (itemsKey !== lastItemsKey) {
+    setLastItemsKey(itemsKey)
+    if (appliedCoupons.length > 0) {
+      setAppliedCoupons([])
+      setCouponError(null)
+    }
+  }
+
+  const discountTotalCents = appliedCoupons.reduce((s, c) => s + c.discountAmountCents, 0)
+
   const searchCustomers = async (query: string) => {
     if (!query.trim()) {
       setCustomerResults([])
@@ -269,6 +376,7 @@ export function useCheckout() {
         })),
         tipCents: payment.tipCents,
         payments: payment.payments,
+        appliedCouponCodes: appliedCoupons.map((c) => c.code),
       })
       // The current SaleResult shape from createSale doesn't include items + payment context
       // for the receipt screen. We reconstruct what we know locally.
@@ -294,6 +402,10 @@ export function useCheckout() {
       }
       setSuccessSale(reconstructed)
       dispatch({ type: 'clear' })
+      // Limpia el state de cupones del hook — el reducer del carrito no
+      // sabe nada de cupones, así que el clear de cart no los toca solo.
+      setAppliedCoupons([])
+      setCouponError(null)
       return reconstructed
     } catch (e) {
       setError((e as { message?: string }).message ?? 'No se pudo cobrar.')
@@ -358,5 +470,13 @@ export function useCheckout() {
     prepaidMethod: prepayState.prepaidMethod,
     prepaidAt: prepayState.prepaidAt,
     refetchPrepayState,
+    // Cupones de descuento aplicados al draft del checkout. El total
+    // descontado lo controla el API (recalculado en cada apply/remove);
+    // la UI solo refleja el preview.
+    appliedCoupons,
+    applyCoupon,
+    removeCoupon,
+    couponError,
+    discountTotalCents,
   }
 }
