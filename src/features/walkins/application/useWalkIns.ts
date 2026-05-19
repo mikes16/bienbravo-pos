@@ -59,5 +59,60 @@ export function useWalkIns(locationId: string | null) {
     [walkins, refresh],
   )
 
-  return { list, loading, error, create, assign, complete, drop, refresh }
+  const pauseWalkIn = useCallback(
+    async (walkInId: string) => {
+      await walkins.pauseWalkIn(walkInId)
+      refresh()
+    },
+    [walkins, refresh],
+  )
+
+  const resumeWalkIn = useCallback(
+    async (walkInId: string) => {
+      await walkins.resumeWalkIn(walkInId)
+      refresh()
+    },
+    [walkins, refresh],
+  )
+
+  const markWalkInNoShow = useCallback(
+    async (walkInId: string) => {
+      await walkins.markWalkInNoShow(walkInId)
+      refresh()
+    },
+    [walkins, refresh],
+  )
+
+  const reorderWalkIns = useCallback(
+    async (orderedIds: string[]) => {
+      if (!locationId) return
+      await walkins.reorderWalkIns({ locationId, orderedIds })
+      refresh()
+    },
+    [walkins, refresh, locationId],
+  )
+
+  const fetchSuggestedNext = useCallback(
+    async (staffUserId: string) => {
+      if (!locationId) return null
+      return walkins.suggestedNextWalkIn({ locationId, staffUserId })
+    },
+    [walkins, locationId],
+  )
+
+  return {
+    list,
+    loading,
+    error,
+    create,
+    assign,
+    complete,
+    drop,
+    refresh,
+    pauseWalkIn,
+    resumeWalkIn,
+    markWalkInNoShow,
+    reorderWalkIns,
+    fetchSuggestedNext,
+  }
 }
