@@ -31,7 +31,9 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
   const [history, setHistory] = useState<CustomerHistoryEntry[] | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [barbers, setBarbers] = useState<BarberResult[]>([])
+  const [allBarbers, setAllBarbers] = useState<BarberResult[]>([])
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null)
+  const [preferredStaffUserId, setPreferredStaffUserId] = useState<string | null>(null)
   const [services, setServices] = useState<CatalogService[]>([])
   const [combos, setCombos] = useState<CatalogCombo[]>([])
   const [categories, setCategories] = useState<CatalogCategory[]>([])
@@ -50,6 +52,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setHistory(null)
     setHistoryLoading(false)
     setSelectedBarberId(null)
+    setPreferredStaffUserId(null)
     setSelectedCategoryId(null)
     setSelection(null)
     setSubmitting(false)
@@ -72,7 +75,11 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     ])
       .then(([b, s, c, cats]) => {
         if (cancelled) return
+        // For immediate assignment ("Asignar a"): only free, clocked-in barbers.
         setBarbers(b.filter((bb) => bb.hasClockedIn && !bb.isOccupied))
+        // For preferred barber ("Barbero preferido"): any clocked-in barber, even
+        // if occupied — the customer is willing to wait for them.
+        setAllBarbers(b.filter((bb) => bb.hasClockedIn))
         // Only show non-add-on services in the picker (add-ons are upsells, not
         // standalone visit reasons).
         setServices(s.filter((svc) => !svc.isAddOn))
@@ -158,6 +165,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         customerPhone: phone.trim() || null,
         requestedServiceId: selection.kind === 'service' ? selection.id : null,
         requestedCatalogComboId: selection.kind === 'combo' ? selection.id : null,
+        preferredStaffUserId: preferredStaffUserId || null,
       })
       let assignedBarberName: string | null = null
       if (selectedBarberId) {
@@ -311,6 +319,50 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             selection={selection}
             onSelectionChange={setSelection}
           />
+
+          {/* Preferred barber — customer's wish, independent of "Asignar a".
+              "Asignar a" decides who takes the cut now; this records the
+              barber the customer specifically asked for, so the queue can
+              keep them waiting only for that person. Selecting a preferred
+              barber does NOT auto-assign — the walk-in stays in the queue
+              with the preference recorded for the suggestion engine. */}
+          <div className="flex flex-col gap-2">
+            <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+              Barbero preferido · opcional
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPreferredStaffUserId(null)}
+                className={cn(
+                  'cursor-pointer border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
+                  preferredStaffUserId === null
+                    ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
+                    : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
+                )}
+              >
+                Sin preferencia
+              </button>
+              {allBarbers.map((b) => (
+                <button
+                  key={`pref-${b.id}`}
+                  type="button"
+                  onClick={() => setPreferredStaffUserId(b.id)}
+                  className={cn(
+                    'cursor-pointer border px-3 py-2 text-[12px] font-bold',
+                    preferredStaffUserId === b.id
+                      ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
+                      : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
+                  )}
+                >
+                  {b.fullName.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-[var(--color-bone-muted)]">
+              Si el cliente pide un barbero específico, queda esperando solo a él. Si no, cualquier barbero libre puede atenderlo.
+            </p>
+          </div>
 
           {/* Barber selector */}
           <div className="flex flex-col gap-2">
