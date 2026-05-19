@@ -17,6 +17,7 @@ const PENDING_WALKIN = {
   createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
   assignedStaffUser: null,
   customer: null,
+  sortOrder: 0,
 }
 
 describe('WalkInsPage', () => {
@@ -40,15 +41,18 @@ describe('WalkInsPage', () => {
       repos: { ...repos, auth: new TestAuthRepo() },
     })
     expect(await screen.findByText(/carlos méndez/i)).toBeInTheDocument()
-    expect(screen.getByText(/5 min/i)).toBeInTheDocument()
+    // V2 surfaces 5min in two places: the queue header avg-wait stat and
+    // the row's "<service> · <N>min" line. Just assert at least one match.
+    expect(screen.getAllByText(/5\s*min/i).length).toBeGreaterThan(0)
   })
 
-  it('renders Tomar action for pending walk-ins', async () => {
+  it('renders Asignar action for pending walk-ins', async () => {
     const repos = createMockRepositories()
     repos.walkins.getWalkIns = vi.fn().mockResolvedValue([PENDING_WALKIN])
     renderWithProviders(<WalkInsPage />, {
       repos: { ...repos, auth: new TestAuthRepo() },
     })
-    expect(await screen.findByRole('button', { name: /tomar/i })).toBeInTheDocument()
+    // V2 replaces the legacy "Tomar" verb with "Asignar" (opens barber picker).
+    expect(await screen.findByRole('button', { name: /asignar/i })).toBeInTheDocument()
   })
 })
