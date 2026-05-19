@@ -10,6 +10,8 @@ const WALKINS_QUERY = graphql(`
       customer { id fullName email phone }
       preferredStaffUserId
       preferredStaffUser { id fullName photoUrl }
+      requestedService { id name }
+      requestedCatalogCombo { id name }
     }
   }
 `)
