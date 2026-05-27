@@ -11,12 +11,15 @@ export interface WalkIn {
   customer: { id: string; fullName: string; email: string | null; phone: string | null } | null
   preferredStaffUserId?: string | null
   preferredStaffUser?: { id: string; fullName: string; photoUrl?: string | null } | null
-  // Service / combo originally requested when the walk-in was registered.
-  // The queue row uses these for the "what are they here for" line. The
-  // base list query fetches the minimal `{ id, name }` shape; the suggested-next
-  // query fetches the same. Both are optional because legacy callers (and the
-  // assign mutation) don't fetch them.
+  // Service(s) / combo originally requested when the walk-in was registered.
+  // La cola usa esto para la línea "qué viene a hacerse".
+  //
+  // `requestedServices` es el array canónico (ordenado) — puede contener N
+  // servicios sueltos. `requestedService` apunta al primero por compat.
+  // `requestedCatalogCombo` es mutex con servicios.
+  // Optional porque algunas mutations (assign, complete, drop) no los traen.
   requestedService?: { id: string; name: string } | null
+  requestedServices?: Array<{ id: string; name: string; baseDurationMin?: number | null }>
   requestedCatalogCombo?: { id: string; name: string } | null
   pausedAt?: string | null
   sortOrder: number

@@ -41,10 +41,18 @@ export function SuggestedNextCard({
 
   const customerName =
     suggestion.customer?.fullName ?? suggestion.customerName ?? 'Cliente'
-  const serviceLabel =
-    suggestion.requestedService?.name ??
-    suggestion.requestedCatalogCombo?.name ??
-    '—'
+  // Multi-servicio: concatena los nombres si hay array; si no, legacy single
+  // service o combo. Mismo patrón que WalkInQueueRow.
+  const serviceLabel = (() => {
+    if (suggestion.requestedServices && suggestion.requestedServices.length > 0) {
+      return suggestion.requestedServices.map((s) => s.name).join(' + ')
+    }
+    return (
+      suggestion.requestedService?.name ??
+      suggestion.requestedCatalogCombo?.name ??
+      '—'
+    )
+  })()
   const isPreferredMatch = suggestion.preferredStaffUserId === staffUserId
 
   return (

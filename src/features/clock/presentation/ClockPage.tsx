@@ -17,7 +17,7 @@ function formatTimeMx(iso: string): string {
 export function ClockPage() {
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
-  const { events, isClockedIn, loading, error, notAssignedHere, doClockIn, doClockOut, shiftStatus } = useClock(
+  const { events, isClockedIn, loading, submitting, error, notAssignedHere, doClockIn, doClockOut, shiftStatus } = useClock(
     viewer?.staff?.id ?? null,
     locationId,
   )
@@ -99,15 +99,18 @@ export function ClockPage() {
         </span>
       </div>
 
-      {/* Single contextual CTA */}
+      {/* Single contextual CTA. Disabled durante submitting para evitar
+          doble-clic mientras la mutación está en vuelo. */}
       <TouchButton
         variant="primary"
         size="primary"
-        disabled={notAssignedHere}
+        disabled={notAssignedHere || submitting}
         onClick={isClockedIn ? doClockOut : doClockIn}
         className="rounded-none uppercase tracking-[0.06em]"
       >
-        {isClockedIn ? 'Salir →' : 'Entrar →'}
+        {submitting
+          ? isClockedIn ? 'Registrando salida…' : 'Registrando entrada…'
+          : isClockedIn ? 'Salir →' : 'Entrar →'}
       </TouchButton>
 
       {/* Shift status */}

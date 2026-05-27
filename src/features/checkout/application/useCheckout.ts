@@ -179,7 +179,7 @@ export function useCheckout() {
     }
   }, [locationId, viewer?.staff?.id, checkout, register])
 
-  // Pre-fill customer/barber based on context
+  // Pre-fill customer/barber/services based on context
   useEffect(() => {
     if (!context || !locationId) return
     if (context.kind === 'walk-in') {
@@ -192,6 +192,22 @@ export function useCheckout() {
         }
         if (w?.assignedStaffUser?.id) {
           dispatch({ type: 'setDefaultBarber', staffUserId: w.assignedStaffUser.id })
+        }
+        // Multi-servicio: pre-llenar el carrito con los servicios que el
+        // cliente pidió al registrarse. Si después cambió de opinión, el
+        // cajero los quita y agrega otros. Ahorra ~5-10s por venta.
+        if (w?.requestedServices && w.requestedServices.length > 0) {
+          for (const svc of w.requestedServices) {
+            dispatch({
+              type: 'add',
+              item: {
+                kind: 'service',
+                itemId: svc.id,
+                name: svc.name,
+                unitPriceCents: svc.basePriceCents ?? 0,
+              },
+            })
+          }
         }
       })
     } else if (context.kind === 'preselected-customer') {

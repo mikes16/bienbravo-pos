@@ -6,9 +6,18 @@ import { cn } from '@/shared/lib/cn'
 import type { CustomerResult, BarberResult } from '@/features/checkout/data/checkout.repository'
 import type { CatalogService, CatalogCombo, CatalogCategory } from '@/features/checkout/domain/checkout.types'
 
+/**
+ * Selección del picker. Dos modos mutuamente exclusivos:
+ *  - servicios sueltos (N): el cliente quiere corte + barba sin que sea un
+ *    combo formal del catálogo. Persiste el orden de selección.
+ *  - combo (1): el cliente quiere un combo pre-armado tipo "Doble" o "Triple".
+ *
+ * No se permite mezclar — un combo ya define sus servicios internos.
+ */
 type PickerSelection =
-  | { kind: 'service'; id: string }
+  | { kind: 'services'; ids: string[] }
   | { kind: 'combo'; id: string }
+  | { kind: 'empty' }
 
 interface AddWalkInSheetProps {
   open: boolean
@@ -32,7 +41,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
   const [combos, setCombos] = useState<CatalogCombo[]>([])
   const [categories, setCategories] = useState<CatalogCategory[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
-  const [selection, setSelection] = useState<PickerSelection | null>(null)
+  const [selection, setSelection] = useState<PickerSelection>({ kind: 'empty' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -46,7 +55,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setSelectedBarberId(null)
     setPreferredStaffUserId(null)
     setSelectedCategoryId(null)
-    setSelection(null)
+    setSelection({ kind: 'empty' })
     setSubmitting(false)
     setError(null)
   }, [open])
@@ -127,8 +136,11 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       setError('Nombre requerido')
       return
     }
-    if (!selection) {
-      setError('Selecciona el servicio que viene a hacerse')
+    if (
+      selection.kind === 'empty' ||
+      (selection.kind === 'services' && selection.ids.length === 0)
+    ) {
+      setError('Selecciona al menos un servicio o un combo')
       return
     }
     setSubmitting(true)
@@ -139,7 +151,10 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         customerId: selectedCustomer?.id ?? null,
         customerName: trimmedName,
         customerPhone: phone.trim() || null,
-        requestedServiceId: selection.kind === 'service' ? selection.id : null,
+        // Multi-servicio: si hay services seleccionados, los mandamos como
+        // array. Si hay combo, solo el comboId. El resolver garantiza mutex.
+        requestedServiceIds: selection.kind === 'services' ? selection.ids : null,
+        requestedServiceId: null,
         requestedCatalogComboId: selection.kind === 'combo' ? selection.id : null,
         preferredStaffUserId: preferredStaffUserId || null,
       })
@@ -382,7 +397,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
               variant="primary"
               size="primary"
               onClick={() => handleSubmit(false)}
-              disabled={submitting || !name.trim() || !selection}
+              disabled={submitting || !name.trim() || selection.kind === 'empty' || (selection.kind === 'services' && selection.ids.length === 0)}
               className="w-full rounded-none uppercase tracking-[0.06em]"
             >
               {submitting ? 'Agregando…' : 'Agregar walk-in →'}
@@ -395,7 +410,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
               <button
                 type="button"
                 onClick={() => handleSubmit(true)}
-                disabled={submitting || !name.trim() || !selection}
+                disabled={submitting || !name.trim() || selection.kind === 'empty' || (selection.kind === 'services' && selection.ids.length === 0)}
                 className="block min-h-[44px] w-full cursor-pointer px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] underline-offset-4 hover:text-[var(--color-bone)] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Agregar y otro acompañante →
@@ -433,7 +448,7 @@ interface ServicePickerProps {
   categories: CatalogCategory[]
   selectedCategoryId: string | null
   onCategoryChange: (id: string | null) => void
-  selection: PickerSelection | null
+  selection: PickerSelection
   onSelectionChange: (s: PickerSelection) => void
 }
 
@@ -470,11 +485,60 @@ function ServicePicker({
   const isLoading = services.length === 0 && combos.length === 0
   const totalShown = filteredServices.length + filteredCombos.length
 
+  // Suma de duración total seleccionada para mostrar arriba del picker.
+  // Servicios: suma de durationMin. Combo: usa comboDurationMin helper.
+  const selectedDurationMin = useMemo(() => {
+    if (selection.kind === 'services') {
+      return selection.ids.reduce((sum, id) => {
+        const svc = services.find((s) => s.id === id)
+        return sum + (svc?.durationMin ?? 0)
+      }, 0)
+    }
+    if (selection.kind === 'combo') {
+      const combo = combos.find((c) => c.id === selection.id)
+      return combo ? comboDurationMin(combo, services) : 0
+    }
+    return 0
+  }, [selection, services, combos])
+
+  const selectedCount =
+    selection.kind === 'services' ? selection.ids.length : selection.kind === 'combo' ? 1 : 0
+
+  function toggleService(id: string) {
+    if (selection.kind === 'services') {
+      const ids = selection.ids.includes(id)
+        ? selection.ids.filter((x) => x !== id)
+        : [...selection.ids, id]
+      onSelectionChange(ids.length === 0 ? { kind: 'empty' } : { kind: 'services', ids })
+    } else {
+      // Cambiando de combo a servicios sueltos — empezar con este servicio.
+      onSelectionChange({ kind: 'services', ids: [id] })
+    }
+  }
+
+  function toggleCombo(id: string) {
+    if (selection.kind === 'combo' && selection.id === id) {
+      onSelectionChange({ kind: 'empty' })
+    } else {
+      onSelectionChange({ kind: 'combo', id })
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-        Servicio
-      </label>
+      <div className="flex items-baseline justify-between gap-3">
+        <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+          Servicio
+          {selectedCount > 1 && (
+            <span className="ml-2 text-[var(--color-leather)]">· puedes agregar varios</span>
+          )}
+        </label>
+        {selectedCount > 0 && (
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] tabular-nums text-[var(--color-bone)]">
+            {selectedCount} {selectedCount === 1 ? 'servicio' : 'servicios'} · {selectedDurationMin} min
+          </span>
+        )}
+      </div>
 
       {/* Filter tabs — flat text + bottom rule, not boxed. Sits under a hairline
           divider so the eye reads it as a meta-control above the content area. */}
@@ -506,14 +570,14 @@ function ServicePicker({
             <Section label="Servicios">
               <div className="grid grid-cols-2 gap-2">
                 {filteredServices.map((s) => {
-                  const active = selection?.kind === 'service' && selection.id === s.id
+                  const active = selection.kind === 'services' && selection.ids.includes(s.id)
                   return (
                     <PickerCard
                       key={`svc-${s.id}`}
                       title={s.name}
                       meta={`${s.durationMin} min`}
                       active={active}
-                      onClick={() => onSelectionChange({ kind: 'service', id: s.id })}
+                      onClick={() => toggleService(s.id)}
                     />
                   )
                 })}
@@ -524,7 +588,7 @@ function ServicePicker({
             <Section label="Combos" labelTone="bravo">
               <div className="grid grid-cols-2 gap-2">
                 {filteredCombos.map((c) => {
-                  const active = selection?.kind === 'combo' && selection.id === c.id
+                  const active = selection.kind === 'combo' && selection.id === c.id
                   const dur = comboDurationMin(c, services)
                   return (
                     <PickerCard
@@ -532,7 +596,7 @@ function ServicePicker({
                       title={c.name}
                       meta={dur > 0 ? `${dur} min` : 'Combo'}
                       active={active}
-                      onClick={() => onSelectionChange({ kind: 'combo', id: c.id })}
+                      onClick={() => toggleCombo(c.id)}
                     />
                   )
                 })}

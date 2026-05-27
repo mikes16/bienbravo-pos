@@ -55,8 +55,14 @@ export function WalkInQueueRow({
   const pausedMin = walkIn.pausedAt ? waitMin(walkIn.pausedAt) : 0
   const totalWait = waitMin(walkIn.createdAt)
   const customerName = walkIn.customer?.fullName ?? walkIn.customerName ?? 'Cliente'
-  const serviceLabel =
-    walkIn.requestedService?.name ?? walkIn.requestedCatalogCombo?.name ?? '—'
+  // Multi-servicio: si hay array, concatena los nombres en orden. Si no,
+  // cae a single requestedService o combo (legacy / kiosk path).
+  const serviceLabel = (() => {
+    if (walkIn.requestedServices && walkIn.requestedServices.length > 0) {
+      return walkIn.requestedServices.map((s) => s.name).join(' + ')
+    }
+    return walkIn.requestedService?.name ?? walkIn.requestedCatalogCombo?.name ?? '—'
+  })()
   const preferredName = walkIn.preferredStaffUser?.fullName ?? null
 
   // Close the [⋯] menu on outside click. Cheap solution: a doc-level

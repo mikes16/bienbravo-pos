@@ -67,6 +67,8 @@ const WALKINS_FOR_LOOKUP_QUERY = graphql(`
       status
       assignedStaffUser { id fullName }
       customer { id fullName email phone }
+      requestedServices { id name baseDurationMin basePriceCents }
+      requestedCatalogCombo { id name }
     }
   }
 `) as any
@@ -320,6 +322,19 @@ export interface WalkInLite {
   status: string
   assignedStaffUser: { id: string; fullName: string } | null
   customer: CustomerResult | null
+  /**
+   * Servicios solicitados al registrar el walk-in. Cuando el cajero abre el
+   * checkout desde un walk-in (botón "Cobrar"), el carrito se pre-llena con
+   * estos servicios para ahorrarle el re-tipeo. Si el cliente cambió de
+   * opinión, el cajero los quita y agrega otros.
+   */
+  requestedServices?: Array<{
+    id: string
+    name: string
+    baseDurationMin?: number | null
+    basePriceCents?: number | null
+  }>
+  requestedCatalogCombo?: { id: string; name: string } | null
 }
 
 /**

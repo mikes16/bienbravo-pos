@@ -53,6 +53,10 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   const [events, setEvents] = useState<TimeClockEvent[]>([])
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([])
   const [loading, setLoading] = useState(true)
+  // Submitting cubre las mutaciones clockIn/clockOut. La página usa este
+  // flag para deshabilitar el botón y mostrar "Guardando…", evitando
+  // doble-submit cuando el operador apreta varias veces antes del refresh.
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // True when the API rejected the events/templates queries with Forbidden,
   // i.e. the barber isn't assigned to this location (a setup task for the
@@ -166,7 +170,8 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   }, [events, shiftTemplates, isClockedIn])
 
   const doClockIn = useCallback(async () => {
-    if (!locationId) return
+    if (!locationId || submitting) return
+    setSubmitting(true)
     try {
       const ok = await clock.clockIn(locationId)
       if (!ok) {
@@ -181,11 +186,14 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
         console.error('[doClockIn] failed', err)
       }
       setError('No se pudo registrar entrada')
+    } finally {
+      setSubmitting(false)
     }
-  }, [clock, locationId, refresh])
+  }, [clock, locationId, refresh, submitting])
 
   const doClockOut = useCallback(async () => {
-    if (!locationId) return
+    if (!locationId || submitting) return
+    setSubmitting(true)
     try {
       const ok = await clock.clockOut(locationId)
       if (!ok) {
@@ -200,8 +208,10 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
         console.error('[doClockOut] failed', err)
       }
       setError('No se pudo registrar salida')
+    } finally {
+      setSubmitting(false)
     }
-  }, [clock, locationId, refresh])
+  }, [clock, locationId, refresh, submitting])
 
-  return { events, isClockedIn, loading, error, notAssignedHere, doClockIn, doClockOut, refresh, shiftStatus }
+  return { events, isClockedIn, loading, submitting, error, notAssignedHere, doClockIn, doClockOut, refresh, shiftStatus }
 }

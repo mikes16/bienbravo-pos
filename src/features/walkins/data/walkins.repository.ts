@@ -11,6 +11,7 @@ const WALKINS_QUERY = graphql(`
       preferredStaffUserId
       preferredStaffUser { id fullName photoUrl }
       requestedService { id name }
+      requestedServices { id name baseDurationMin }
       requestedCatalogCombo { id name }
     }
   }
@@ -24,6 +25,7 @@ const CREATE_WALKIN = graphql(`
     $customerPhone: String
     $customerEmail: String
     $requestedServiceId: ID
+    $requestedServiceIds: [ID!]
     $requestedCatalogComboId: ID
     $preferredStaffUserId: ID
   ) {
@@ -34,12 +36,14 @@ const CREATE_WALKIN = graphql(`
       customerPhone: $customerPhone
       customerEmail: $customerEmail
       requestedServiceId: $requestedServiceId
+      requestedServiceIds: $requestedServiceIds
       requestedCatalogComboId: $requestedCatalogComboId
       preferredStaffUserId: $preferredStaffUserId
     ) {
       id status customerName customerPhone customerEmail createdAt sortOrder pausedAt
       customer { id fullName email phone }
       requestedService { id name baseDurationMin }
+      requestedServices { id name baseDurationMin }
       requestedCatalogCombo { id name }
       preferredStaffUserId
       preferredStaffUser { id fullName photoUrl }
@@ -110,6 +114,7 @@ export const SUGGESTED_NEXT_WALKIN_QUERY = graphql(`
       customerName
       customer { id fullName }
       requestedService { id name }
+      requestedServices { id name baseDurationMin }
       requestedCatalogCombo { id name }
       preferredStaffUserId
       preferredStaffUser { id fullName photoUrl }
@@ -126,9 +131,10 @@ export interface CreateWalkInInput {
   customerName: string | null
   customerPhone?: string | null
   customerEmail?: string | null
-  // Pick service OR combo, not both. The API gives combo precedence if both
-  // are sent, but the client should keep the contract clean.
+  // Pick N services OR un combo, never both. El API da precedencia al
+  // combo si vienen ambos; el client mantiene el contrato limpio.
   requestedServiceId?: string | null
+  requestedServiceIds?: string[] | null
   requestedCatalogComboId?: string | null
   preferredStaffUserId?: string | null
 }
@@ -157,7 +163,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
     // drop, so cache-first kept showing the previous snapshot until the user
     // hard-refreshed. Same fix as getEvents in the clock repository.
     const { data } = await this.#client.query<{ walkIns: WalkIn[] }>({
-      query: WALKINS_QUERY,
+      query: WALKINS_QUERY as never,
       variables: { locationId },
       fetchPolicy: 'network-only',
     })
@@ -166,7 +172,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
 
   async create(input: CreateWalkInInput): Promise<WalkIn> {
     const { data } = await this.#client.mutate<{ createWalkIn: WalkIn }>({
-      mutation: CREATE_WALKIN,
+      mutation: CREATE_WALKIN as never,
       variables: {
         locationId: input.locationId,
         customerId: input.customerId ?? null,
@@ -174,6 +180,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
         customerPhone: input.customerPhone ?? null,
         customerEmail: input.customerEmail ?? null,
         requestedServiceId: input.requestedServiceId ?? null,
+        requestedServiceIds: input.requestedServiceIds ?? null,
         requestedCatalogComboId: input.requestedCatalogComboId ?? null,
         preferredStaffUserId: input.preferredStaffUserId ?? null,
       },
