@@ -3,7 +3,7 @@ import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
 import { cn } from '@/shared/lib/cn'
-import type { CustomerResult, BarberResult, CustomerHistoryEntry } from '@/features/checkout/data/checkout.repository'
+import type { CustomerResult, BarberResult } from '@/features/checkout/data/checkout.repository'
 import type { CatalogService, CatalogCombo, CatalogCategory } from '@/features/checkout/domain/checkout.types'
 
 type PickerSelection =
@@ -17,10 +17,6 @@ interface AddWalkInSheetProps {
   onCreated: () => void
 }
 
-function formatHistoryDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
 export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalkInSheetProps) {
   const { walkins, checkout } = useRepositories()
   const { addToast } = useToast()
@@ -28,8 +24,6 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
   const [phone, setPhone] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null)
   const [searchResults, setSearchResults] = useState<CustomerResult[]>([])
-  const [history, setHistory] = useState<CustomerHistoryEntry[] | null>(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
   const [barbers, setBarbers] = useState<BarberResult[]>([])
   const [allBarbers, setAllBarbers] = useState<BarberResult[]>([])
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null)
@@ -49,8 +43,6 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setPhone('')
     setSelectedCustomer(null)
     setSearchResults([])
-    setHistory(null)
-    setHistoryLoading(false)
     setSelectedBarberId(null)
     setPreferredStaffUserId(null)
     setSelectedCategoryId(null)
@@ -107,21 +99,6 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     return () => { cancelled = true; clearTimeout(t) }
   }, [name, selectedCustomer, checkout])
 
-  // When the operator picks an existing customer, pull their last few visits.
-  useEffect(() => {
-    if (!selectedCustomer) {
-      setHistory(null)
-      return
-    }
-    let cancelled = false
-    setHistoryLoading(true)
-    checkout.getCustomerHistory(selectedCustomer.id, 5)
-      .then((h) => { if (!cancelled) setHistory(h) })
-      .catch(() => { if (!cancelled) setHistory([]) })
-      .finally(() => { if (!cancelled) setHistoryLoading(false) })
-    return () => { cancelled = true }
-  }, [selectedCustomer, checkout])
-
   if (!open) return null
 
   const linkExisting = (c: CustomerResult) => {
@@ -133,7 +110,6 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
 
   const clearCustomerLink = () => {
     setSelectedCustomer(null)
-    setHistory(null)
     // Leave the typed name/phone so the operator can still proceed as a fresh walk-in.
   }
 
@@ -191,8 +167,6 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         setPhone('')
         setSelectedCustomer(null)
         setSearchResults([])
-        setHistory(null)
-        setHistoryLoading(false)
         setSubmitting(false)
         setError(null)
       } else {
@@ -207,9 +181,6 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       setSubmitting(false)
     }
   }
-
-  const completedHistoryCount = history?.filter((h) => h.status === 'COMPLETED').length ?? 0
-  const recentVisit = history && history.length > 0 ? history[0] : null
 
   return (
     <div

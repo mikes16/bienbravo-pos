@@ -6,7 +6,8 @@ import { TouchButton } from '@/shared/pos-ui/TouchButton'
 
 interface CajaClosedViewProps {
   registers: Register[]
-  onAbrir: (registerId: string) => void
+  /** null cuando el viewer no tiene `pos.register.open` — oculta el CTA y muestra mensaje. */
+  onAbrir: ((registerId: string) => void) | null
 }
 
 export function CajaClosedView({ registers, onAbrir }: CajaClosedViewProps) {
@@ -69,15 +70,21 @@ export function CajaClosedView({ registers, onAbrir }: CajaClosedViewProps) {
         </div>
       )}
 
-      <TouchButton
-        variant="primary"
-        size="primary"
-        disabled={!canAbrir}
-        onClick={() => selectedId && onAbrir(selectedId)}
-        className="mt-2 uppercase tracking-[0.06em]"
-      >
-        Abrir caja →
-      </TouchButton>
+      {onAbrir ? (
+        <TouchButton
+          variant="primary"
+          size="primary"
+          disabled={!canAbrir}
+          onClick={() => selectedId && onAbrir(selectedId)}
+          className="mt-2 uppercase tracking-[0.06em]"
+        >
+          Abrir caja →
+        </TouchButton>
+      ) : (
+        <p className="mt-2 max-w-[280px] text-[12px] text-[var(--color-bone-muted)]">
+          Tu rol no puede abrir caja. Pide a un administrador o gerente que la abra.
+        </p>
+      )}
     </div>
   )
 }

@@ -9,6 +9,7 @@ const SESSION: RegisterSession = {
   status: 'OPEN',
   openedAt: '2026-05-04T09:15:00.000Z',
   closedAt: null,
+  openingCashCents: 50000,
   expectedCashCents: 184000,
   expectedCardCents: 254000,
   expectedTransferCents: 126000,

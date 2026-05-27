@@ -31,10 +31,49 @@ export const MOCK_STAFF: PosStaffUser = {
   pinLockedUntil: null,
 }
 
+// Mock viewer con permisos completos del catálogo POS — los tests asumen un
+// operador con acceso total a POS. Si un test específico quiere validar un
+// operador restringido, sobreescribe usando `{ ...MOCK_VIEWER, permissions: [...] }`.
 export const MOCK_VIEWER: PosViewer = {
   kind: 'STAFF',
   staff: MOCK_STAFF,
-  permissions: ['pos.sale.create', 'appointments.read', 'walkins.manage', 'pos.register.manage', 'timeclock.manage'],
+  permissions: [
+    // POS / caja
+    'pos.sale.create',
+    'pos.sale.close',
+    'pos.sale.void',
+    'pos.tip.add',
+    'pos.discount.apply',
+    'pos.refund.request',
+    'pos.refund.approve',
+    'pos.register.open',
+    'pos.register.close',
+    // Citas
+    'appointments.read',
+    'appointments.create',
+    'appointments.check_in',
+    'appointments.start_service',
+    'appointments.complete',
+    'appointments.cancel',
+    'appointments.reschedule',
+    'appointments.no_show',
+    'appointments.prepay.cancel_link',
+    // Walk-ins
+    'walkins.read',
+    'walkins.create',
+    'walkins.assign',
+    'walkins.reorder',
+    'walkins.pause',
+    'walkins.drop',
+    'walkins.no_show',
+    // Catálogo + customers + inventario (read-only desde POS)
+    'catalog.services.read',
+    'catalog.products.read',
+    'customers.read',
+    'inventory.read',
+    // Reloj
+    'timeclock.read',
+  ],
   locationScopes: [{ scopeType: 'GLOBAL', locationId: null }],
 }
 
@@ -188,10 +227,10 @@ export class InMemoryRegisterRepository implements RegisterRepository {
     return [{ id: 'reg-1', name: 'Caja 1', isActive: true, locationId: 'loc-1', openSession: null }]
   }
   async openSession(_registerId: string, openingCashCents: number): Promise<RegisterSession> {
-    return { id: 'sess-1', status: 'OPEN', openedAt: new Date().toISOString(), closedAt: null, expectedCashCents: openingCashCents, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: null, countedCardCents: null, countedTransferCents: null }
+    return { id: 'sess-1', status: 'OPEN', openedAt: new Date().toISOString(), closedAt: null, openingCashCents, expectedCashCents: openingCashCents, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: null, countedCardCents: null, countedTransferCents: null }
   }
   async closeSession(_input: CloseSessionInput): Promise<RegisterSession> {
-    return { id: 'sess-1', status: 'CLOSED', openedAt: new Date().toISOString(), closedAt: new Date().toISOString(), expectedCashCents: 0, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: 0, countedCardCents: 0, countedTransferCents: 0 }
+    return { id: 'sess-1', status: 'CLOSED', openedAt: new Date().toISOString(), closedAt: new Date().toISOString(), openingCashCents: 0, expectedCashCents: 0, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: 0, countedCardCents: 0, countedTransferCents: 0 }
   }
 }
 
@@ -218,13 +257,28 @@ export class InMemoryAgendaRepository implements AgendaRepository {
 export class InMemoryWalkInsRepository implements WalkInsRepository {
   async getWalkIns(_locationId: string): Promise<WalkIn[]> { return [] }
   async create(_input: { locationId: string; customerId?: string | null; customerName: string | null; customerPhone?: string | null; customerEmail?: string | null }): Promise<WalkIn> {
-    return { id: 'wi-1', status: 'PENDING', customerName: null, customerPhone: null, customerEmail: null, createdAt: new Date().toISOString(), assignedStaffUser: null, customer: null }
+    return { id: 'wi-1', status: 'PENDING', customerName: null, customerPhone: null, customerEmail: null, createdAt: new Date().toISOString(), sortOrder: 1, assignedStaffUser: null, customer: null }
   }
   async assign(_walkInId: string, _staffUserId: string): Promise<{ walkIn: WalkIn; warning: string | null }> {
-    return { walkIn: { id: 'wi-1', status: 'ASSIGNED', customerName: null, customerPhone: null, customerEmail: null, createdAt: new Date().toISOString(), assignedStaffUser: { id: 'staff-1', fullName: 'Carlos' }, customer: null }, warning: null }
+    return { walkIn: { id: 'wi-1', status: 'ASSIGNED', customerName: null, customerPhone: null, customerEmail: null, createdAt: new Date().toISOString(), sortOrder: 1, assignedStaffUser: { id: 'staff-1', fullName: 'Carlos' }, customer: null }, warning: null }
   }
   async complete(_walkInId: string): Promise<void> {}
   async drop(_walkInId: string, _reason?: string | null): Promise<void> {}
+  async pauseWalkIn(_walkInId: string) {
+    return { id: 'wi-1', pausedAt: new Date().toISOString() }
+  }
+  async resumeWalkIn(_walkInId: string) {
+    return { id: 'wi-1', pausedAt: null }
+  }
+  async markWalkInNoShow(_walkInId: string) {
+    return { id: 'wi-1', status: 'NO_SHOW' }
+  }
+  async reorderWalkIns(_input: { locationId: string; orderedIds: string[] }) {
+    return []
+  }
+  async suggestedNextWalkIn(_input: { locationId: string; staffUserId: string }): Promise<WalkIn | null> {
+    return null
+  }
 }
 
 export function createMockRepositories(overrides?: Partial<Repositories>): Repositories {

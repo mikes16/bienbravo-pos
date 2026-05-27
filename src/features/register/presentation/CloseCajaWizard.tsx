@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { WizardShell, TouchButton } from '@/shared/pos-ui'
 import { useLocation } from '@/core/location/useLocation'
+import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useRegister } from '../application/useRegister'
 import type { RegisterSession } from '../domain/register.types'
 import { CountCashStep } from './steps/CountCashStep'
@@ -17,6 +18,11 @@ const STEPS = ['Contar efectivo', 'Tarjeta', 'Cerrar']
 export function CloseCajaWizard() {
   const navigate = useNavigate()
   const { locationId } = useLocation()
+  const { viewer } = usePosAuth()
+  // Defensive: solo bloqueamos cuando estamos SEGUROS que el viewer cargó
+  // sin el perm. Durante loading (viewer === null) dejamos pasar para no
+  // romper renderings síncronos.
+  const canClose = !viewer || viewer.permissions.includes('pos.register.close')
   const { registers, closeSession } = useRegister(locationId)
 
   const session = useMemo<RegisterSession | null>(
@@ -53,6 +59,27 @@ export function CloseCajaWizard() {
   }, [successOpen, navigate])
 
   if (!session) return null
+
+  // Defensive: gate por deeplink. CajaPage también gatea, pero si alguien
+  // navega directo a /caja/cerrar sin permiso, no debería ver el wizard.
+  if (!canClose) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Sin acceso
+          </p>
+          <h1 className="mb-2 text-2xl font-bold text-[var(--color-bone)]">Cerrar caja</h1>
+          <p className="mb-4 text-sm text-[var(--color-bone-muted)]">
+            Tu rol no incluye <code className="font-mono text-[var(--color-bone)]">pos.register.close</code>.
+          </p>
+          <TouchButton variant="secondary" size="min" onClick={() => navigate('/caja')}>
+            ← Volver
+          </TouchButton>
+        </div>
+      </div>
+    )
+  }
 
   const expected = {
     cashCents: session.expectedCashCents,

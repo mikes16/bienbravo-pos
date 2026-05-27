@@ -71,10 +71,10 @@ describe('CloseCajaWizard', () => {
     await screen.findByText(/cuenta el efectivo/i)
     await user.click(screen.getByRole('button', { name: /siguiente/i }))
 
-    // Step 2: confirm tarjeta + stripe
+    // Step 2: confirm tarjeta (Stripe transfer se auto-confirma sin
+    // intervención del cajero, así que solo hay un botón de confirmación).
     await screen.findByText(/confirma los totales digitales/i)
     await user.click(screen.getByRole('button', { name: /sí, \$2,540/i }))
-    await user.click(screen.getByRole('button', { name: /sí, \$1,260/i }))
     // Advance to step 3
     await user.click(screen.getByRole('button', { name: /revisar/i }))
 
@@ -122,7 +122,6 @@ describe('CloseCajaWizard', () => {
     await user.click(screen.getByRole('button', { name: /siguiente/i }))
     await screen.findByText(/confirma los totales digitales/i)
     await user.click(screen.getByRole('button', { name: /sí, \$2,540/i }))
-    await user.click(screen.getByRole('button', { name: /sí, \$1,260/i }))
     await user.click(screen.getByRole('button', { name: /revisar/i }))
     await screen.findByText(/revisa el resumen/i)
     await user.click(screen.getByRole('button', { name: /regresar/i }))

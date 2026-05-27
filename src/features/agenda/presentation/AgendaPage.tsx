@@ -261,6 +261,10 @@ function ConfirmNoShowModal({
 
 function AppointmentRow({
   appt,
+  canCheckIn,
+  canStartService,
+  canComplete,
+  canNoShow,
   onCheckIn,
   onStartService,
   onComplete,
@@ -268,6 +272,10 @@ function AppointmentRow({
   onPay,
 }: {
   appt: Appointment
+  canCheckIn: boolean
+  canStartService: boolean
+  canComplete: boolean
+  canNoShow: boolean
   onCheckIn: () => void
   onStartService: () => void
   onComplete: () => void
@@ -307,21 +315,21 @@ function AppointmentRow({
         </div>
       </div>
 
-      {/* inline actions */}
+      {/* inline actions — cada una gateada por su permiso correspondiente */}
       <div className="flex shrink-0 flex-col gap-1.5">
-        {appt.status === 'CONFIRMED' && (
+        {appt.status === 'CONFIRMED' && canCheckIn && (
           <InlineAction label="Check-in" color="var(--color-warning)" onClick={onCheckIn} />
         )}
-        {appt.status === 'CHECKED_IN' && (
+        {appt.status === 'CHECKED_IN' && canStartService && (
           <InlineAction label="Iniciar" color="var(--color-success)" onClick={onStartService} />
         )}
-        {appt.status === 'IN_SERVICE' && (
+        {appt.status === 'IN_SERVICE' && canComplete && (
           <InlineAction label="Completar" color="var(--color-success)" onClick={onComplete} />
         )}
         {appt.status === 'COMPLETED' && appt.salePaymentStatus !== 'PAID' && (
           <InlineAction label="Cobrar" color="var(--color-success)" onClick={onPay} />
         )}
-        {(appt.status === 'CONFIRMED' || appt.status === 'CHECKED_IN') && (
+        {(appt.status === 'CONFIRMED' || appt.status === 'CHECKED_IN') && canNoShow && (
           <InlineAction label="No-show" color="var(--color-bravo)" onClick={onNoShow} />
         )}
       </div>
@@ -375,6 +383,19 @@ export function AgendaPage() {
   const navigate = useNavigate()
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
+  // Mientras el viewer carga (null), tratamos canRead como permisivo para
+  // no flashear "Sin acceso". Los gates de cada acción siguen siendo
+  // estrictos: si el viewer no tiene el perm, la acción no se ofrece.
+  const perms = viewer?.permissions ?? []
+  const viewerLoaded = !!viewer
+  const canRead = !viewerLoaded || perms.includes('appointments.read')
+  const canCheckIn = perms.includes('appointments.check_in')
+  const canStartService = perms.includes('appointments.start_service')
+  const canComplete = perms.includes('appointments.complete')
+  const canNoShow = perms.includes('appointments.no_show')
+  // appointments.create / cancel / reschedule / prepay.cancel_link: el API
+  // los gatea pero AgendaPage todavía no tiene botones UI para esas acciones.
+  // Cuando se construyan, sumar las constantes aquí.
   const { appointments, loading, error, checkIn, startService, complete, noShow, refresh } = useAgenda(
     viewer?.staff.id ?? null,
     locationId,
@@ -397,6 +418,27 @@ export function AgendaPage() {
       groups.push({ hourLabel: hourLabelMx(appt.startAt), appts: [] })
     }
     groups[seen.get(key)!].appts.push(appt)
+  }
+
+  if (!canRead) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Sin acceso
+          </p>
+          <h1
+            className="mb-2 text-2xl font-bold text-[var(--color-bone)]"
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+          >
+            Mi Agenda
+          </h1>
+          <p className="text-sm text-[var(--color-bone-muted)]">
+            Tu rol no incluye <code className="font-mono text-[var(--color-bone)]">appointments.read</code>.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -467,6 +509,10 @@ export function AgendaPage() {
                   <AppointmentRow
                     key={appt.id}
                     appt={appt}
+                    canCheckIn={canCheckIn}
+                    canStartService={canStartService}
+                    canComplete={canComplete}
+                    canNoShow={canNoShow}
                     onCheckIn={() => checkIn(appt.id)}
                     onStartService={() => startService(appt.id)}
                     onComplete={() => complete(appt.id)}

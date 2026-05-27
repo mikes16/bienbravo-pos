@@ -225,17 +225,22 @@ export function WalkInsPage() {
   // after the API confirms so the next refetch is authoritative.
   const [pendingOrder, setPendingOrder] = useState<string[] | null>(null)
 
-  // ── Permissions (per plan): the new fine-grained walk-in permissions
-  // were not yet seeded as defaults for every role in this repo. Fall
-  // back to the legacy `walkins.manage` umbrella so existing operators
-  // don't lose access overnight while the granular keys roll out.
+  // Permisos granulares (sin override). `walkins.manage` se removió: nunca
+  // existió en el catálogo del API, los OR siempre resolvían false, y
+  // mantenerlo como fallback hacía pensar que podías concederlo desde
+  // admin (no podías). Si una sucursal pierde acceso al rollout es porque
+  // necesita los keys finos en su rol — gestionar desde /roles.
+  // Si el viewer todavía no cargó (null), tratamos los perms como permisivos
+  // para no parpadear "Sin acceso" mientras se resuelve la sesión.
   const perms = viewer?.permissions ?? []
-  const hasManage = perms.includes('walkins.manage')
-  const canReorder = perms.includes('walkins.reorder') || hasManage
-  const canPause = perms.includes('walkins.pause') || hasManage
-  const canAssign = perms.includes('walkins.assign') || hasManage
-  const canNoShow = perms.includes('walkins.no_show') || hasManage
-  const canCancel = perms.includes('walkins.drop') || hasManage
+  const viewerLoaded = !!viewer
+  const canRead = !viewerLoaded || perms.includes('walkins.read')
+  const canCreate = perms.includes('walkins.create')
+  const canReorder = perms.includes('walkins.reorder')
+  const canPause = perms.includes('walkins.pause')
+  const canAssign = perms.includes('walkins.assign')
+  const canNoShow = perms.includes('walkins.no_show')
+  const canCancel = perms.includes('walkins.drop')
 
   // Load clocked-in staff for the suggestion selector + assign overlay.
   // Refresh whenever the location changes, plus once after every walk-in
@@ -348,6 +353,27 @@ export function WalkInsPage() {
     [allBarbers],
   )
 
+  if (!canRead) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Sin acceso
+          </p>
+          <h1
+            className="mb-2 text-2xl font-bold text-[var(--color-bone)]"
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+          >
+            Sala de Espera
+          </h1>
+          <p className="text-sm text-[var(--color-bone-muted)]">
+            Tu rol no incluye <code className="font-mono text-[var(--color-bone)]">walkins.read</code>. Pide a un administrador que ajuste tu rol POS.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* ── Page header ── */}
@@ -363,9 +389,11 @@ export function WalkInsPage() {
             Sala de Espera
           </h1>
         </div>
-        <TouchButton size="row" variant="secondary" onClick={() => setShowAdd(true)}>
-          + Nuevo Walk-in
-        </TouchButton>
+        {canCreate && (
+          <TouchButton size="row" variant="secondary" onClick={() => setShowAdd(true)}>
+            + Nuevo Walk-in
+          </TouchButton>
+        )}
       </div>
 
       {/* ── Error banner ── */}
@@ -452,9 +480,11 @@ export function WalkInsPage() {
                   Cuando llegue un cliente sin cita, agrégalo aquí y asígnalo al siguiente barbero
                   disponible.
                 </p>
-                <TouchButton size="secondary" variant="secondary" onClick={() => setShowAdd(true)}>
-                  + Agregar walk-in
-                </TouchButton>
+                {canCreate && (
+                  <TouchButton size="secondary" variant="secondary" onClick={() => setShowAdd(true)}>
+                    + Agregar walk-in
+                  </TouchButton>
+                )}
               </div>
             ) : (
               pendingList.map((w, i) => (

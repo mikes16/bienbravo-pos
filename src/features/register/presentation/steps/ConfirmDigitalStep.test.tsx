@@ -7,7 +7,10 @@ const PENDING: DigitalCounted = { cardCents: null, transferCents: null }
 const CONFIRMED: DigitalCounted = { cardCents: 254000, transferCents: 126000 }
 
 describe('ConfirmDigitalStep', () => {
-  it('renders both expected amounts', () => {
+  it('renders the tarjeta expected amount', () => {
+    // El step solo renderiza tarjeta; Stripe (transfer) queda registrado
+    // automáticamente y no requiere confirmación manual del cajero, así que
+    // ConfirmDigitalStep no lo muestra (aunque sí recibe el prop por compat).
     render(
       <ConfirmDigitalStep
         expectedCardCents={254000}
@@ -17,7 +20,6 @@ describe('ConfirmDigitalStep', () => {
       />,
     )
     expect(screen.getAllByText('$2,540').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('$1,260').length).toBeGreaterThan(0)
   })
 
   it('clicking "Sí, $2,540" confirms tarjeta', async () => {

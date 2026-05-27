@@ -6,7 +6,8 @@ interface CajaOpenViewProps {
   session: RegisterSession
   todayTransactions: SaleLedgerEntry[]
   fondoCents: number
-  onCerrar: () => void
+  /** null cuando el viewer no tiene `pos.register.close` — oculta el CTA. */
+  onCerrar: (() => void) | null
 }
 
 function formatTimeMx(iso: string): string {
@@ -111,15 +112,23 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
         </div>
       </div>
 
-      {/* ── Cerrar caja CTA ── */}
-      <TouchButton
-        variant="primary"
-        size="primary"
-        onClick={onCerrar}
-        className="rounded-none uppercase tracking-[0.06em]"
-      >
-        Cerrar caja →
-      </TouchButton>
+      {/* ── Cerrar caja CTA — solo si el viewer tiene pos.register.close ── */}
+      {onCerrar ? (
+        <TouchButton
+          variant="primary"
+          size="primary"
+          onClick={onCerrar}
+          className="rounded-none uppercase tracking-[0.06em]"
+        >
+          Cerrar caja →
+        </TouchButton>
+      ) : (
+        <div className="border-t border-[var(--color-leather-muted)]/40 px-5 py-4 text-center">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+            Tu rol no puede cerrar caja
+          </p>
+        </div>
+      )}
     </div>
   )
 }

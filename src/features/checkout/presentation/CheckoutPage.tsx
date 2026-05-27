@@ -33,7 +33,21 @@ export function CheckoutPage() {
   // Permiso server-side dual: el API también valida pos.discount.apply en
   // applyCouponToDraftSale. Esconder el bloque en el cliente es solo UX —
   // no hay risk de bypass.
-  const canApplyCoupon = viewer?.permissions?.includes('pos.discount.apply') ?? false
+  // Durante loading del viewer (null) asumimos perms para no parpadear
+  // mensajes de "sin acceso". Las mutaciones server-side fallarían igual
+  // si el viewer real no los tiene.
+  const perms = viewer?.permissions ?? []
+  const viewerLoaded = !!viewer
+  const canApplyCoupon = perms.includes('pos.discount.apply')
+  const canCreateSale = !viewerLoaded || perms.includes('pos.sale.create')
+  const canCloseSale = !viewerLoaded || perms.includes('pos.sale.close')
+  const canAddTip = !viewerLoaded || perms.includes('pos.tip.add')
+  const canReadCustomers = !viewerLoaded || perms.includes('customers.read')
+  const canReadServices = !viewerLoaded || perms.includes('catalog.services.read')
+  const canReadProducts = !viewerLoaded || perms.includes('catalog.products.read')
+  // pos.sale.void y pos.refund.request: el API los gatea pero la UI POS
+  // todavía no expone botones de "anular" ni "reembolsar". Cuando se
+  // construyan, añadir los gates aquí + perms.includes(...) correspondientes.
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [barberSheetOpen, setBarberSheetOpen] = useState(false)
@@ -256,7 +270,10 @@ export function CheckoutPage() {
         <AtendiendoHeader barber={defaultBarber} onTap={() => setBarberSheetOpen(true)} />
         <CustomerChip
           customer={ck.cartState.customer}
-          onTap={() => setCustomerSheetOpen(true)}
+          // Sin customers.read, deshabilitar la búsqueda. El cliente actual
+          // adjunto (de un walk-in iniciado) se sigue mostrando, pero el
+          // chip deja de abrir el sheet de lookup.
+          onTap={canReadCustomers ? () => setCustomerSheetOpen(true) : () => {}}
           onClear={() => ck.dispatch({ type: 'setCustomer', customer: null })}
         />
       </div>
@@ -284,13 +301,50 @@ export function CheckoutPage() {
           <p className="text-[13px] text-[var(--color-bravo)]">{ck.error}</p>
         </div>
       )}
-      <CobrarCTA
-        totalCents={totalAfterDiscountCents}
-        disabled={ck.cartState.lines.length === 0 || ck.submitting}
-        onTap={() => setPaymentSheetOpen(true)}
-      />
+      {canCreateSale && canCloseSale ? (
+        <CobrarCTA
+          totalCents={totalAfterDiscountCents}
+          disabled={ck.cartState.lines.length === 0 || ck.submitting}
+          onTap={() => setPaymentSheetOpen(true)}
+        />
+      ) : (
+        <div className="mx-4 mt-3 border border-dashed border-[var(--color-leather-muted)] p-4 text-center">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Tu rol no puede cobrar
+          </p>
+          <p className="mt-1 text-[12px] text-[var(--color-bone-muted)]">
+            Necesitas <code className="font-mono">pos.sale.create</code> y <code className="font-mono">pos.sale.close</code>. Pide a un administrador que ajuste tu rol POS.
+          </p>
+        </div>
+      )}
     </>
   )
+
+  // Sin lecturas de catálogo no hay nada útil que mostrar en checkout —
+  // ni la grilla ni el carrito tienen sentido. Saca un estado claro en
+  // lugar de un grid vacío silencioso.
+  if (!canReadServices && !canReadProducts) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Sin acceso
+          </p>
+          <h1
+            className="mb-2 text-2xl font-bold text-[var(--color-bone)]"
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+          >
+            Cobrar
+          </h1>
+          <p className="text-sm text-[var(--color-bone-muted)]">
+            Tu rol no puede leer catálogo de servicios ni productos. Pide a un administrador que añada{' '}
+            <code className="font-mono text-[var(--color-bone)]">catalog.services.read</code> o{' '}
+            <code className="font-mono text-[var(--color-bone)]">catalog.products.read</code> a tu rol POS.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full">
@@ -381,6 +435,7 @@ export function CheckoutPage() {
         totalCents={totalAfterDiscountCents}
         submitting={ck.submitting}
         error={ck.error}
+        canAddTip={canAddTip}
         onClose={() => setPaymentSheetOpen(false)}
         onConfirm={async (input) => {
           // input: { payments: [{ provider, amountCents }], tipCents }

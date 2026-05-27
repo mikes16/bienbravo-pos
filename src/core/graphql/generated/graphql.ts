@@ -15,9 +15,9 @@ export type Scalars = {
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
   /** A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format. */
-  DateTime: { input: any; output: any; }
+  DateTime: { input: string; output: string; }
   /** Arbitrary JSON value */
-  JSON: { input: any; output: any; }
+  JSON: { input: Record<string, unknown>; output: Record<string, unknown>; }
 };
 
 export enum AlertSeverity {
@@ -591,6 +591,15 @@ export type CreateStockLocationInput = {
   type: StockLocationType;
 };
 
+export type CreateWalkInPublicInput = {
+  customerFirstName: Scalars['String']['input'];
+  customerLastName: Scalars['String']['input'];
+  customerPhone: Scalars['String']['input'];
+  locationSlug: Scalars['String']['input'];
+  preferredStaffUserId?: InputMaybe<Scalars['ID']['input']>;
+  requestedServiceId: Scalars['ID']['input'];
+};
+
 export type Customer = {
   __typename?: 'Customer';
   address?: Maybe<Scalars['String']['output']>;
@@ -808,6 +817,36 @@ export type InventoryMovement = {
   type: Scalars['String']['output'];
 };
 
+export type IssueLocationKioskTokenInput = {
+  expiresAt?: InputMaybe<Scalars['DateTime']['input']>;
+  label: Scalars['String']['input'];
+  locationId: Scalars['ID']['input'];
+};
+
+export type IssuedKioskToken = {
+  __typename?: 'IssuedKioskToken';
+  jwt: Scalars['String']['output'];
+  token: KioskToken;
+};
+
+export type KioskToken = {
+  __typename?: 'KioskToken';
+  createdAt: Scalars['DateTime']['output'];
+  createdBy?: Maybe<Scalars['String']['output']>;
+  expiresAt?: Maybe<Scalars['DateTime']['output']>;
+  id: Scalars['ID']['output'];
+  label: Scalars['String']['output'];
+  location: Location;
+  locationId: Scalars['ID']['output'];
+  revokedAt?: Maybe<Scalars['DateTime']['output']>;
+  revokedBy?: Maybe<Scalars['String']['output']>;
+  type: KioskTokenType;
+};
+
+export enum KioskTokenType {
+  Device = 'DEVICE'
+}
+
 export type LatenessExcuse = {
   __typename?: 'LatenessExcuse';
   excusedAt: Scalars['DateTime']['output'];
@@ -948,6 +987,12 @@ export type MetafieldValue = {
   value?: Maybe<Scalars['JSON']['output']>;
 };
 
+export type MintedRotatingToken = {
+  __typename?: 'MintedRotatingToken';
+  expiresAt: Scalars['DateTime']['output'];
+  jwt: Scalars['String']['output'];
+};
+
 export type Mutation = {
   __typename?: 'Mutation';
   addProductImage: Product;
@@ -998,6 +1043,7 @@ export type Mutation = {
   createStockLocation: StockLocation;
   createStripePaymentIntent: StripePaymentIntentResult;
   createWalkIn: WalkIn;
+  createWalkInPublic: WalkInPublicResult;
   customerLogin: AuthResult;
   customerRegister: AuthResult;
   deactivateProduct: Product;
@@ -1024,9 +1070,11 @@ export type Mutation = {
   inventoryAdjust: InventoryLevel;
   inventorySet: InventoryLevel;
   inventoryTransfer: Scalars['Boolean']['output'];
+  issueLocationKioskToken: IssuedKioskToken;
   logout: Scalars['Boolean']['output'];
   markAppointmentPrepaidManual: Sale;
   markWalkInNoShow: WalkIn;
+  mintRotatingKioskToken: MintedRotatingToken;
   noShow: Appointment;
   openRegisterSession: RegisterSession;
   pauseWalkIn: WalkIn;
@@ -1047,6 +1095,7 @@ export type Mutation = {
   resetLocationBusinessHours: Array<LocationBusinessHour>;
   resetPosPinAttempts: Scalars['Boolean']['output'];
   resumeWalkIn: WalkIn;
+  revokeLocationKioskToken: KioskToken;
   rotateServiceToken: RotateServiceTokenResult;
   runPayout: PayoutRun;
   setPosLocationPassword: Scalars['Boolean']['output'];
@@ -1338,6 +1387,12 @@ export type MutationCreateWalkInArgs = {
 };
 
 
+export type MutationCreateWalkInPublicArgs = {
+  input: CreateWalkInPublicInput;
+  kioskToken: Scalars['String']['input'];
+};
+
+
 export type MutationCustomerLoginArgs = {
   email: Scalars['String']['input'];
   password: Scalars['String']['input'];
@@ -1479,6 +1534,11 @@ export type MutationInventoryTransferArgs = {
 };
 
 
+export type MutationIssueLocationKioskTokenArgs = {
+  input: IssueLocationKioskTokenInput;
+};
+
+
 export type MutationMarkAppointmentPrepaidManualArgs = {
   input: MarkAppointmentPrepaidManualInput;
 };
@@ -1486,6 +1546,11 @@ export type MutationMarkAppointmentPrepaidManualArgs = {
 
 export type MutationMarkWalkInNoShowArgs = {
   walkInId: Scalars['ID']['input'];
+};
+
+
+export type MutationMintRotatingKioskTokenArgs = {
+  deviceToken: Scalars['String']['input'];
 };
 
 
@@ -1597,6 +1662,11 @@ export type MutationResetPosPinAttemptsArgs = {
 
 export type MutationResumeWalkInArgs = {
   walkInId: Scalars['ID']['input'];
+};
+
+
+export type MutationRevokeLocationKioskTokenArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -2042,6 +2112,65 @@ export enum ProductsSort {
   UpdatedDesc = 'UPDATED_DESC'
 }
 
+export type PublicBarber = {
+  __typename?: 'PublicBarber';
+  displayName: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  isAvailableNow: Scalars['Boolean']['output'];
+  photoUrl?: Maybe<Scalars['String']['output']>;
+};
+
+export type PublicCatalogForCheckIn = {
+  __typename?: 'PublicCatalogForCheckIn';
+  availableBarbers: Array<PublicBarber>;
+  generatedAt: Scalars['DateTime']['output'];
+  location: PublicLocation;
+  services: Array<PublicService>;
+};
+
+export type PublicLocation = {
+  __typename?: 'PublicLocation';
+  displayName: Scalars['String']['output'];
+  isOpen: Scalars['Boolean']['output'];
+  slug: Scalars['String']['output'];
+};
+
+export type PublicNowServingEntry = {
+  __typename?: 'PublicNowServingEntry';
+  barberDisplayName: Scalars['String']['output'];
+  displayName: Scalars['String']['output'];
+  serviceName: Scalars['String']['output'];
+  startedAt: Scalars['DateTime']['output'];
+};
+
+export type PublicQueueEntry = {
+  __typename?: 'PublicQueueEntry';
+  displayName: Scalars['String']['output'];
+  estimatedWaitMinutes: Scalars['Int']['output'];
+  position: Scalars['Int']['output'];
+  preferredBarberDisplayName?: Maybe<Scalars['String']['output']>;
+  serviceName?: Maybe<Scalars['String']['output']>;
+  ticketCode: Scalars['String']['output'];
+};
+
+export type PublicQueueView = {
+  __typename?: 'PublicQueueView';
+  averageWaitMinutes?: Maybe<Scalars['Int']['output']>;
+  generatedAt: Scalars['DateTime']['output'];
+  location: PublicLocation;
+  nowServing: Array<PublicNowServingEntry>;
+  queue: Array<PublicQueueEntry>;
+  servedToday: Scalars['Int']['output'];
+};
+
+export type PublicService = {
+  __typename?: 'PublicService';
+  durationMinutes: Scalars['Int']['output'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  priceCents: Scalars['Int']['output'];
+};
+
 export type Query = {
   __typename?: 'Query';
   activeServiceTokens: Array<ServiceTokenInfo>;
@@ -2080,6 +2209,7 @@ export type Query = {
   location?: Maybe<Location>;
   locationBlackouts: Array<LocationBlackout>;
   locationBusinessHours: Array<LocationBusinessHour>;
+  locationKioskTokens: Array<KioskToken>;
   locationShiftTemplates: Array<ShiftTemplate>;
   locations: Array<Location>;
   messageLogs: Array<MessageLog>;
@@ -2101,6 +2231,8 @@ export type Query = {
   product?: Maybe<Product>;
   products: Array<Product>;
   productsPaged: ProductConnection;
+  publicCatalogForCheckIn: PublicCatalogForCheckIn;
+  publicQueue: PublicQueueView;
   realtimeBranchStatus: Array<RealtimeBranchStatusRow>;
   refunds: RefundConnection;
   registerSession?: Maybe<RegisterSession>;
@@ -2143,6 +2275,7 @@ export type Query = {
   stockLocations: Array<StockLocation>;
   suggestedNextWalkIn?: Maybe<WalkIn>;
   timeClockEvents: Array<TimeClockEvent>;
+  verifyKioskToken: VerifiedKioskToken;
   viewer: Viewer;
   walkIns: Array<WalkIn>;
 };
@@ -2350,6 +2483,11 @@ export type QueryLocationBusinessHoursArgs = {
 };
 
 
+export type QueryLocationKioskTokensArgs = {
+  locationId: Scalars['ID']['input'];
+};
+
+
 export type QueryLocationShiftTemplatesArgs = {
   locationId: Scalars['ID']['input'];
 };
@@ -2445,6 +2583,16 @@ export type QueryProductsPagedArgs = {
   search?: InputMaybe<Scalars['String']['input']>;
   sort?: ProductsSort;
   status?: InputMaybe<ProductStatus>;
+};
+
+
+export type QueryPublicCatalogForCheckInArgs = {
+  slug: Scalars['String']['input'];
+};
+
+
+export type QueryPublicQueueArgs = {
+  slug: Scalars['String']['input'];
 };
 
 
@@ -2700,6 +2848,11 @@ export type QueryTimeClockEventsArgs = {
   locationId?: InputMaybe<Scalars['ID']['input']>;
   staffUserId: Scalars['ID']['input'];
   toDate: Scalars['String']['input'];
+};
+
+
+export type QueryVerifyKioskTokenArgs = {
+  token: Scalars['String']['input'];
 };
 
 
@@ -3571,6 +3724,15 @@ export type UpsertStaffServicePriceInput = {
   staffUserId: Scalars['ID']['input'];
 };
 
+export type VerifiedKioskToken = {
+  __typename?: 'VerifiedKioskToken';
+  expiresAt?: Maybe<Scalars['DateTime']['output']>;
+  locationName?: Maybe<Scalars['String']['output']>;
+  locationSlug?: Maybe<Scalars['String']['output']>;
+  type?: Maybe<KioskTokenType>;
+  valid: Scalars['Boolean']['output'];
+};
+
 export type Viewer = {
   __typename?: 'Viewer';
   customer?: Maybe<Customer>;
@@ -3612,6 +3774,13 @@ export type WalkIn = {
   status: WalkInStatus;
 };
 
+export type WalkInPublicResult = {
+  __typename?: 'WalkInPublicResult';
+  estimatedWaitMinutes: Scalars['Int']['output'];
+  position: Scalars['Int']['output'];
+  ticketCode: Scalars['String']['output'];
+};
+
 export enum WalkInStatus {
   Assigned = 'ASSIGNED',
   Cancelled = 'CANCELLED',
@@ -3623,7 +3792,7 @@ export enum WalkInStatus {
 export type PosViewerQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type PosViewerQuery = { __typename?: 'Query', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: any | null } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } };
+export type PosViewerQuery = { __typename?: 'Query', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: string | null } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } };
 
 export type PosPublicLocationsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -3644,21 +3813,21 @@ export type StaffPinLoginMutationVariables = Exact<{
 }>;
 
 
-export type StaffPinLoginMutation = { __typename?: 'Mutation', staffPinLogin: { __typename?: 'AuthResult', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: any | null } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } } };
+export type StaffPinLoginMutation = { __typename?: 'Mutation', staffPinLogin: { __typename?: 'AuthResult', viewer: { __typename?: 'Viewer', kind: ViewerKind, permissions: Array<string>, staff?: { __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: string | null } | null, locationScopes: Array<{ __typename?: 'ViewerLocationScope', scopeType: ScopeType, locationId?: string | null }> } } };
 
 export type PosBarbersQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
 
 
-export type PosBarbersQuery = { __typename?: 'Query', barbers: Array<{ __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: any | null }> };
+export type PosBarbersQuery = { __typename?: 'Query', barbers: Array<{ __typename?: 'StaffUser', id: string, fullName: string, email: string, phone?: string | null, photoUrl?: string | null, isActive: boolean, hasPosPin: boolean, pinAttempts: number, pinLockedUntil?: string | null }> };
 
 export type PosPinLockoutStatusQueryVariables = Exact<{
   email: Scalars['String']['input'];
 }>;
 
 
-export type PosPinLockoutStatusQuery = { __typename?: 'Query', posPinLockoutStatus: { __typename?: 'PosPinLockoutStatus', lockedUntil?: any | null, attemptsRemaining: number } };
+export type PosPinLockoutStatusQuery = { __typename?: 'Query', posPinLockoutStatus: { __typename?: 'PosPinLockoutStatus', lockedUntil?: string | null, attemptsRemaining: number } };
 
 export type PosLogoutMutationVariables = Exact<{ [key: string]: never; }>;
 
@@ -3673,7 +3842,7 @@ export type PosAppointmentsQueryVariables = Exact<{
 }>;
 
 
-export type PosAppointmentsQuery = { __typename?: 'Query', appointments: Array<{ __typename?: 'Appointment', id: string, status: AppointmentStatus, salePaymentStatus?: SalePaymentStatus | null, startAt: any, endAt: any, totalCents: number, locationId?: string | null, locationName?: string | null, customer?: { __typename?: 'Customer', id: string, fullName: string, phone?: string | null } | null, staffUser?: { __typename?: 'StaffUser', id: string, fullName: string } | null, items: Array<{ __typename?: 'AppointmentItem', label: string, serviceId?: string | null, qty: number, unitPriceCents: number }> }> };
+export type PosAppointmentsQuery = { __typename?: 'Query', appointments: Array<{ __typename?: 'Appointment', id: string, status: AppointmentStatus, salePaymentStatus?: SalePaymentStatus | null, startAt: string, endAt: string, totalCents: number, locationId?: string | null, locationName?: string | null, customer?: { __typename?: 'Customer', id: string, fullName: string, phone?: string | null } | null, staffUser?: { __typename?: 'StaffUser', id: string, fullName: string } | null, items: Array<{ __typename?: 'AppointmentItem', label: string, serviceId?: string | null, qty: number, unitPriceCents: number }> }> };
 
 export type CheckInMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -3741,7 +3910,7 @@ export type PosAppointmentCheckoutInfoQueryVariables = Exact<{
 }>;
 
 
-export type PosAppointmentCheckoutInfoQuery = { __typename?: 'Query', appointment?: { __typename?: 'Appointment', id: string, sale?: { __typename?: 'Sale', id: string, source: string, paymentStatus: SalePaymentStatus, paidTotalCents: number, totalCents: number, payments?: Array<{ __typename?: 'PaymentTransaction', provider: PaymentProvider, processedAt?: any | null, createdAt: any, note?: string | null }> | null } | null } | null };
+export type PosAppointmentCheckoutInfoQuery = { __typename?: 'Query', appointment?: { __typename?: 'Appointment', id: string, sale?: { __typename?: 'Sale', id: string, source: string, paymentStatus: SalePaymentStatus, paidTotalCents: number, totalCents: number, payments?: Array<{ __typename?: 'PaymentTransaction', provider: PaymentProvider, processedAt?: string | null, createdAt: string, note?: string | null }> | null } | null } | null };
 
 export type PosCatalogCategoriesQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -3771,7 +3940,7 @@ export type PosCustomerHistoryQueryVariables = Exact<{
 }>;
 
 
-export type PosCustomerHistoryQuery = { __typename?: 'Query', customerAppointments: Array<{ __typename?: 'Appointment', id: string, status: AppointmentStatus, startAt: any, items: Array<{ __typename?: 'AppointmentItem', label: string }> }> };
+export type PosCustomerHistoryQuery = { __typename?: 'Query', customerAppointments: Array<{ __typename?: 'Appointment', id: string, status: AppointmentStatus, startAt: string, items: Array<{ __typename?: 'AppointmentItem', label: string }> }> };
 
 export type PosProductsQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
@@ -3866,7 +4035,7 @@ export type TimeClockEventsQueryVariables = Exact<{
 }>;
 
 
-export type TimeClockEventsQuery = { __typename?: 'Query', timeClockEvents: Array<{ __typename?: 'TimeClockEvent', id: string, type: TimeClockEventType, at: any }> };
+export type TimeClockEventsQuery = { __typename?: 'Query', timeClockEvents: Array<{ __typename?: 'TimeClockEvent', id: string, type: TimeClockEventType, at: string }> };
 
 export type ShiftTemplatesQueryVariables = Exact<{
   staffUserId: Scalars['ID']['input'];
@@ -3890,14 +4059,14 @@ export type PosHomeCajaStatusQueryVariables = Exact<{
 }>;
 
 
-export type PosHomeCajaStatusQuery = { __typename?: 'Query', posCajaStatusHome: { __typename?: 'PosCajaStatusHome', isOpen: boolean, accumulatedCents?: number | null, openedAt?: any | null } };
+export type PosHomeCajaStatusQuery = { __typename?: 'Query', posCajaStatusHome: { __typename?: 'PosCajaStatusHome', isOpen: boolean, accumulatedCents?: number | null, openedAt?: string | null } };
 
 export type PosRegistersQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
 
 
-export type PosRegistersQuery = { __typename?: 'Query', registers: Array<{ __typename?: 'Register', id: string, name: string, isActive: boolean, locationId: string, openSession?: { __typename?: 'RegisterSession', id: string, status: RegisterSessionStatus, openedAt: any, openingCashCents: number, expectedCashCents: number, expectedCardCents: number, expectedTransferCents: number } | null }> };
+export type PosRegistersQuery = { __typename?: 'Query', registers: Array<{ __typename?: 'Register', id: string, name: string, isActive: boolean, locationId: string, openSession?: { __typename?: 'RegisterSession', id: string, status: RegisterSessionStatus, openedAt: string, openingCashCents: number, expectedCashCents: number, expectedCardCents: number, expectedTransferCents: number } | null }> };
 
 export type OpenRegisterSessionMutationVariables = Exact<{
   registerId: Scalars['ID']['input'];
@@ -3905,21 +4074,21 @@ export type OpenRegisterSessionMutationVariables = Exact<{
 }>;
 
 
-export type OpenRegisterSessionMutation = { __typename?: 'Mutation', openRegisterSession: { __typename?: 'RegisterSession', id: string, status: RegisterSessionStatus, openedAt: any, openingCashCents: number, expectedCashCents: number, expectedCardCents: number, expectedTransferCents: number } };
+export type OpenRegisterSessionMutation = { __typename?: 'Mutation', openRegisterSession: { __typename?: 'RegisterSession', id: string, status: RegisterSessionStatus, openedAt: string, openingCashCents: number, expectedCashCents: number, expectedCardCents: number, expectedTransferCents: number } };
 
 export type CloseRegisterSessionMutationVariables = Exact<{
   input: CloseRegisterSessionInput;
 }>;
 
 
-export type CloseRegisterSessionMutation = { __typename?: 'Mutation', closeRegisterSession: { __typename?: 'RegisterSession', id: string, status: RegisterSessionStatus, closedAt?: any | null, openingCashCents: number, countedCashCents?: number | null, countedCardCents?: number | null, countedTransferCents?: number | null, expectedCashCents: number, expectedCardCents: number, expectedTransferCents: number } };
+export type CloseRegisterSessionMutation = { __typename?: 'Mutation', closeRegisterSession: { __typename?: 'RegisterSession', id: string, status: RegisterSessionStatus, closedAt?: string | null, openingCashCents: number, countedCashCents?: number | null, countedCardCents?: number | null, countedTransferCents?: number | null, expectedCashCents: number, expectedCardCents: number, expectedTransferCents: number } };
 
 export type PosWalkInsQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
 
 
-export type PosWalkInsQuery = { __typename?: 'Query', walkIns: Array<{ __typename?: 'WalkIn', id: string, status: WalkInStatus, customerName?: string | null, customerPhone?: string | null, customerEmail?: string | null, createdAt: any, sortOrder: number, pausedAt?: any | null, preferredStaffUserId?: string | null, assignedStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string } | null, customer?: { __typename?: 'Customer', id: string, fullName: string, email?: string | null, phone?: string | null } | null, preferredStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string, photoUrl?: string | null } | null, requestedService?: { __typename?: 'Service', id: string, name: string } | null, requestedCatalogCombo?: { __typename?: 'CatalogCombo', id: string, name: string } | null }> };
+export type PosWalkInsQuery = { __typename?: 'Query', walkIns: Array<{ __typename?: 'WalkIn', id: string, status: WalkInStatus, customerName?: string | null, customerPhone?: string | null, customerEmail?: string | null, createdAt: string, sortOrder: number, pausedAt?: string | null, preferredStaffUserId?: string | null, assignedStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string } | null, customer?: { __typename?: 'Customer', id: string, fullName: string, email?: string | null, phone?: string | null } | null, preferredStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string, photoUrl?: string | null } | null, requestedService?: { __typename?: 'Service', id: string, name: string } | null, requestedCatalogCombo?: { __typename?: 'CatalogCombo', id: string, name: string } | null }> };
 
 export type CreateWalkInMutationVariables = Exact<{
   locationId: Scalars['ID']['input'];
@@ -3933,7 +4102,7 @@ export type CreateWalkInMutationVariables = Exact<{
 }>;
 
 
-export type CreateWalkInMutation = { __typename?: 'Mutation', createWalkIn: { __typename?: 'WalkIn', id: string, status: WalkInStatus, customerName?: string | null, customerPhone?: string | null, customerEmail?: string | null, createdAt: any, sortOrder: number, pausedAt?: any | null, preferredStaffUserId?: string | null, customer?: { __typename?: 'Customer', id: string, fullName: string, email?: string | null, phone?: string | null } | null, requestedService?: { __typename?: 'Service', id: string, name: string, baseDurationMin: number } | null, requestedCatalogCombo?: { __typename?: 'CatalogCombo', id: string, name: string } | null, preferredStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string, photoUrl?: string | null } | null } };
+export type CreateWalkInMutation = { __typename?: 'Mutation', createWalkIn: { __typename?: 'WalkIn', id: string, status: WalkInStatus, customerName?: string | null, customerPhone?: string | null, customerEmail?: string | null, createdAt: string, sortOrder: number, pausedAt?: string | null, preferredStaffUserId?: string | null, customer?: { __typename?: 'Customer', id: string, fullName: string, email?: string | null, phone?: string | null } | null, requestedService?: { __typename?: 'Service', id: string, name: string, baseDurationMin: number } | null, requestedCatalogCombo?: { __typename?: 'CatalogCombo', id: string, name: string } | null, preferredStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string, photoUrl?: string | null } | null } };
 
 export type AssignWalkInMutationVariables = Exact<{
   walkInId: Scalars['ID']['input'];
@@ -3963,14 +4132,14 @@ export type PauseWalkInMutationVariables = Exact<{
 }>;
 
 
-export type PauseWalkInMutation = { __typename?: 'Mutation', pauseWalkIn: { __typename?: 'WalkIn', id: string, pausedAt?: any | null } };
+export type PauseWalkInMutation = { __typename?: 'Mutation', pauseWalkIn: { __typename?: 'WalkIn', id: string, pausedAt?: string | null } };
 
 export type ResumeWalkInMutationVariables = Exact<{
   walkInId: Scalars['ID']['input'];
 }>;
 
 
-export type ResumeWalkInMutation = { __typename?: 'Mutation', resumeWalkIn: { __typename?: 'WalkIn', id: string, pausedAt?: any | null } };
+export type ResumeWalkInMutation = { __typename?: 'Mutation', resumeWalkIn: { __typename?: 'WalkIn', id: string, pausedAt?: string | null } };
 
 export type MarkWalkInNoShowMutationVariables = Exact<{
   walkInId: Scalars['ID']['input'];
@@ -3991,7 +4160,7 @@ export type SuggestedNextWalkInQueryVariables = Exact<{
 }>;
 
 
-export type SuggestedNextWalkInQuery = { __typename?: 'Query', suggestedNextWalkIn?: { __typename?: 'WalkIn', id: string, status: WalkInStatus, customerName?: string | null, preferredStaffUserId?: string | null, pausedAt?: any | null, sortOrder: number, createdAt: any, customer?: { __typename?: 'Customer', id: string, fullName: string } | null, requestedService?: { __typename?: 'Service', id: string, name: string } | null, requestedCatalogCombo?: { __typename?: 'CatalogCombo', id: string, name: string } | null, preferredStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string, photoUrl?: string | null } | null } | null };
+export type SuggestedNextWalkInQuery = { __typename?: 'Query', suggestedNextWalkIn?: { __typename?: 'WalkIn', id: string, status: WalkInStatus, customerName?: string | null, preferredStaffUserId?: string | null, pausedAt?: string | null, sortOrder: number, createdAt: string, customer?: { __typename?: 'Customer', id: string, fullName: string } | null, requestedService?: { __typename?: 'Service', id: string, name: string } | null, requestedCatalogCombo?: { __typename?: 'CatalogCombo', id: string, name: string } | null, preferredStaffUser?: { __typename?: 'StaffUser', id: string, fullName: string, photoUrl?: string | null } | null } | null };
 
 
 export const PosViewerDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosViewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"viewer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"staff"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"hasPosPin"}},{"kind":"Field","name":{"kind":"Name","value":"pinAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"pinLockedUntil"}}]}},{"kind":"Field","name":{"kind":"Name","value":"permissions"}},{"kind":"Field","name":{"kind":"Name","value":"locationScopes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"scopeType"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}}]}}]}}]}}]} as unknown as DocumentNode<PosViewerQuery, PosViewerQueryVariables>;

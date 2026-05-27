@@ -545,6 +545,15 @@ input CreateStockLocationInput {
   type: StockLocationType!
 }
 
+input CreateWalkInPublicInput {
+  customerFirstName: String!
+  customerLastName: String!
+  customerPhone: String!
+  locationSlug: String!
+  preferredStaffUserId: ID
+  requestedServiceId: ID!
+}
+
 type Customer {
   address: String
   createdAt: DateTime!
@@ -751,8 +760,36 @@ type InventoryMovement {
   type: String!
 }
 
+input IssueLocationKioskTokenInput {
+  expiresAt: DateTime
+  label: String!
+  locationId: ID!
+}
+
+type IssuedKioskToken {
+  jwt: String!
+  token: KioskToken!
+}
+
 """Arbitrary JSON value"""
 scalar JSON
+
+type KioskToken {
+  createdAt: DateTime!
+  createdBy: String
+  expiresAt: DateTime
+  id: ID!
+  label: String!
+  location: Location!
+  locationId: ID!
+  revokedAt: DateTime
+  revokedBy: String
+  type: KioskTokenType!
+}
+
+enum KioskTokenType {
+  DEVICE
+}
 
 type LatenessExcuse {
   excusedAt: DateTime!
@@ -883,6 +920,11 @@ type MetafieldValue {
   value: JSON
 }
 
+type MintedRotatingToken {
+  expiresAt: DateTime!
+  jwt: String!
+}
+
 type Mutation {
   addProductImage(productId: ID!, publicId: String!, url: String!): Product!
   applyCouponToDraftSale(input: ApplyCouponToDraftSaleInput!): DraftSaleWithDiscount!
@@ -932,6 +974,7 @@ type Mutation {
   createStockLocation(input: CreateStockLocationInput!): StockLocation!
   createStripePaymentIntent(saleId: ID!): StripePaymentIntentResult!
   createWalkIn(customerEmail: String, customerId: ID, customerName: String, customerPhone: String, locationId: ID!, preferredStaffUserId: ID, requestedCatalogComboId: ID, requestedServiceId: ID): WalkIn!
+  createWalkInPublic(input: CreateWalkInPublicInput!, kioskToken: String!): WalkInPublicResult!
   customerLogin(email: String!, password: String!): AuthResult!
   customerRegister(input: CustomerRegisterInput!): AuthResult!
   deactivateProduct(id: ID!): Product!
@@ -958,9 +1001,11 @@ type Mutation {
   inventoryAdjust(delta: Int!, productId: ID!, reason: String, stockLocationId: ID!): InventoryLevel!
   inventorySet(productId: ID!, productVariantId: ID, quantity: Int!, reason: String, stockLocationId: ID!): InventoryLevel!
   inventoryTransfer(fromStockLocationId: ID!, productId: ID!, qty: Int!, toStockLocationId: ID!): Boolean!
+  issueLocationKioskToken(input: IssueLocationKioskTokenInput!): IssuedKioskToken!
   logout: Boolean!
   markAppointmentPrepaidManual(input: MarkAppointmentPrepaidManualInput!): Sale!
   markWalkInNoShow(walkInId: ID!): WalkIn!
+  mintRotatingKioskToken(deviceToken: String!): MintedRotatingToken!
   noShow(appointmentId: ID!): Appointment!
   openRegisterSession(openingCashCents: Int, registerId: ID!): RegisterSession!
   pauseWalkIn(walkInId: ID!): WalkIn!
@@ -981,6 +1026,7 @@ type Mutation {
   resetLocationBusinessHours(locationId: ID!): [LocationBusinessHour!]!
   resetPosPinAttempts(staffUserId: ID!): Boolean!
   resumeWalkIn(walkInId: ID!): WalkIn!
+  revokeLocationKioskToken(id: ID!): KioskToken!
   rotateServiceToken(input: RotateServiceTokenInput!): RotateServiceTokenResult!
   runPayout(periodEnd: DateTime!, periodStart: DateTime!): PayoutRun!
   setPosLocationPassword(locationId: ID!, password: String!): Boolean!
@@ -1240,6 +1286,58 @@ enum ProductsSort {
   UPDATED_DESC
 }
 
+type PublicBarber {
+  displayName: String!
+  id: ID!
+  isAvailableNow: Boolean!
+  photoUrl: String
+}
+
+type PublicCatalogForCheckIn {
+  availableBarbers: [PublicBarber!]!
+  generatedAt: DateTime!
+  location: PublicLocation!
+  services: [PublicService!]!
+}
+
+type PublicLocation {
+  displayName: String!
+  isOpen: Boolean!
+  slug: String!
+}
+
+type PublicNowServingEntry {
+  barberDisplayName: String!
+  displayName: String!
+  serviceName: String!
+  startedAt: DateTime!
+}
+
+type PublicQueueEntry {
+  displayName: String!
+  estimatedWaitMinutes: Int!
+  position: Int!
+  preferredBarberDisplayName: String
+  serviceName: String
+  ticketCode: String!
+}
+
+type PublicQueueView {
+  averageWaitMinutes: Int
+  generatedAt: DateTime!
+  location: PublicLocation!
+  nowServing: [PublicNowServingEntry!]!
+  queue: [PublicQueueEntry!]!
+  servedToday: Int!
+}
+
+type PublicService {
+  durationMinutes: Int!
+  id: ID!
+  name: String!
+  priceCents: Int!
+}
+
 type Query {
   activeServiceTokens: [ServiceTokenInfo!]!
   alertsFeed(filters: DashboardFiltersInput!): [DashboardAlert!]!
@@ -1277,6 +1375,7 @@ type Query {
   location(id: ID!): Location
   locationBlackouts(fromDate: String, locationId: ID!, toDate: String): [LocationBlackout!]!
   locationBusinessHours(locationId: ID!): [LocationBusinessHour!]!
+  locationKioskTokens(locationId: ID!): [KioskToken!]!
   locationShiftTemplates(locationId: ID!): [ShiftTemplate!]!
   locations(includeInactive: Boolean): [Location!]!
   messageLogs(limit: Int): [MessageLog!]!
@@ -1298,6 +1397,8 @@ type Query {
   product(id: ID!): Product
   products(locationId: ID): [Product!]!
   productsPaged(after: String, categoryId: String, first: Int! = 24, search: String, sort: ProductsSort! = UPDATED_DESC, status: ProductStatus): ProductConnection!
+  publicCatalogForCheckIn(slug: String!): PublicCatalogForCheckIn!
+  publicQueue(slug: String!): PublicQueueView!
   realtimeBranchStatus(filters: DashboardFiltersInput!, locationId: ID): [RealtimeBranchStatusRow!]!
   refunds(after: String, first: Int! = 24, locationId: ID!, status: RefundStatus): RefundConnection!
   registerSession(id: ID!): RegisterSession
@@ -1340,6 +1441,7 @@ type Query {
   stockLocations: [StockLocation!]!
   suggestedNextWalkIn(input: SuggestedNextWalkInInput!): WalkIn
   timeClockEvents(fromDate: String!, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
+  verifyKioskToken(token: String!): VerifiedKioskToken!
   viewer: Viewer!
   walkIns(locationId: ID!): [WalkIn!]!
 }
@@ -2162,6 +2264,14 @@ input UpsertStaffServicePriceInput {
   staffUserId: ID!
 }
 
+type VerifiedKioskToken {
+  expiresAt: DateTime
+  locationName: String
+  locationSlug: String
+  type: KioskTokenType
+  valid: Boolean!
+}
+
 type Viewer {
   customer: Customer
   kind: ViewerKind!
@@ -2198,6 +2308,12 @@ type WalkIn {
   requestedServiceId: ID
   sortOrder: Int!
   status: WalkInStatus!
+}
+
+type WalkInPublicResult {
+  estimatedWaitMinutes: Int!
+  position: Int!
+  ticketCode: String!
 }
 
 enum WalkInStatus {

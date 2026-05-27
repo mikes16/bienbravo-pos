@@ -5,6 +5,7 @@ import { MoneyDisplay } from '@/shared/pos-ui/MoneyDisplay'
 import { CashCounter } from '@/shared/cash'
 import { type CashCounts, emptyCashCounts, totalCountedCents } from '@/shared/cash/cashCounts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
+import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
 
@@ -13,6 +14,32 @@ export function OpenCajaPage() {
   const [params] = useSearchParams()
   const registerId = params.get('reg') ?? ''
   const { register } = useRepositories()
+  const { viewer } = usePosAuth()
+  // Defensive: gate by deeplink. CajaPage también gatea, esto es por si
+  // alguien navega directo con la URL. Solo bloqueamos cuando estamos
+  // SEGUROS que el viewer ya cargó y no tiene el perm — si todavía está
+  // cargando (viewer === null), dejamos pasar para no romper SSR / tests
+  // que renderizan antes del fetch del viewer.
+  const hasOpenPerm = !viewer || viewer.permissions.includes('pos.register.open')
+
+  if (!hasOpenPerm) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Sin acceso
+          </p>
+          <h1 className="mb-2 text-2xl font-bold text-[var(--color-bone)]">Abrir caja</h1>
+          <p className="mb-4 text-sm text-[var(--color-bone-muted)]">
+            Tu rol no incluye <code className="font-mono text-[var(--color-bone)]">pos.register.open</code>.
+          </p>
+          <TouchButton variant="secondary" size="min" onClick={() => navigate('/caja')}>
+            ← Volver
+          </TouchButton>
+        </div>
+      </div>
+    )
+  }
   const [counts, setCounts] = useState<CashCounts>(emptyCashCounts())
   const [explicitZero, setExplicitZero] = useState(false)
   const [submitting, setSubmitting] = useState(false)

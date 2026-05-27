@@ -88,6 +88,7 @@ describe('ClockPage', () => {
       },
     })
     expect(await screen.findByText(/entrada/i)).toBeInTheDocument()
-    expect(screen.getByText(/salida/i)).toBeInTheDocument()
+    // "salida" puede aparecer como botón Y como label de evento; aceptamos cualquier instancia.
+    expect(screen.getAllByText(/salida/i).length).toBeGreaterThan(0)
   })
 })

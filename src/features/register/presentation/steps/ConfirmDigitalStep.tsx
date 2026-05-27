@@ -120,7 +120,11 @@ function ConfirmRow({ label, expected, counted, onConfirm, onAdjust }: RowProps)
 
 export function ConfirmDigitalStep({
   expectedCardCents,
-  expectedTransferCents,
+  // expectedTransferCents se recibe del wizard padre pero no se renderiza:
+  // CloseCajaWizard auto-confirma transferencias contra el expected del API
+  // (el cajero no puede verificarlas manualmente). Se mantiene en la prop
+  // signature para no romper a CloseCajaWizard.
+  expectedTransferCents: _expectedTransferCents,
   counted,
   onChange,
 }: ConfirmDigitalStepProps) {

@@ -139,8 +139,8 @@ export interface WalkInsRepository {
   assign(walkInId: string, staffUserId: string): Promise<{ walkIn: WalkIn; warning: string | null }>
   complete(walkInId: string): Promise<void>
   drop(walkInId: string, reason?: string | null): Promise<void>
-  pauseWalkIn(walkInId: string): Promise<{ id: string; pausedAt: string | null } | null>
-  resumeWalkIn(walkInId: string): Promise<{ id: string; pausedAt: string | null } | null>
+  pauseWalkIn(walkInId: string): Promise<{ id: string; pausedAt?: string | null } | null>
+  resumeWalkIn(walkInId: string): Promise<{ id: string; pausedAt?: string | null } | null>
   markWalkInNoShow(walkInId: string): Promise<{ id: string; status: string } | null>
   reorderWalkIns(input: { locationId: string; orderedIds: string[] }): Promise<Array<{ id: string; sortOrder: number }> | null>
   suggestedNextWalkIn(input: { locationId: string; staffUserId: string }): Promise<WalkIn | null>
@@ -200,31 +200,34 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
   }
 
   async pauseWalkIn(walkInId: string) {
-    const r = await this.#client.mutate({ mutation: PAUSE_WALKIN_MUTATION as any, variables: { walkInId } })
+    const r = await this.#client.mutate({ mutation: PAUSE_WALKIN_MUTATION, variables: { walkInId } })
     return r.data?.pauseWalkIn ?? null
   }
 
   async resumeWalkIn(walkInId: string) {
-    const r = await this.#client.mutate({ mutation: RESUME_WALKIN_MUTATION as any, variables: { walkInId } })
+    const r = await this.#client.mutate({ mutation: RESUME_WALKIN_MUTATION, variables: { walkInId } })
     return r.data?.resumeWalkIn ?? null
   }
 
   async markWalkInNoShow(walkInId: string) {
-    const r = await this.#client.mutate({ mutation: MARK_WALKIN_NO_SHOW_MUTATION as any, variables: { walkInId } })
+    const r = await this.#client.mutate({ mutation: MARK_WALKIN_NO_SHOW_MUTATION, variables: { walkInId } })
     return r.data?.markWalkInNoShow ?? null
   }
 
   async reorderWalkIns(input: { locationId: string; orderedIds: string[] }) {
-    const r = await this.#client.mutate({ mutation: REORDER_WALKINS_MUTATION as any, variables: { input } })
+    const r = await this.#client.mutate({ mutation: REORDER_WALKINS_MUTATION, variables: { input } })
     return r.data?.reorderWalkIns ?? null
   }
 
-  async suggestedNextWalkIn(input: { locationId: string; staffUserId: string }) {
+  async suggestedNextWalkIn(input: { locationId: string; staffUserId: string }): Promise<WalkIn | null> {
     const r = await this.#client.query({
-      query: SUGGESTED_NEXT_WALKIN_QUERY as any,
+      query: SUGGESTED_NEXT_WALKIN_QUERY,
       variables: { input },
       fetchPolicy: 'network-only',
     })
-    return r.data?.suggestedNextWalkIn ?? null
+    // Cast: el query selecciona el subset de campos que el caller realmente
+    // usa. Apollo devuelve esos campos materializados; el opcional/undefined
+    // que infiere codegen es overly conservative.
+    return (r.data?.suggestedNextWalkIn ?? null) as WalkIn | null
   }
 }

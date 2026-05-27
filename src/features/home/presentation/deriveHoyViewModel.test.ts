@@ -30,7 +30,10 @@ describe('deriveHoyViewModel', () => {
   })
 
   // Privacy filter
-  it('appointment assigned to OTHER staff is excluded', () => {
+  it('appointment assigned to OTHER staff is included with isMine=false and assignedToName', () => {
+    // Cambio de producto: ahora la vista Hoy muestra TODAS las citas del día
+    // (no solo las mías). Las que no son mías se marcan con isMine=false +
+    // assignedToName para que el barbero sepa quién las atiende.
     const vm = deriveHoyViewModel(
       baseInput({
         appointments: [
@@ -45,7 +48,9 @@ describe('deriveHoyViewModel', () => {
         ],
       }),
     )
-    expect(vm.rows).toEqual([])
+    expect(vm.rows).toHaveLength(1)
+    expect(vm.rows[0].isMine).toBe(false)
+    expect(vm.rows[0].assignedToName).toBe('Luis')
   })
 
   it('appointment assigned to me is included as kind=pending', () => {
@@ -87,7 +92,9 @@ describe('deriveHoyViewModel', () => {
     expect(vm.rows[0].pillLabel).toMatch(/walk-in/i)
   })
 
-  it('walk-in assigned to OTHER staff is excluded', () => {
+  it('walk-in assigned to OTHER staff is included with isMine=false and assignedToName', () => {
+    // Misma evolución que con appointments: walk-ins ajenos se muestran
+    // marcados, no excluidos.
     const vm = deriveHoyViewModel(
       baseInput({
         walkIns: [
@@ -101,7 +108,9 @@ describe('deriveHoyViewModel', () => {
         ],
       }),
     )
-    expect(vm.rows).toEqual([])
+    expect(vm.rows).toHaveLength(1)
+    expect(vm.rows[0].isMine).toBe(false)
+    expect(vm.rows[0].assignedToName).toBe('Luis')
   })
 
   it('PENDING walk-in (queue, unassigned) is included as kind=queue', () => {

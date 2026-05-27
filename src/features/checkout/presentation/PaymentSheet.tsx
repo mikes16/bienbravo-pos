@@ -42,6 +42,11 @@ interface PaymentSheetProps {
    * modal, so the sheet has to show its own copy or the failure is silent.
    */
   error?: string | null
+  /**
+   * Si false, el TipInput se oculta y nunca se manda propina al API. Espejo
+   * client-side de `pos.tip.add` que el API también gatea en createPOSSale.
+   */
+  canAddTip?: boolean
   onClose: () => void
   onConfirm: (input: PaymentInput) => void
 }
@@ -52,7 +57,7 @@ const METHOD_LABELS: Record<UiMethod, string> = {
   TRANSFER: 'Transferencia',
 }
 
-export function PaymentSheet({ open, totalCents, submitting = false, error = null, onClose, onConfirm }: PaymentSheetProps) {
+export function PaymentSheet({ open, totalCents, submitting = false, error = null, canAddTip = true, onClose, onConfirm }: PaymentSheetProps) {
   const [method, setMethod] = useState<UiMethod | null>(null)
   const [cashCounts, setCashCounts] = useState<CashCounts>(emptyCashCounts())
   const [tipCents, setTipCents] = useState(0)
@@ -159,7 +164,7 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
               />
             )}
 
-            {(method === 'CARD' || method === 'TRANSFER') && (
+            {(method === 'CARD' || method === 'TRANSFER') && canAddTip && (
               <TipInput totalCents={totalCents} tipCents={tipCents} onChange={setTipCents} />
             )}
 

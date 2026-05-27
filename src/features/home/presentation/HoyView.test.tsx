@@ -91,6 +91,8 @@ describe('HoyView', () => {
                 pillTone: 'appt',
                 sourceKind: 'appointment',
                 sourceId: 'a1',
+                isMine: true,
+                assignedToName: null,
               },
             ],
           })}
@@ -150,6 +152,8 @@ describe('HoyView', () => {
                 pillTone: 'appt',
                 sourceKind: 'appointment',
                 sourceId: 'a1',
+                isMine: true,
+                assignedToName: null,
               },
             ],
           })}
