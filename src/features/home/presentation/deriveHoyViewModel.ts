@@ -31,6 +31,15 @@ export interface HoyRowData {
   isMine: boolean
   // Who's assigned (for showing "asignado a Juan" on rows that aren't mine).
   assignedToName: string | null
+  // Solo para filas kind='queue'. Datos del barbero al que el cliente le
+  // pidió específicamente (si lo hubo). Lo expone el row para que HoyPage
+  // pueda construir el target del TakeWalkInSheet sin re-mirar el walk-in
+  // original — ya viene resuelto aquí.
+  queuePreferredStaffUserId?: string | null
+  queuePreferredStaffName?: string | null
+  // Minutos de espera del walk-in en cola. Sirve para el meta de TakeWalkInSheet
+  // sin que tenga que recalcularse a partir de createdAt (drift potencial).
+  queueWaitMinutes?: number
 }
 
 export interface ContextualCTAData {
@@ -155,8 +164,30 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     const customerId = customer?.id ?? null
     const customerName = customer?.fullName ?? w.customerName ?? 'Walk-in'
     const isAssigned = w.status === 'ASSIGNED'
-    const minutes = minutesSince(w.createdAt)
-    const timeLabel = isAssigned ? `EN SERVICIO · ${minutes} MIN` : formatTimeMx(w.createdAt)
+    // Dos timers distintos importan:
+    //   - serviceMinutes: tiempo real en servicio (assignedAt → ahora). Mide
+    //     productividad del barbero. Es el que mostramos como "EN SERVICIO · X".
+    //   - waitMinutes:    tiempo de espera previo (createdAt → assignedAt).
+    //     Mide experiencia del cliente. Lo mostramos como meta secundario.
+    // Si por alguna razón no hay assignedAt (legacy walk-in pre-feature),
+    // caemos a createdAt como guard para no romper el render.
+    const serviceMinutes = w.assignedAt
+      ? Math.max(0, Math.round((Date.now() - new Date(w.assignedAt).getTime()) / 60_000))
+      : minutesSince(w.createdAt)
+    const waitMinutes = w.assignedAt
+      ? Math.max(0, Math.round((new Date(w.assignedAt).getTime() - new Date(w.createdAt).getTime()) / 60_000))
+      : 0
+    const timeLabel = isAssigned ? `EN SERVICIO · ${serviceMinutes} MIN` : formatTimeMx(w.createdAt)
+    const assignedToViewer = w.assignedStaffUser?.id === staffId
+    // Pill contextual: comunica el ESTADO + dueño en una sola palabra. Antes
+    // todos decían "Walk-in" genérico — perdíamos la oportunidad de marcar la
+    // diferencia entre "esto es tuyo" / "esto lo atiende X". Patrón inspirado
+    // en Square Appointments: el pill cuenta el estado y la acción posible.
+    const pillLabel = isAssigned
+      ? assignedToViewer
+        ? 'En servicio'
+        : `Atiende ${w.assignedStaffUser?.fullName.split(' ')[0] ?? 'otro'}`
+      : 'Walk-in'
 
     candidates.push({
       row: {
@@ -168,15 +199,24 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         customerPhotoUrl: null,
         customerInitials: getInitials(customerName),
         serviceLabel: 'Walk-in',
-        meta: null,
-        pillLabel: 'Walk-in',
-        pillTone: isAssigned ? 'serving' : 'walkin',
+        // Meta cuenta el tiempo PREVIO de espera. El timeLabel arriba ya cuenta
+        // el de servicio. Juntos: "EN SERVICIO · 8 MIN" + "esperó 94 min" da
+        // el cuadro completo sin tener que abrir nada.
+        meta: isAssigned && waitMinutes > 0 ? `esperó ${waitMinutes} min` : null,
+        pillLabel,
+        // Tone bravo solo cuando es tuyo en servicio — sin eso, el pill rojo
+        // de un walk-in ajeno te grita "actúa aquí" cuando justo no debes.
+        pillTone: isAssigned && assignedToViewer ? 'serving' : 'walkin',
         sourceKind: 'walk-in',
         sourceId: w.id,
         isMine: w.assignedStaffUser?.id === staffId,
         assignedToName: w.assignedStaffUser?.fullName ?? null,
       },
-      sortKey: w.createdAt,
+      // sortKey define el ancla cronológica. Para walk-ins asignados es el
+      // momento en que empezó el servicio (assignedAt). El CTA del fondo
+      // hace `minutesSince(sortKey)` para el badge "EN SERVICIO · X MIN" —
+      // tiene que ser el tiempo real de servicio, no el de espera.
+      sortKey: isAssigned && w.assignedAt ? w.assignedAt : w.createdAt,
       isActive: isAssigned,
       isPending: !isAssigned,
     })
@@ -188,6 +228,20 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     const customerName = customer?.fullName ?? w.customerName ?? 'Walk-in'
     const minutes = minutesSince(w.createdAt)
 
+    // Preferencia del cliente: si pidió a un barbero específico, queremos que
+    // se lea en la fila (antes decía "sin asignar" genérico aunque hubiera
+    // preferencia registrada — el operador no veía nada). Si el viewer ES el
+    // preferido, lo personalizamos ("te está esperando") para que detecte
+    // rápido los clientes que vinieron por él. `isMine` se setea aquí también
+    // para que el row destaque visualmente cuando lo pide el viewer.
+    const preferredName = w.preferredStaffUser?.fullName.split(' ')[0] ?? null
+    const isMyPreference = !!w.preferredStaffUser && w.preferredStaffUser.id === staffId
+    const preferenceMeta = preferredName
+      ? isMyPreference
+        ? 'te está esperando'
+        : `espera a ${preferredName}`
+      : 'sin preferencia'
+
     candidates.push({
       row: {
         id: `queue-${w.id}`,
@@ -198,13 +252,19 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         customerPhotoUrl: null,
         customerInitials: getInitials(customerName),
         serviceLabel: 'Walk-in',
-        meta: `esperando ${minutes} min · sin asignar`,
+        meta: `esperando ${minutes} min · ${preferenceMeta}`,
         pillLabel: 'Walk-in',
         pillTone: 'walkin',
         sourceKind: 'walk-in',
         sourceId: w.id,
-        isMine: false, // queue items are unassigned by definition
+        // En cola no hay asignación, pero "isMine" lo usamos también para
+        // destacar walk-ins que pidieron específicamente a este barbero —
+        // mejor pista visual que solo texto en gris.
+        isMine: isMyPreference,
         assignedToName: null,
+        queuePreferredStaffUserId: w.preferredStaffUser?.id ?? null,
+        queuePreferredStaffName: w.preferredStaffUser?.fullName ?? null,
+        queueWaitMinutes: minutes,
       },
       sortKey: w.createdAt,
       isActive: false,
@@ -231,19 +291,24 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
   if (!caja.isOpen) {
     cta = { variant: 'abrir-caja', actionLabel: 'Abrir caja' }
   } else {
-    const active = candidates.find((c) => c.isActive)
+    // El CTA es POR-OPERADOR, no global. Mostramos toda la cola/agenda para
+    // contexto del piso, pero el botón de acción solo debe disparar trabajo
+    // que le toca a quien está viendo la pantalla. Por eso `active` se filtra
+    // por `isMine` — si Javi tiene a Cliente Demo en servicio, Alan no debe
+    // ver "Cobrar a Cliente Demo" (no es suya esa cobranza).
+    const activeMine = candidates.find((c) => c.isActive && c.row.isMine)
     const nextMine = candidates.find((c) => c.row.kind === 'next')
     const queueHead = candidates.find((c) => c.row.kind === 'queue')
 
-    if (active) {
-      const minutes = minutesSince(active.sortKey)
+    if (activeMine) {
+      const minutes = minutesSince(activeMine.sortKey)
       cta = {
         variant: 'cobrar',
         metaLabel: `EN SERVICIO · ${minutes} MIN`,
-        actionLabel: `Cobrar a ${active.row.customerName}`,
-        targetId: active.row.sourceId,
-        targetKind: active.row.sourceKind,
-        targetCustomerId: active.row.customerId,
+        actionLabel: `Cobrar a ${activeMine.row.customerName}`,
+        targetId: activeMine.row.sourceId,
+        targetKind: activeMine.row.sourceKind,
+        targetCustomerId: activeMine.row.customerId,
       }
     } else if (nextMine) {
       const isAppt = nextMine.row.sourceKind === 'appointment'

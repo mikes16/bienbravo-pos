@@ -94,6 +94,28 @@ const LOGOUT_MUTATION = graphql(`
   mutation PosLogout { logout }
 `)
 
+/**
+ * Estado en piso del barbero, derivado de TimeClockEvent + walk-ins/citas
+ * actuales. Sirve para la pantalla de selección de perfil:
+ *   - en_piso:        clocked-in + sin servicio activo (puede atender)
+ *   - en_servicio:    clocked-in + actualmente atendiendo
+ *   - fuera_de_turno: no ha marcado entrada hoy
+ *
+ * El POS lockscreen no bloquea el tap por status — cualquier barbero puede
+ * loguearse y luego clockear-in. Solo es info visible.
+ */
+export type PosBarberStatus = 'en_piso' | 'en_servicio' | 'fuera_de_turno'
+
+const BARBER_STATUSES_QUERY = graphql(`
+  query PosBarberStatuses($locationId: ID!) {
+    posAvailableBarbers(locationId: $locationId) {
+      id
+      hasClockedIn
+      isOccupied
+    }
+  }
+`)
+
 /* ── Interface ── */
 
 export interface AuthRepository {
@@ -101,6 +123,7 @@ export interface AuthRepository {
   pinLogin(email: string, pin4: string): Promise<PosViewer>
   logout(): Promise<void>
   getBarbers(locationId: string): Promise<PosStaffUser[]>
+  getBarberStatuses(locationId: string): Promise<Map<string, PosBarberStatus>>
   getLocations(): Promise<PosLocation[]>
   verifyLocationAccess(locationId: string, password: string): Promise<boolean>
   getPinLockoutStatus(email: string): Promise<PosPinLockoutStatus>
@@ -192,6 +215,31 @@ export class ApolloAuthRepository implements AuthRepository {
       fetchPolicy: 'network-only',
     })
     return data!.barbers.filter((b) => b.isActive).map(mapStaff)
+  }
+
+  async getBarberStatuses(locationId: string): Promise<Map<string, PosBarberStatus>> {
+    const { data } = await this.#client.query<{
+      posAvailableBarbers: { id: string; hasClockedIn: boolean; isOccupied: boolean }[]
+    }>({
+      query: BARBER_STATUSES_QUERY as never,
+      variables: { locationId },
+      fetchPolicy: 'network-only',
+    })
+    // posAvailableBarbers solo devuelve los que tienen actividad hoy
+    // (clocked-in en algún momento). Los que no aparecen → fuera_de_turno.
+    // El LockPage consume este Map por staff.id; los ausentes se derivan
+    // como fuera_de_turno por default.
+    const map = new Map<string, PosBarberStatus>()
+    for (const b of data?.posAvailableBarbers ?? []) {
+      if (!b.hasClockedIn) {
+        map.set(b.id, 'fuera_de_turno')
+      } else if (b.isOccupied) {
+        map.set(b.id, 'en_servicio')
+      } else {
+        map.set(b.id, 'en_piso')
+      }
+    }
+    return map
   }
 
   async getLocations(): Promise<PosLocation[]> {

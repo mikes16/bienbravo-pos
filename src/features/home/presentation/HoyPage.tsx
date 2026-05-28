@@ -6,9 +6,10 @@ import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
 import { POS_HOME_COMMISSION, POS_HOME_CAJA_STATUS } from '../data/home.queries'
-import { deriveHoyViewModel, type HoyViewModel } from './deriveHoyViewModel'
+import { deriveHoyViewModel, type HoyViewModel, type HoyRowData } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
 import { FinalizeWalkInSheet } from './FinalizeWalkInSheet'
+import { TakeWalkInSheet, type TakeWalkInTarget } from './TakeWalkInSheet'
 import { AddWalkInSheet } from '@/features/walkins/presentation/AddWalkInSheet'
 import { SkeletonRow } from '@/shared/pos-ui'
 import type { Appointment } from '@/features/agenda/domain/agenda.types'
@@ -43,6 +44,10 @@ export function HoyPage() {
   // operator picks "Finalizar" on the hijo row → confirms here → row drops.
   const [finalizeTarget, setFinalizeTarget] = useState<{ id: string; name: string } | null>(null)
   const [finalizing, setFinalizing] = useState(false)
+  // Tomar de la cola con salto: el operador tapeó un walk-in específico (no
+  // el primero FIFO). Confirmamos en sheet, ejecutamos assignWalkIn(viewer).
+  const [takeTarget, setTakeTarget] = useState<TakeWalkInTarget | null>(null)
+  const [taking, setTaking] = useState(false)
   const { addToast } = useToast()
 
   const refetch = useCallback(async () => {
@@ -191,6 +196,45 @@ export function HoyPage() {
     setFinalizeTarget({ id: walkInId, name: customerName })
   }, [])
 
+  // Operador tapeó una fila de cola. Construimos el target a partir de los
+  // metadatos que `deriveHoyViewModel` ya expuso en el row (preferred staff,
+  // wait minutes) + calculamos `isJumpingQueue` comparando la posición de
+  // este row contra el primer queue en `vm.rows`. Si es el primero, no es
+  // salto — es FIFO normal por tap directo.
+  const handleTakeQueueItem = useCallback((row: HoyRowData) => {
+    if (!vm || !viewer) return
+    const firstQueueIdx = vm.rows.findIndex((r) => r.kind === 'queue')
+    const myIdx = vm.rows.findIndex((r) => r.id === row.id)
+    const isJumping = firstQueueIdx !== -1 && myIdx !== -1 && myIdx > firstQueueIdx
+    const isMyPreference = row.queuePreferredStaffUserId === viewer.staff.id
+    const preferredOtherName =
+      row.queuePreferredStaffUserId && !isMyPreference ? row.queuePreferredStaffName ?? null : null
+    setTakeTarget({
+      id: row.sourceId,
+      name: row.customerName,
+      isMyPreference,
+      preferredOtherName,
+      waitMinutes: row.queueWaitMinutes ?? 0,
+      isJumpingQueue: isJumping,
+    })
+  }, [vm, viewer])
+
+  const confirmTake = useCallback(async () => {
+    if (!takeTarget || taking || !viewer) return
+    setTaking(true)
+    try {
+      await walkins.assign(takeTarget.id, viewer.staff.id)
+      addToast(`${takeTarget.name.split(' ')[0]} asignado a ti`, 'success')
+      setTakeTarget(null)
+      void refetch()
+    } catch (e) {
+      const msg = (e as { message?: string }).message ?? 'No se pudo tomar el walk-in.'
+      addToast(msg, 'error')
+    } finally {
+      setTaking(false)
+    }
+  }, [takeTarget, taking, viewer, walkins, addToast, refetch])
+
   const confirmFinalize = useCallback(async () => {
     if (!finalizeTarget || finalizing) return
     setFinalizing(true)
@@ -228,6 +272,7 @@ export function HoyPage() {
         onGateAction={handleGateAction}
         onAddWalkIn={() => setAddWalkInOpen(true)}
         onFinalizeWalkIn={handleFinalizeWalkIn}
+        onTakeQueueItem={handleTakeQueueItem}
         ctaBusy={ctaBusy}
       />
       {locationId && (
@@ -243,6 +288,12 @@ export function HoyPage() {
         submitting={finalizing}
         onConfirm={confirmFinalize}
         onClose={() => { if (!finalizing) setFinalizeTarget(null) }}
+      />
+      <TakeWalkInSheet
+        target={takeTarget}
+        submitting={taking}
+        onConfirm={confirmTake}
+        onClose={() => { if (!taking) setTakeTarget(null) }}
       />
     </>
   )

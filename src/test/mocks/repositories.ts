@@ -98,6 +98,10 @@ export class InMemoryAuthRepository implements AuthRepository {
     return this.#barbers
   }
 
+  async getBarberStatuses(_locationId: string): Promise<Map<string, 'en_piso' | 'en_servicio' | 'fuera_de_turno'>> {
+    return new Map()
+  }
+
   async getLocations(): Promise<PosLocation[]> {
     return [
       { id: 'loc-1', name: 'Sucursal Centro' },

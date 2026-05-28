@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Navigate, Outlet, useLocation as useRouterLocation } from 'react-router-dom'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
+import { useOperatorStatus } from '@/core/auth/useOperatorStatus.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import {
   StopwatchIcon,
@@ -23,9 +24,13 @@ function useLiveClock() {
 
 export function PosShell() {
   const { viewer, lock, isLocked, loading } = usePosAuth()
-  const { locationName } = useLocation()
+  const { locationName, locationId } = useLocation()
   const now = useLiveClock()
   const routerLoc = useRouterLocation()
+  // Hook llamado siempre (Rules of Hooks). Devuelve null cuando viewer aún
+  // no está disponible o sigue cargando — el header esconde el badge en
+  // ese hueco.
+  const operatorStatus = useOperatorStatus(viewer?.staff?.id ?? null, locationId)
 
   if (loading) return null
   if (!viewer || isLocked) return <Navigate to="/" replace />
@@ -48,7 +53,7 @@ export function PosShell() {
     <div className="flex h-full flex-col">
       <IdentityStripV2
         sucursalName={locationName ?? 'Sucursal'}
-        isOnline
+        operatorStatus={operatorStatus}
         now={now}
         staffName={viewer.staff.fullName}
         staffPhotoUrl={viewer.staff.photoUrl ?? null}

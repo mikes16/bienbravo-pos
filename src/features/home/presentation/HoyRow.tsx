@@ -49,6 +49,15 @@ export function HoyRow({
   const isActive = kind === 'active'
   const isNext = kind === 'next'
   const isQueue = kind === 'queue'
+  // Queue item con preferencia para el viewer: lo destacamos como "para ti".
+  // No es asignación (cualquiera puede tomarlo), pero el operador detecta de
+  // un vistazo los clientes que vinieron específicamente por él.
+  const isMineInQueue = isQueue && isMine
+  // Active asignado a otro barbero: se ve en la lista para que el operador
+  // tenga contexto del piso ("Javi está con Cliente Demo"), pero no debe
+  // tener el peso visual de "tu turno". Cae a tono leather/neutral.
+  const isActiveMine = isActive && isMine
+  const isActiveOther = isActive && !isMine
   const isInteractive = typeof onClick === 'function'
 
   // Render the row as a div whenever the trailing Finalizar button is shown —
@@ -63,21 +72,33 @@ export function HoyRow({
     <Tag
       {...interactiveProps}
       className={cn(
-        'grid w-full grid-cols-[100px_56px_1fr_auto] items-center gap-4 border-b border-[var(--color-leather-muted)]/40 px-5 py-3 text-left transition-colors',
-        isInteractive && 'cursor-pointer hover:bg-white/[0.02]',
-        isActive && 'border-l-[3px] border-l-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.06] pl-[calc(1.25rem-3px)]',
+        'group grid w-full grid-cols-[100px_56px_1fr_auto] items-center gap-4 border-b border-[var(--color-leather-muted)]/40 px-5 py-3 text-left transition-colors',
+        // Hover notorio en tappables — antes era muy sutil y no comunicaba
+        // affordance. Patrón Notion/Linear: bg shift visible al hover.
+        isInteractive && 'cursor-pointer hover:bg-white/[0.04]',
+        // Active de OTRO barbero: opacity reducida para empujarlo al fondo
+        // visual. Está ahí para contexto del piso, no para competir con las
+        // accionables. Patrón OpenTable host view / Booksy.
+        isActiveOther && 'opacity-55',
+        isActiveMine && 'border-l-[3px] border-l-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.06] pl-[calc(1.25rem-3px)]',
+        isActiveOther && 'border-l-[2px] border-l-[var(--color-leather)] bg-[var(--color-cuero-viejo)]/20 pl-[calc(1.25rem-2px)]',
         isNext && 'border-l-[2px] border-l-[var(--color-leather)] bg-[var(--color-cuero-viejo)]/30 pl-[calc(1.25rem-2px)]',
-        isQueue && 'bg-[var(--color-cuero-viejo)]/10',
+        isMineInQueue && 'border-l-[2px] border-l-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.05] pl-[calc(1.25rem-2px)]',
+        isQueue && !isMine && 'bg-[var(--color-cuero-viejo)]/10',
       )}
     >
       <span
         className={cn(
           'tabular-nums',
-          isActive
+          isActiveMine
             ? 'font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bravo)]'
-            : isQueue
-              ? 'font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-leather)]'
-              : 'font-mono text-[13px] font-bold tracking-[0.04em] text-[var(--color-bone-muted)]',
+            : isActiveOther
+              ? 'font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-leather)]'
+              : isMineInQueue
+                ? 'font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bravo)]'
+                : isQueue
+                  ? 'font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-leather)]'
+                  : 'font-mono text-[13px] font-bold tracking-[0.04em] text-[var(--color-bone-muted)]',
         )}
       >
         {timeLabel}
@@ -86,11 +107,15 @@ export function HoyRow({
       <div
         className={cn(
           'flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border bg-[var(--color-cuero-viejo)] text-[14px] font-bold text-[var(--color-bone)]',
-          isActive
+          isActiveMine
             ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.12] text-[var(--color-bravo)]'
-            : isQueue
-              ? 'border border-dashed border-[var(--color-leather)] text-[var(--color-leather)]'
-              : 'border-[var(--color-leather-muted)]',
+            : isActiveOther
+              ? 'border-[var(--color-leather)] bg-[var(--color-cuero-viejo)]/40 text-[var(--color-leather)]'
+              : isMineInQueue
+                ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bravo)]'
+                : isQueue
+                  ? 'border border-dashed border-[var(--color-leather)] text-[var(--color-leather)]'
+                  : 'border-[var(--color-leather-muted)]',
         )}
       >
         {customerPhotoUrl ? (
@@ -141,6 +166,18 @@ export function HoyRow({
           >
             Finalizar
           </button>
+        )}
+        {/* Chevron affordance: aparece solo si la fila es tappable (queue).
+            Always-visible (no solo on hover) para que funcione en tablet
+            touch. Color cambia al hover usando el group selector del row
+            para reforzar "tap me". Patrón Toast POS / OpenTable. */}
+        {isInteractive && !onFinalize && (
+          <span
+            aria-hidden
+            className="font-mono text-[16px] leading-none text-[var(--color-leather)] transition-colors group-hover:text-[var(--color-bone)]"
+          >
+            ›
+          </span>
         )}
       </div>
     </Tag>

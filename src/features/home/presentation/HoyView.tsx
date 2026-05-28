@@ -2,7 +2,7 @@ import { formatMoney } from '@/shared/lib/money'
 import { HoyRow } from './HoyRow'
 import { ContextualCTABar } from './ContextualCTABar'
 import { HoyGate } from './HoyGate'
-import type { HoyViewModel } from './deriveHoyViewModel'
+import type { HoyViewModel, HoyRowData } from './deriveHoyViewModel'
 
 interface HoyViewProps {
   vm: HoyViewModel
@@ -15,6 +15,12 @@ interface HoyViewProps {
    * Surfaced only for active walk-in rows.
    */
   onFinalizeWalkIn?: (walkInId: string, customerName: string) => void
+  /**
+   * Tap en una fila de cola: el operador quiere atender específicamente a
+   * ese walk-in (saltando el FIFO si no es el primero). HoyPage abre el
+   * sheet de confirmación con los datos del row.
+   */
+  onTakeQueueItem?: (row: HoyRowData) => void
   /** True while the CTA action is in-flight — dims + spinner on the bar. */
   ctaBusy?: boolean
 }
@@ -30,7 +36,7 @@ function commissionCaption(amountCents: number, serviceCount: number): string {
   return pluralizeServicios(serviceCount)
 }
 
-export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn, ctaBusy = false }: HoyViewProps) {
+export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn, onTakeQueueItem, ctaBusy = false }: HoyViewProps) {
   if (vm.gate) {
     return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
   }
@@ -81,11 +87,20 @@ export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeW
           </div>
         ) : (
           vm.rows.map((row) => {
-            const finalizable = row.kind === 'active' && row.sourceKind === 'walk-in' && onFinalizeWalkIn
+            // Finalizar es acción del dueño del walk-in. Si está asignado a
+            // otro barbero (no isMine), el viewer no debe verlo — sería
+            // simétrico al bug del CTA que cobraba lo de otro.
+            const finalizable = row.kind === 'active' && row.sourceKind === 'walk-in' && row.isMine && onFinalizeWalkIn
+            // Las filas en cola son tappables si el viewer puede tomarlas:
+            // un tap abre el sheet de confirmación que ejecuta el assign.
+            // Mutex con onFinalize: la fila tappable y el botón Finalizar son
+            // estados distintos (queue vs active), no chocan.
+            const takeable = row.kind === 'queue' && row.sourceKind === 'walk-in' && onTakeQueueItem
             return (
               <HoyRow
                 key={row.id}
                 {...row}
+                onClick={takeable ? () => onTakeQueueItem(row) : undefined}
                 onFinalize={finalizable ? () => onFinalizeWalkIn(row.sourceId, row.customerName) : undefined}
               />
             )

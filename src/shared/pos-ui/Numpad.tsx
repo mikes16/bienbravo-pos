@@ -9,21 +9,6 @@ interface NumpadProps {
   className?: string
 }
 
-const BackspaceIcon = () => (
-  <svg
-    aria-hidden
-    className="h-6 w-6"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-    strokeWidth={2}
-  >
-    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l4.5-4.5A2 2 0 019 7h11v10H9a2 2 0 01-1.5-.5L3 12z" />
-    <line strokeLinecap="round" x1="13" y1="10" x2="17" y2="14" />
-    <line strokeLinecap="round" x1="17" y1="10" x2="13" y2="14" />
-  </svg>
-)
-
 const NUMPAD_KEYS: { value: NumpadKey; label: string; aria: string }[] = [
   { value: '7', label: '7', aria: '7' },
   { value: '8', label: '8', aria: '8' },
@@ -37,13 +22,22 @@ const NUMPAD_KEYS: { value: NumpadKey; label: string; aria: string }[] = [
 ]
 
 /**
- * 3×4 numeric keypad with 72px keys. Last row: decimal (when allowed),
- * 0, backspace. Used for cash counts, money entry. Stateless — parent
- * receives every key press via onKey.
+ * 3×4 numeric keypad — "ghost keys" editorial premium. El chrome del botón
+ * desaparece en idle (sin border, bg = carbon-elevated apenas distinguible);
+ * el número monumental hace todo el peso visual. Hover/tap es el único
+ * momento donde el chrome se manifiesta:
+ *
+ *   - hover: bg cuero-viejo + número cambia a bone vibrante
+ *   - active (tap): scale-down 0.96 + bg cuero-viejo-hover + número bravo
+ *     por ~120ms para feedback visual instantáneo
+ *
+ * Patrón inspirado en Square POS / Stripe Terminal / iOS passcode: el peso
+ * visual es el número, no el contenedor. Spacing generoso (gap-4) deja que
+ * los números respiren — coherente con la voz editorial del resto.
  */
 export function Numpad({ onKey, allowDecimal = true, className }: NumpadProps) {
   return (
-    <div className={cn('grid grid-cols-3 gap-2', className)}>
+    <div className={cn('grid grid-cols-3 gap-4', className)}>
       {NUMPAD_KEYS.map((k) => (
         <NumpadButton key={k.value} onClick={() => onKey(k.value)} aria-label={k.aria}>
           {k.label}
@@ -54,13 +48,15 @@ export function Numpad({ onKey, allowDecimal = true, className }: NumpadProps) {
           .
         </NumpadButton>
       ) : (
-        <div />
+        <div aria-hidden />
       )}
       <NumpadButton onClick={() => onKey('0')} aria-label="0">
         0
       </NumpadButton>
-      <NumpadButton onClick={() => onKey('backspace')} aria-label="Borrar">
-        <BackspaceIcon />
+      <NumpadButton onClick={() => onKey('backspace')} aria-label="Borrar" variant="utility">
+        {/* Glyph editorial en vez de SVG cute. Coherente con el resto de
+            elementos mono del sistema (› ← ↓ etc.). */}
+        ⌫
       </NumpadButton>
     </div>
   )
@@ -70,20 +66,35 @@ interface NumpadButtonProps {
   onClick: () => void
   children: React.ReactNode
   'aria-label': string
+  /** "utility" achica la tipografía para el backspace glyph que es más
+      pequeño visualmente que un dígito display. */
+  variant?: 'digit' | 'utility'
 }
 
-function NumpadButton({ onClick, children, ...rest }: NumpadButtonProps) {
+function NumpadButton({ onClick, children, variant = 'digit', ...rest }: NumpadButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'flex h-[var(--pos-touch-numpad)] w-[var(--pos-touch-numpad)] items-center justify-center',
-        'border border-[var(--color-leather-muted)] bg-[var(--color-cuero-viejo)]',
-        'font-[var(--font-pos-display)] text-[30px] font-extrabold text-[var(--color-bone)]',
-        'transition-colors duration-[var(--duration-pos-tap)]',
-        'hover:bg-[var(--color-cuero-viejo-hover)]',
-        'active:bg-[var(--color-cuero-viejo-hover)]',
+        // Geometría: ghost key — sin border, bg apenas distinguible del
+        // carbon de fondo. Sharp corners coherentes con sistema.
+        'group relative flex h-[var(--pos-touch-numpad)] w-[var(--pos-touch-numpad)] items-center justify-center',
+        'bg-[var(--color-carbon-elevated)]',
+        'font-[var(--font-pos-display)] font-extrabold leading-none tracking-[-0.02em] text-[var(--color-bone)]',
+        // Tamaños distintos para dígito vs utility glyph (backspace).
+        variant === 'digit' ? 'text-[44px]' : 'text-[28px] text-[var(--color-bone-muted)]',
+        // Transiciones rápidas — el chrome aparece y desaparece sin pesar.
+        'cursor-pointer transition-all duration-150',
+        // Hover state: bg shift + número se ilumina (utility queda muted).
+        variant === 'digit'
+          ? 'hover:bg-[var(--color-cuero-viejo)]'
+          : 'hover:bg-[var(--color-cuero-viejo)] hover:text-[var(--color-bone)]',
+        // Active (tap): scale-down + bg más fuerte + (para dígitos) número bravo.
+        'active:scale-[0.96]',
+        variant === 'digit'
+          ? 'active:bg-[var(--color-cuero-viejo-hover)] active:text-[var(--color-bravo)]'
+          : 'active:bg-[var(--color-cuero-viejo-hover)]',
       )}
       {...rest}
     >

@@ -1,3 +1,6 @@
+import { StatusBadge, type StatusTone } from '@/shared/pos-ui'
+import type { PosBarberStatus } from '@/core/auth/auth.repository'
+
 // Inline padlock — Material Symbols was being loaded just for this one icon.
 function LockIcon({ className }: { className?: string }) {
   return (
@@ -11,11 +14,36 @@ function LockIcon({ className }: { className?: string }) {
 interface IdentityStripV2Props {
   brand?: string
   sucursalName: string
-  isOnline: boolean
+  /**
+   * Status laboral del operador logueado:
+   *  - 'en_piso'        → clocked-in y libre (puede atender)
+   *  - 'en_servicio'    → atendiendo a un cliente ahora
+   *  - 'fuera_de_turno' → no ha marcado entrada hoy
+   *  - null             → loading (badge se esconde)
+   *
+   * Mismo lenguaje semántico que el lock roster — el operador ve en el
+   * header su mismo estado de las cards.
+   */
+  operatorStatus: PosBarberStatus | null
   now: Date
   staffName: string
   staffPhotoUrl: string | null
   onLock: () => void
+}
+
+/**
+ * Mapea el status semántico del operador al tono + label del StatusBadge
+ * shared. Mantiene el componente de presentación libre del dominio.
+ */
+function statusToBadge(status: PosBarberStatus): { tone: StatusTone; label: string } {
+  switch (status) {
+    case 'en_piso':
+      return { tone: 'active', label: 'En piso' }
+    case 'en_servicio':
+      return { tone: 'busy', label: 'En servicio' }
+    case 'fuera_de_turno':
+      return { tone: 'inactive', label: 'Sin turno' }
+  }
 }
 
 function getInitials(name: string): string {
@@ -31,7 +59,7 @@ function getInitials(name: string): string {
 export function IdentityStripV2({
   brand = 'BIENBRAVO',
   sucursalName,
-  isOnline,
+  operatorStatus,
   now,
   staffName,
   staffPhotoUrl,
@@ -57,12 +85,15 @@ export function IdentityStripV2({
       </div>
 
       <div className="flex items-center gap-3 sm:gap-4">
-        {isOnline && (
-          <span className="hidden items-center gap-1.5 border border-[var(--color-success)]/40 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-success)] sm:flex">
-            <span aria-hidden className="h-1.5 w-1.5 bg-[var(--color-success)]" />
-            ONLINE
-          </span>
-        )}
+        {/* Operator status badge — refleja el status laboral del barbero
+            logueado: en piso / en servicio / sin turno. Mismo lenguaje
+            semántico que las cards del lock roster — el operador ve su
+            propio estado con el mismo dialecto visual. Si aún no carga,
+            esconde el badge (no muestra placeholder confuso). */}
+        {operatorStatus && (() => {
+          const { tone, label } = statusToBadge(operatorStatus)
+          return <StatusBadge tone={tone} label={label} className="hidden sm:flex" />
+        })()}
         <div className="text-right">
           <p className="text-[14px] font-bold leading-none tabular-nums text-[var(--color-bone)]">{timeStr}</p>
           <p className="mt-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">

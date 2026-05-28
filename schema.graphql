@@ -551,7 +551,8 @@ input CreateWalkInPublicInput {
   customerPhone: String!
   locationSlug: String!
   preferredStaffUserId: ID
-  requestedServiceId: ID!
+  requestedServiceId: ID
+  requestedServiceIds: [ID!]
 }
 
 type Customer {
@@ -2292,6 +2293,7 @@ type ViewerLocationScope {
 }
 
 type WalkIn {
+  assignedAt: DateTime
   assignedStaffUser: StaffUser
   createdAt: DateTime!
   customer: Customer

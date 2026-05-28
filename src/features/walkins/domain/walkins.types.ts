@@ -7,6 +7,11 @@ export interface WalkIn {
   customerPhone: string | null
   customerEmail: string | null
   createdAt: string
+  // Timestamp del paso PENDING → ASSIGNED. Permite medir tiempo en servicio
+  // separado del tiempo total de espera (createdAt → ahora). Null hasta que
+  // el walk-in se asigna; siempre presente cuando status === 'ASSIGNED' o
+  // 'DONE'.
+  assignedAt?: string | null
   assignedStaffUser: { id: string; fullName: string } | null
   customer: { id: string; fullName: string; email: string | null; phone: string | null } | null
   preferredStaffUserId?: string | null

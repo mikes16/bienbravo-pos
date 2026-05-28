@@ -5,7 +5,7 @@ import type { WalkIn } from '../domain/walkins.types.ts'
 const WALKINS_QUERY = graphql(`
   query PosWalkIns($locationId: ID!) {
     walkIns(locationId: $locationId) {
-      id status customerName customerPhone customerEmail createdAt sortOrder pausedAt
+      id status customerName customerPhone customerEmail createdAt assignedAt sortOrder pausedAt
       assignedStaffUser { id fullName }
       customer { id fullName email phone }
       preferredStaffUserId

@@ -90,7 +90,7 @@ describe('PinEntryView', () => {
         onBack={() => {}}
       />,
     )
-    expect(screen.getByText(/ingresa tu pin/i)).toBeInTheDocument()
+    expect(screen.getByText(/pin de acceso/i)).toBeInTheDocument()
     for (const d of ['1', '2', '3', '4']) {
       await user.click(screen.getByRole('button', { name: d }))
     }

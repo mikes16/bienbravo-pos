@@ -45,7 +45,7 @@ describe('PairingView', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Centro' }))
     await user.type(screen.getByPlaceholderText('Contraseña de sucursal'), 'secret123')
-    await user.click(screen.getByRole('button', { name: 'Continuar' }))
+    await user.click(screen.getByRole('button', { name: /parear ipad/i }))
     expect(onPair).toHaveBeenCalledWith('loc1', 'secret123')
   })
 
@@ -56,7 +56,7 @@ describe('PairingView', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Centro' }))
     await user.type(screen.getByPlaceholderText('Contraseña de sucursal'), 'wrong')
-    await user.click(screen.getByRole('button', { name: 'Continuar' }))
+    await user.click(screen.getByRole('button', { name: /parear ipad/i }))
     expect(await screen.findByText(/contraseña incorrecta/i)).toBeInTheDocument()
   })
 
@@ -66,7 +66,7 @@ describe('PairingView', () => {
       <PairingView locations={SAMPLE_LOCATIONS} loading={false} onPair={async () => true} />,
     )
     await user.click(screen.getByRole('button', { name: 'Centro' }))
-    await user.click(screen.getByRole('button', { name: 'Cambiar sucursal' }))
+    await user.click(screen.getByRole('button', { name: /otra sucursal/i }))
     expect(screen.getByRole('button', { name: 'Centro' })).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('Contraseña de sucursal')).not.toBeInTheDocument()
   })
@@ -84,7 +84,7 @@ describe('PairingView', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Centro' }))
     await user.type(screen.getByPlaceholderText('Contraseña de sucursal'), 'whatever')
-    await user.click(screen.getByRole('button', { name: 'Continuar' }))
+    await user.click(screen.getByRole('button', { name: /parear ipad/i }))
     expect(await screen.findByText(/no se pudo validar/i)).toBeInTheDocument()
   })
 })

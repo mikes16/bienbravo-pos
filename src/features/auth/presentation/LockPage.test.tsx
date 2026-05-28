@@ -47,7 +47,7 @@ describe('LockPage state machine', () => {
     renderWithProviders(<LockPage />, {
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    expect(await screen.findByText(/selecciona la sucursal/i)).toBeInTheDocument()
+    expect(await screen.findByText(/asigna este ipad/i)).toBeInTheDocument()
   })
 
   it('starts in BARBER_SELECTOR when localStorage has locationId', async () => {
@@ -55,7 +55,7 @@ describe('LockPage state machine', () => {
     renderWithProviders(<LockPage />, {
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    expect(await screen.findByText(/selecciona tu perfil/i)).toBeInTheDocument()
+    expect(await screen.findByText(/juan pérez/i)).toBeInTheDocument()
   })
 
   it('starts in PIN_ENTRY when localStorage has locationId AND last-barber-id', async () => {
@@ -64,7 +64,7 @@ describe('LockPage state machine', () => {
     renderWithProviders(<LockPage />, {
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    expect(await screen.findByText(/ingresa tu pin/i)).toBeInTheDocument()
+    expect(await screen.findByText(/pin de acceso/i)).toBeInTheDocument()
   })
 
   it('transitions BARBER_SELECTOR → PIN_ENTRY on barber tap', async () => {
@@ -74,7 +74,7 @@ describe('LockPage state machine', () => {
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
     await user.click(await screen.findByRole('button', { name: /juan pérez/i }))
-    expect(await screen.findByText(/ingresa tu pin/i)).toBeInTheDocument()
+    expect(await screen.findByText(/pin de acceso/i)).toBeInTheDocument()
   })
 
   it('transitions PAIRING → BARBER_SELECTOR on successful pairing', async () => {
@@ -86,9 +86,9 @@ describe('LockPage state machine', () => {
     await user.click(await screen.findByRole('button', { name: 'Centro' }))
     // Password step
     await user.type(screen.getByPlaceholderText('Contraseña de sucursal'), 'right')
-    await user.click(screen.getByRole('button', { name: 'Continuar' }))
+    await user.click(screen.getByRole('button', { name: /parear ipad/i }))
     // Should arrive at BARBER_SELECTOR
-    expect(await screen.findByText(/selecciona tu perfil/i)).toBeInTheDocument()
+    expect(await screen.findByText(/juan pérez/i)).toBeInTheDocument()
     expect(window.localStorage.getItem('bb-pos-location-id')).toBe('loc1')
   })
 
@@ -109,7 +109,7 @@ describe('LockPage state machine', () => {
       repos: { ...createMockRepositories(), auth: new LockedAuthRepo() },
     })
     // Wait for PIN_ENTRY to appear
-    await screen.findByText(/ingresa tu pin/i)
+    await screen.findByText(/pin de acceso/i)
     // Enter a 4-digit PIN via the keypad
     for (const d of ['1', '2', '3', '4']) {
       await user.click(screen.getByRole('button', { name: d }))
@@ -134,7 +134,7 @@ describe('LockPage state machine', () => {
     window.localStorage.setItem('bb-pos-last-barber-id', 'b1')
     const user = userEvent.setup()
     renderWithProviders(<LockPage />, { repos: { ...createMockRepositories(), auth: new InvalidPinAuth() } })
-    await screen.findByText(/ingresa tu pin/i)
+    await screen.findByText(/pin de acceso/i)
     for (const d of ['1', '2', '3', '4']) {
       await user.click(screen.getByRole('button', { name: d }))
     }

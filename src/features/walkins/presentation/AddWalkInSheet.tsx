@@ -26,6 +26,17 @@ interface AddWalkInSheetProps {
   onCreated: () => void
 }
 
+/**
+ * Decisión primaria del operador. Una sola intención por walk-in — antes
+ * eran dos campos que podían contradecirse (preferred=Javi + asignar=Alan).
+ * Ahora:
+ *   - 'queue'     → cola; selectedBarberId es preferencia opcional (espera a X)
+ *   - 'serve_now' → asignación inmediata; selectedBarberId es OBLIGATORIO
+ *                   y se persiste también como preferencia (lo pidió a X o
+ *                   tomó al primer libre — en ambos casos coherente).
+ */
+type FlowMode = 'queue' | 'serve_now'
+
 export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalkInSheetProps) {
   const { walkins, checkout } = useRepositories()
   const { addToast } = useToast()
@@ -33,10 +44,15 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
   const [phone, setPhone] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null)
   const [searchResults, setSearchResults] = useState<CustomerResult[]>([])
-  const [barbers, setBarbers] = useState<BarberResult[]>([])
+  // Todos los barberos clocked-in en la sucursal. Cada uno trae `isOccupied`
+  // para que el renderer decida si es seleccionable en 'serve_now' (debe estar
+  // libre) o si solo es preferencia (puede estar ocupado, el cliente espera).
   const [allBarbers, setAllBarbers] = useState<BarberResult[]>([])
+  const [mode, setMode] = useState<FlowMode>('queue')
+  // En 'queue' es la preferencia (opcional). En 'serve_now' es el asignado
+  // (obligatorio para poder submit). Un solo campo, dos significados según
+  // el modo — coherente porque el modo lo dicta el operador arriba.
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null)
-  const [preferredStaffUserId, setPreferredStaffUserId] = useState<string | null>(null)
   const [services, setServices] = useState<CatalogService[]>([])
   const [combos, setCombos] = useState<CatalogCombo[]>([])
   const [categories, setCategories] = useState<CatalogCategory[]>([])
@@ -52,13 +68,24 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setPhone('')
     setSelectedCustomer(null)
     setSearchResults([])
+    setMode('queue')
     setSelectedBarberId(null)
-    setPreferredStaffUserId(null)
     setSelectedCategoryId(null)
     setSelection({ kind: 'empty' })
     setSubmitting(false)
     setError(null)
   }, [open])
+
+  // Cambiar de modo limpia la selección de barbero — los criterios cambian
+  // (lista de "libres ahora" vs "cualquiera clocked-in") y un id válido en
+  // un modo puede no serlo en el otro. Mejor pedirle al operador que vuelva
+  // a elegir explícitamente.
+  function handleModeChange(next: FlowMode) {
+    if (next === mode) return
+    setMode(next)
+    setSelectedBarberId(null)
+    setError(null)
+  }
 
   // Load the location's barbers + services + combos + categories once the sheet
   // opens. cache-first under the hood, so reopening is instant.
@@ -76,10 +103,8 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     ])
       .then(([b, s, c, cats]) => {
         if (cancelled) return
-        // For immediate assignment ("Asignar a"): only free, clocked-in barbers.
-        setBarbers(b.filter((bb) => bb.hasClockedIn && !bb.isOccupied))
-        // For preferred barber ("Barbero preferido"): any clocked-in barber, even
-        // if occupied — the customer is willing to wait for them.
+        // Single set para ambos modos. El renderer (BarberRow) decide
+        // selectable vs disabled en base a `isOccupied` + modo actual.
         setAllBarbers(b.filter((bb) => bb.hasClockedIn))
         // Only show non-add-on services in the picker (add-ons are upsells, not
         // standalone visit reasons).
@@ -91,22 +116,30 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     return () => { cancelled = true }
   }, [open, locationId, checkout])
 
-  // Debounced customer search as the operator types — only when not already linked.
+  // Debounced customer search — dispara desde nombre O teléfono. El operador
+  // POS típicamente conoce al cliente por el celular ("el que es el 8440000"),
+  // así que esperar a que escriba el nombre completo es un trip-hazard. Watch
+  // ambos campos: el primero que cumpla el threshold del API dispara.
+  // API: nombre/email ≥ 2 chars; phone ≥ 4 dígitos (customer.resolver.ts:115).
   useEffect(() => {
     if (selectedCustomer) return
-    const q = name.trim()
-    if (q.length < 2) {
+    const nameQuery = name.trim()
+    const phoneDigits = phone.replace(/\D/g, '')
+    // Preferimos el teléfono si tiene 4+ dígitos: es identificador único en
+    // la práctica y evita ambigüedad de homónimos.
+    const query = phoneDigits.length >= 4 ? phoneDigits : nameQuery.length >= 2 ? nameQuery : ''
+    if (!query) {
       setSearchResults([])
       return
     }
     let cancelled = false
     const t = setTimeout(() => {
-      checkout.searchCustomers(q).then((res) => {
+      checkout.searchCustomers(query).then((res) => {
         if (!cancelled) setSearchResults(res.slice(0, 5))
       }).catch(() => {})
     }, 220)
     return () => { cancelled = true; clearTimeout(t) }
-  }, [name, selectedCustomer, checkout])
+  }, [name, phone, selectedCustomer, checkout])
 
   if (!open) return null
 
@@ -143,9 +176,21 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       setError('Selecciona al menos un servicio o un combo')
       return
     }
+    // 'serve_now' exige barbero — la decisión "atender ya" es vacía sin un
+    // ejecutor. Si llegamos aquí sin uno, es bug de UI (CTA debería estar
+    // deshabilitado), pero validamos por seguridad.
+    if (mode === 'serve_now' && !selectedBarberId) {
+      setError('Elige un barbero para empezar el servicio')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
+      // En 'serve_now' el barbero es a la vez asignado y preferido: el cliente
+      // lo pidió o tomó al primer libre — en ambos casos la preferencia queda
+      // registrada coherentemente. En 'queue', el barbero (si hay) es solo
+      // preferencia.
+      const preferredId = selectedBarberId
       const created = await walkins.create({
         locationId,
         customerId: selectedCustomer?.id ?? null,
@@ -156,13 +201,13 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         requestedServiceIds: selection.kind === 'services' ? selection.ids : null,
         requestedServiceId: null,
         requestedCatalogComboId: selection.kind === 'combo' ? selection.id : null,
-        preferredStaffUserId: preferredStaffUserId || null,
+        preferredStaffUserId: preferredId || null,
       })
       let assignedBarberName: string | null = null
-      if (selectedBarberId) {
+      if (mode === 'serve_now' && selectedBarberId) {
         try {
           await walkins.assign(created.id, selectedBarberId)
-          assignedBarberName = barbers.find((b) => b.id === selectedBarberId)?.fullName.split(' ')[0] ?? null
+          assignedBarberName = allBarbers.find((b) => b.id === selectedBarberId)?.fullName.split(' ')[0] ?? null
         } catch {
           // Walk-in landed; assignment failed. Still treat as success and let the
           // operator claim it from the queue manually.
@@ -176,12 +221,14 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       if (resetForCompanion) {
         // Clear per-person fields. Keep barber + service + category — the
         // agenda needs the service to know cut duration, and families share
-        // both the barber and the cut nine times out of ten. The operator
-        // can still tap a different service if this companion needs one.
+        // both the barber and the cut nine times out of ten. El acompañante
+        // siempre va a cola (no tendría sentido asignar al mismo barbero dos
+        // clientes simultáneamente), así que forzamos mode='queue' aquí.
         setName('')
         setPhone('')
         setSelectedCustomer(null)
         setSearchResults([])
+        setMode('queue')
         setSubmitting(false)
         setError(null)
       } else {
@@ -189,13 +236,26 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       }
     } catch (err) {
       if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
         console.error('[AddWalkInSheet] create failed', err)
       }
       setError('No se pudo crear el walk-in. Reintenta.')
       setSubmitting(false)
     }
   }
+
+  // Una sola lista para ambos modos: todos los clocked-in (libres + ocupados).
+  // En 'queue' los ocupados son seleccionables (el cliente puede esperar). En
+  // 'serve_now' los renderizamos disabled como hint visual del estado del
+  // piso, no ocultos — el operador necesita ver quién está ocupado para
+  // entender por qué no hay más opciones libres.
+  const selectedBarberName = selectedBarberId
+    ? allBarbers.find((b) => b.id === selectedBarberId)?.fullName.split(' ')[0] ?? null
+    : null
+  const canSubmit =
+    !submitting &&
+    !!name.trim() &&
+    !(selection.kind === 'empty' || (selection.kind === 'services' && selection.ids.length === 0)) &&
+    (mode === 'queue' || !!selectedBarberId)
 
   return (
     <div
@@ -250,12 +310,12 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Nombre o búsqueda…"
+                placeholder="Nombre o teléfono…"
                 className="border border-[var(--color-leather-muted)] bg-[var(--color-carbon)] px-3 py-2 text-[15px] font-bold text-[var(--color-bone)] outline-none focus:border-[var(--color-bravo)]"
               />
             )}
 
-            {!selectedCustomer && name.trim().length >= 2 && (
+            {!selectedCustomer && (name.trim().length >= 2 || phone.replace(/\D/g, '').length >= 4) && (
               <div className="flex flex-col border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon)]">
                 {searchResults.length > 0 ? (
                   searchResults.map((c) => (
@@ -275,7 +335,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
                   ))
                 ) : (
                   <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-leather-muted)]">
-                    Sin coincidencias · se creará nuevo cliente con este nombre
+                    Sin coincidencias · se creará cliente nuevo
                   </div>
                 )}
               </div>
@@ -306,83 +366,76 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             onSelectionChange={setSelection}
           />
 
-          {/* Preferred barber — customer's wish, independent of "Asignar a".
-              "Asignar a" decides who takes the cut now; this records the
-              barber the customer specifically asked for, so the queue can
-              keep them waiting only for that person. Selecting a preferred
-              barber does NOT auto-assign — the walk-in stays in the queue
-              with the preference recorded for the suggestion engine. */}
-          <div className="flex flex-col gap-2">
+          {/* ─── Decisión primaria ─────────────────────────────────────────
+              Antes había dos campos paralelos ("Barbero preferido" + "Asignar
+              a") que podían contradecirse: el cliente pedía a Javi pero el
+              operador lo asignaba a Alan sin warning. Ahora una sola decisión
+              arriba ("¿cola o ya?") gobierna la siguiente sección y el verbo
+              del CTA — imposible contradicción por construcción.
+              Patrón inspirado en Toast / Booksy: el operador escoge primero
+              la intención, después el detalle. */}
+          <div className="flex flex-col gap-3 border-t border-[var(--color-leather-muted)]/40 pt-4">
             <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-              Barbero preferido · opcional
+              ¿Qué hacemos con el cliente?
             </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setPreferredStaffUserId(null)}
-                className={cn(
-                  'cursor-pointer border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
-                  preferredStaffUserId === null
-                    ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
-                    : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
-                )}
-              >
-                Sin preferencia
-              </button>
-              {allBarbers.map((b) => (
-                <button
-                  key={`pref-${b.id}`}
-                  type="button"
-                  onClick={() => setPreferredStaffUserId(b.id)}
-                  className={cn(
-                    'cursor-pointer border px-3 py-2 text-[12px] font-bold',
-                    preferredStaffUserId === b.id
-                      ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
-                      : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
-                  )}
-                >
-                  {b.fullName.split(' ')[0]}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-2">
+              <ModeOption
+                active={mode === 'queue'}
+                onClick={() => handleModeChange('queue')}
+                title="En cola"
+                subtitle="Espera su turno"
+              />
+              <ModeOption
+                active={mode === 'serve_now'}
+                onClick={() => handleModeChange('serve_now')}
+                title="Atiende ya"
+                subtitle="Con un barbero libre"
+              />
             </div>
-            <p className="text-[11px] text-[var(--color-bone-muted)]">
-              Si el cliente pide un barbero específico, queda esperando solo a él. Si no, cualquier barbero libre puede atenderlo.
-            </p>
           </div>
 
-          {/* Barber selector */}
+          {/* ─── Selector mutante de barbero ───────────────────────────────
+              Una sola lista que cambia label, contenido y semántica según el
+              modo elegido arriba:
+                • 'queue'     → preferencia opcional; "Sin preferencia" por
+                                default; muestra TODOS los clocked-in (incluso
+                                ocupados, porque el cliente puede esperar).
+                • 'serve_now' → asignación obligatoria; "Sin preferencia" no
+                                existe; ocupados aparecen disabled como hint
+                                visual del estado del piso (mejor que ocultarlos
+                                para que el operador entienda por qué no hay
+                                más opciones). */}
           <div className="flex flex-col gap-2">
             <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-              Asignar a · opcional
+              {mode === 'queue' ? 'Espera a · opcional' : 'Quién lo atiende'}
             </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedBarberId(null)}
-                className={cn(
-                  'cursor-pointer border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
-                  selectedBarberId === null
-                    ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
-                    : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
-                )}
-              >
-                Cola general
-              </button>
-              {barbers.map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => setSelectedBarberId(b.id)}
-                  className={cn(
-                    'cursor-pointer border px-3 py-2 text-[12px] font-bold',
-                    selectedBarberId === b.id
-                      ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
-                      : 'border-[var(--color-leather-muted)] text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)]',
-                  )}
-                >
-                  {b.fullName.split(' ')[0]}
-                </button>
-              ))}
+            <div className="flex flex-col">
+              {mode === 'queue' && (
+                <BarberRow
+                  label="Sin preferencia"
+                  hint="cualquier barbero libre"
+                  active={selectedBarberId === null}
+                  onClick={() => setSelectedBarberId(null)}
+                />
+              )}
+              {allBarbers.map((b) => {
+                const occupied = b.isOccupied
+                const disabled = mode === 'serve_now' && occupied
+                const isActive = selectedBarberId === b.id
+                return (
+                  <BarberRow
+                    key={`barber-${b.id}`}
+                    label={b.fullName.split(' ')[0]}
+                    hint={occupied ? 'ocupado' : 'libre'}
+                    active={isActive}
+                    disabled={disabled}
+                    onClick={() => {
+                      if (disabled) return
+                      setSelectedBarberId(b.id)
+                    }}
+                  />
+                )
+              })}
             </div>
           </div>
 
@@ -397,29 +450,152 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
               variant="primary"
               size="primary"
               onClick={() => handleSubmit(false)}
-              disabled={submitting || !name.trim() || selection.kind === 'empty' || (selection.kind === 'services' && selection.ids.length === 0)}
+              disabled={!canSubmit}
               className="w-full rounded-none uppercase tracking-[0.06em]"
             >
-              {submitting ? 'Agregando…' : 'Agregar walk-in →'}
+              {submitting
+                ? 'Agregando…'
+                : mode === 'serve_now'
+                  ? selectedBarberName
+                    ? `Atiende ya con ${selectedBarberName} →`
+                    : 'Elige un barbero para empezar'
+                  : selectedBarberName
+                    ? `Agregar a cola · espera a ${selectedBarberName} →`
+                    : 'Agregar a cola →'}
             </TouchButton>
-            {/* Companion CTA — kept visually subordinate but pushed clear of the
-                primary tap area: 24px breathing room + 44px min touch target
-                (Apple/Material). Hairline divider sells the separation visually
-                so a tablet finger never lands here by accident. */}
-            <div className="mt-6 border-t border-[var(--color-leather-muted)]/40 pt-3">
-              <button
-                type="button"
-                onClick={() => handleSubmit(true)}
-                disabled={submitting || !name.trim() || selection.kind === 'empty' || (selection.kind === 'services' && selection.ids.length === 0)}
-                className="block min-h-[44px] w-full cursor-pointer px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] underline-offset-4 hover:text-[var(--color-bone)] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Agregar y otro acompañante →
-              </button>
-            </div>
+            {/* Companion CTA — solo aparece en modo 'queue'. En 'serve_now' no
+                tiene sentido: el primer cliente ya está ocupando al barbero,
+                el acompañante naturalmente va a cola. Si el operador necesita
+                registrar al acompañante con asignación inmediata a otro
+                barbero, abre un walk-in nuevo manualmente — flujo explícito.
+                Tap target 44px+ con divider para evitar fat-finger. */}
+            {mode === 'queue' && (
+              <div className="mt-6 border-t border-[var(--color-leather-muted)]/40 pt-3">
+                <button
+                  type="button"
+                  onClick={() => handleSubmit(true)}
+                  disabled={!canSubmit}
+                  className="block min-h-[44px] w-full cursor-pointer px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] underline-offset-4 hover:text-[var(--color-bone)] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Agregar y otro acompañante →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * ModeOption — un cuadrante del segmented control "¿qué hacemos?".
+ *
+ * Sharp corners, sin radius. La barra de cuero a la izquierda del activo da
+ * el peso editorial — más legible que un fill plano y reusa el patrón que ya
+ * tenemos en otras filas seleccionadas del POS. Min-height 64px para que
+ * sobre dedo grueso en tablet sin riesgo de fat-finger entre opciones.
+ * ────────────────────────────────────────────────────────────────────────── */
+function ModeOption({
+  active,
+  onClick,
+  title,
+  subtitle,
+}: {
+  active: boolean
+  onClick: () => void
+  title: string
+  subtitle: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'group relative flex min-h-[64px] cursor-pointer flex-col items-start justify-center gap-1 border px-4 py-3 text-left transition-colors',
+        active
+          ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08]'
+          : 'border-[var(--color-leather-muted)] hover:bg-[var(--color-cuero-viejo)]',
+      )}
+    >
+      {/* Barra cuero vertical en activo — cita visual al pattern de "fila
+          seleccionada" del resto del POS para que el operador lo lea como
+          "elegido", no como decoración. */}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-[3px] bg-[var(--color-bravo)]"
+        />
+      )}
+      <span
+        className={cn(
+          'font-[var(--font-pos-display)] text-[15px] font-extrabold uppercase tracking-[-0.01em]',
+          active ? 'text-[var(--color-bone)]' : 'text-[var(--color-bone-muted)] group-hover:text-[var(--color-bone)]',
+        )}
+      >
+        {title}
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+        {subtitle}
+      </span>
+    </button>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * BarberRow — fila del selector mutante.
+ *
+ * Vertical (no chip wrap) porque acomoda 6-8 barberos sin overflow y deja
+ * espacio para el hint (libre/ocupado). Sharp corners + divider hairline.
+ * Disabled rendea con opacity y cursor-not-allowed pero NO oculta la fila —
+ * el operador necesita ver quién está ocupado para entender el estado del
+ * piso, no esconderlo.
+ * ────────────────────────────────────────────────────────────────────────── */
+function BarberRow({
+  label,
+  hint,
+  active,
+  disabled = false,
+  onClick,
+}: {
+  label: string
+  hint: string
+  active: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={cn(
+        'group relative flex min-h-[52px] items-center justify-between gap-3 border-x border-b border-[var(--color-leather-muted)]/60 px-4 py-2.5 text-left transition-colors first:border-t',
+        disabled && 'cursor-not-allowed opacity-30',
+        !disabled && !active && 'cursor-pointer hover:bg-[var(--color-cuero-viejo)]',
+        active && 'cursor-pointer border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08]',
+      )}
+    >
+      {active && (
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-[3px] bg-[var(--color-bravo)]"
+        />
+      )}
+      <span
+        className={cn(
+          'text-[14px] font-bold',
+          active ? 'text-[var(--color-bone)]' : 'text-[var(--color-bone-muted)] group-hover:text-[var(--color-bone)]',
+        )}
+      >
+        {label}
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+        {hint}
+      </span>
+    </button>
   )
 }
 

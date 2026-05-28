@@ -89,7 +89,10 @@ describe('deriveHoyViewModel', () => {
     )
     expect(vm.rows).toHaveLength(1)
     expect(vm.rows[0].customerName).toBe('Carlos')
-    expect(vm.rows[0].pillLabel).toMatch(/walk-in/i)
+    // Pill ahora cuenta el estado: walk-in asignado al viewer → "En servicio"
+    // (en vez del genérico "Walk-in" anterior). Comunica acción posible.
+    expect(vm.rows[0].pillLabel).toMatch(/en servicio/i)
+    expect(vm.rows[0].pillTone).toBe('serving')
   })
 
   it('walk-in assigned to OTHER staff is included with isMine=false and assignedToName', () => {
@@ -111,6 +114,11 @@ describe('deriveHoyViewModel', () => {
     expect(vm.rows).toHaveLength(1)
     expect(vm.rows[0].isMine).toBe(false)
     expect(vm.rows[0].assignedToName).toBe('Luis')
+    // Pill cuenta el dueño cuando no es del viewer — "Atiende Luis" en tono
+    // leather (no bravo). Antes decía genérico "Walk-in" en bravo, lo que
+    // gritaba al operador "actúa aquí" cuando justo no debía.
+    expect(vm.rows[0].pillLabel).toMatch(/atiende luis/i)
+    expect(vm.rows[0].pillTone).toBe('walkin')
   })
 
   it('PENDING walk-in (queue, unassigned) is included as kind=queue', () => {

@@ -66,7 +66,10 @@ export function PinKeypad({ length, onComplete, disabled = false, className }: P
 
   return (
     <div className={cn('flex flex-col items-center gap-8', className)}>
-      <div className="flex gap-3">
+      {/* Dots → cuadrados sharp con voice editorial. Filled cambia el bg a
+          bravo; empty queda con border leather hairline. Coherente con
+          sharp 0px geometry del resto del sistema. */}
+      <div className="flex items-end gap-3">
         {Array.from({ length }).map((_, i) => {
           const filled = i < digits.length
           return (
@@ -74,7 +77,7 @@ export function PinKeypad({ length, onComplete, disabled = false, className }: P
               key={i}
               data-pin-dot={filled ? 'filled' : 'empty'}
               className={cn(
-                'h-4 w-4 rounded-full border-2 transition-colors duration-[var(--duration-pos-tap)]',
+                'h-3 w-3 border transition-colors duration-[var(--duration-pos-tap)]',
                 filled
                   ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]'
                   : 'border-[var(--color-leather-muted)] bg-transparent',

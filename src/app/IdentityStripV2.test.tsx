@@ -5,7 +5,7 @@ import { IdentityStripV2 } from './IdentityStripV2'
 
 const baseProps = {
   sucursalName: 'Sucursal Norte',
-  isOnline: true,
+  operatorStatus: 'en_piso' as const,
   now: new Date('2026-05-04T11:47:00'),
   staffName: 'Eli Cruz',
   staffPhotoUrl: null as string | null,
@@ -23,14 +23,24 @@ describe('IdentityStripV2', () => {
     expect(screen.getByText(/sucursal norte/i)).toBeInTheDocument()
   })
 
-  it('renders ONLINE pill when isOnline=true', () => {
-    render(<IdentityStripV2 {...baseProps} isOnline />)
-    expect(screen.getByText(/online/i)).toBeInTheDocument()
+  it('renders "En piso" badge when operator is clocked-in and free', () => {
+    render(<IdentityStripV2 {...baseProps} operatorStatus="en_piso" />)
+    expect(screen.getByText(/en piso/i)).toBeInTheDocument()
   })
 
-  it('hides ONLINE pill when isOnline=false', () => {
-    render(<IdentityStripV2 {...baseProps} isOnline={false} />)
-    expect(screen.queryByText(/online/i)).not.toBeInTheDocument()
+  it('renders "En servicio" badge when operator is busy', () => {
+    render(<IdentityStripV2 {...baseProps} operatorStatus="en_servicio" />)
+    expect(screen.getByText(/en servicio/i)).toBeInTheDocument()
+  })
+
+  it('renders "Sin turno" badge when operator has not clocked in', () => {
+    render(<IdentityStripV2 {...baseProps} operatorStatus="fuera_de_turno" />)
+    expect(screen.getByText(/sin turno/i)).toBeInTheDocument()
+  })
+
+  it('hides badge while operator status is loading', () => {
+    render(<IdentityStripV2 {...baseProps} operatorStatus={null} />)
+    expect(screen.queryByText(/en piso|en servicio|sin turno/i)).not.toBeInTheDocument()
   })
 
   it('renders the time formatted as HH:MM 24h', () => {

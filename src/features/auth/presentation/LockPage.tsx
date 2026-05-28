@@ -15,7 +15,7 @@ import { useLockState } from './useLockState'
 export function LockPage() {
   const navigate = useNavigate()
   const { auth } = useRepositories()
-  const { setLocationId } = useLocation()
+  const { setLocationId, locationName } = useLocation()
   const { pinLogin, isAuthenticated, isLocked } = usePosAuth()
   const { state, setState, actions } = useLockState()
 
@@ -35,7 +35,7 @@ export function LockPage() {
       setState({ kind: 'PAIRING', locations: [], loading: true })
       return
     }
-    setState({ kind: 'BARBER_SELECTOR', locationId: storedLocationId, barbers: [], loading: true })
+    setState({ kind: 'BARBER_SELECTOR', locationId: storedLocationId, barbers: [], statuses: new Map(), loading: true })
   }, [state.kind, isAuthenticated, isLocked, navigate, setState, actions])
 
   // 2) Fetch locations when entering PAIRING (loading=true)
@@ -69,9 +69,14 @@ export function LockPage() {
     const locationId = state.locationId
     const skipMemory = state.skipMemory ?? false
     let cancelled = false
-    auth
-      .getBarbers(locationId)
-      .then((bs) => {
+    // Pedimos roster + statuses en paralelo. Si statuses falla, no rompemos
+    // la pantalla — solo perdemos el badge "en piso/en servicio/fuera de
+    // turno" y caemos a un fallback "Activo". Roster sí es crítico.
+    Promise.all([
+      auth.getBarbers(locationId),
+      auth.getBarberStatuses(locationId).catch(() => new Map<string, import('@/core/auth/auth.repository').PosBarberStatus>()),
+    ])
+      .then(([bs, statuses]) => {
         if (cancelled) return
         if (!skipMemory) {
           const lastBarberId = actions.getLastBarberId()
@@ -89,11 +94,11 @@ export function LockPage() {
             actions.forgetLastBarber()
           }
         }
-        setState({ kind: 'BARBER_SELECTOR', locationId, barbers: bs, loading: false })
+        setState({ kind: 'BARBER_SELECTOR', locationId, barbers: bs, statuses, loading: false })
       })
       .catch(() => {
         if (cancelled) return
-        setState({ kind: 'BARBER_SELECTOR', locationId, barbers: [], loading: false })
+        setState({ kind: 'BARBER_SELECTOR', locationId, barbers: [], statuses: new Map(), loading: false })
       })
     return () => {
       cancelled = true
@@ -165,8 +170,11 @@ export function LockPage() {
   }
 
   if (state.kind === 'PAIRING') {
+    // Pairing también es full-bleed con composición editorial propia
+    // (header + sub-headline + grid + footer). El brand mark default del
+    // shell competiría con el header interno.
     return (
-      <LockShell>
+      <LockShell hideBrand fullBleed>
         <PairingView
           locations={state.locations}
           loading={state.loading}
@@ -175,7 +183,7 @@ export function LockPage() {
             if (!ok) return false
             setLocationId(locationId)
             actions.setLocationPaired(locationId)
-            setState({ kind: 'BARBER_SELECTOR', locationId, barbers: [], loading: true })
+            setState({ kind: 'BARBER_SELECTOR', locationId, barbers: [], statuses: new Map(), loading: true })
             return true
           }}
         />
@@ -184,21 +192,28 @@ export function LockPage() {
   }
 
   if (state.kind === 'BARBER_SELECTOR') {
+    // Esta pantalla usa composición editorial propia (eyebrow + headline +
+    // roster + footer). El brand mark default del shell sería redundante, y
+    // el centrado vertical pelearía con el grid full-bleed.
     return (
-      <LockShell>
+      <LockShell hideBrand fullBleed>
         <BarberSelectorView
           barbers={state.barbers}
+          statuses={state.statuses}
           loading={state.loading}
           onSelect={(b) => actions.selectBarber(b)}
           onChangeLocation={() => actions.unpair()}
+          locationName={locationName}
         />
       </LockShell>
     )
   }
 
   if (state.kind === 'PIN_ENTRY') {
+    // Mismo tratamiento full-bleed que los pasos anteriores — composición
+    // editorial propia con header + main + footer.
     return (
-      <LockShell>
+      <LockShell hideBrand fullBleed>
         <PinEntryView
           key={`${state.barber.id}-${attemptCount}`}
           staffName={state.barber.fullName}
@@ -206,6 +221,7 @@ export function LockPage() {
           error={state.error}
           onSubmit={handlePinSubmit}
           onBack={() => actions.backToSelector()}
+          locationName={locationName}
         />
       </LockShell>
     )
