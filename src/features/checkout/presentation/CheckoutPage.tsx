@@ -24,12 +24,14 @@ import { SkeletonRow, SkeletonCard } from '@/shared/pos-ui'
 import { formatMoney } from '@/shared/lib/money'
 import { useToast } from '@/core/toast/useToast'
 import { usePosAuth } from '@/core/auth/usePosAuth'
+import { useLocation } from '@/core/location/useLocation'
 
 export function CheckoutPage() {
   const navigate = useNavigate()
   const ck = useCheckout()
   const { addToast } = useToast()
   const { viewer } = usePosAuth()
+  const { locationName } = useLocation()
   // Permiso server-side dual: el API también valida pos.discount.apply en
   // applyCouponToDraftSale. Esconder el bloque en el cliente es solo UX —
   // no hay risk de bypass.
@@ -108,6 +110,8 @@ export function CheckoutPage() {
     return (
       <ReceiptScreen
         sale={ck.successSale}
+        locationName={locationName}
+        operatorName={viewer?.staff?.fullName ?? null}
         onListo={() => {
           ck.setSuccessSale(null)
           navigate('/hoy')

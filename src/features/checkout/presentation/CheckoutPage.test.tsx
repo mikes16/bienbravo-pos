@@ -120,13 +120,19 @@ describe('CheckoutPage (integration)', () => {
     await user.click(screen.getAllByText('Corte')[0])
     await user.click(screen.getAllByText('Corte')[0])
     await user.click(screen.getAllByText('Corte')[0])
-    // Now 3 lines exist. Tap the last line's barber chip and pick Carlos
-    const barberChips = screen.getAllByRole('button', { name: /cambiar barbero/i })
-    await user.click(barberChips[barberChips.length - 1])
+    // Las filas de cart ahora se ven compactas por default. Para cambiar el
+    // barbero hay que: 1) tap la fila → expande controles, 2) tap "Cambiar
+    // barbero" → abre picker, 3) tap el barbero. Hacemos eso para las 3 líneas.
+    const lineRows = screen.getAllByRole('button', { name: /toca para modificar/i })
+    await user.click(lineRows[lineRows.length - 1])
+    let changeBarberBtns = screen.getAllByRole('button', { name: /cambiar barbero/i })
+    await user.click(changeBarberBtns[changeBarberBtns.length - 1])
     await user.click(await screen.findByLabelText('Carlos'))
-    // Tap the new last chip and swap to Beto
-    const chipsAgain = screen.getAllByRole('button', { name: /cambiar barbero/i })
-    await user.click(chipsAgain[chipsAgain.length - 1])
+    // Re-busca las filas porque el DOM se actualizó.
+    const lineRowsAgain = screen.getAllByRole('button', { name: /toca para modificar/i })
+    await user.click(lineRowsAgain[lineRowsAgain.length - 1])
+    changeBarberBtns = screen.getAllByRole('button', { name: /cambiar barbero/i })
+    await user.click(changeBarberBtns[changeBarberBtns.length - 1])
     await user.click(await screen.findByLabelText('Beto'))
     // Cobrar — 3 cortes = $840, two $500 bills cover it
     await user.click(screen.getByRole('button', { name: /cobrar/i }))

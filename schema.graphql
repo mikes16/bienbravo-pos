@@ -1444,7 +1444,7 @@ type Query {
   timeClockEvents(fromDate: String!, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
   verifyKioskToken(token: String!): VerifiedKioskToken!
   viewer: Viewer!
-  walkIns(locationId: ID!): [WalkIn!]!
+  walkIns(fromDate: String, locationId: ID!, toDate: String): [WalkIn!]!
 }
 
 type RealtimeBranchStatusRow {
@@ -2309,6 +2309,7 @@ type WalkIn {
   requestedService: Service
   requestedServiceId: ID
   requestedServices: [Service!]!
+  sale: Sale
   sortOrder: Int!
   status: WalkInStatus!
 }

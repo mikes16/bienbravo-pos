@@ -2859,7 +2859,9 @@ export type QueryVerifyKioskTokenArgs = {
 
 
 export type QueryWalkInsArgs = {
+  fromDate?: InputMaybe<Scalars['String']['input']>;
   locationId: Scalars['ID']['input'];
+  toDate?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type RealtimeBranchStatusRow = {
@@ -3774,6 +3776,7 @@ export type WalkIn = {
   requestedService?: Maybe<Service>;
   requestedServiceId?: Maybe<Scalars['ID']['output']>;
   requestedServices: Array<Service>;
+  sale?: Maybe<Sale>;
   sortOrder: Scalars['Int']['output'];
   status: WalkInStatus;
 };

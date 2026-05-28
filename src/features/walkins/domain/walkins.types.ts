@@ -28,4 +28,9 @@ export interface WalkIn {
   requestedCatalogCombo?: { id: string; name: string } | null
   pausedAt?: string | null
   sortOrder: number
+  // Venta asociada (1:1 opcional). Null si no se ha cobrado. El API lo
+  // expone como subselect del query — solo se hidrata cuando el caller
+  // pide los campos (típicamente id + totalCents para mostrar el monto
+  // en dashboards). El Sale es la única source of truth del monto.
+  sale?: { id: string; totalCents: number } | null
 }

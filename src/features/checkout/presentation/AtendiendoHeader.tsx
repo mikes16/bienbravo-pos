@@ -10,12 +10,16 @@ interface AtendiendoHeaderProps {
 }
 
 export function AtendiendoHeader({ barber, onTap }: AtendiendoHeaderProps) {
+  // Strip de contexto — leather neutral, NO bravo. El único elemento bravo
+  // de la pantalla debe ser el CTA COBRAR. Antes este strip tenía la misma
+  // paleta que el CTA y competían por atención visual. Patrón corregido:
+  // contexto/staff = leather (info), acción primaria = bravo (action).
   return (
     <button
       type="button"
       aria-label={`Cambiar barbero: ${barber.fullName}`}
       onClick={onTap}
-      className="flex w-full cursor-pointer items-center justify-between border border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.06] px-4 py-3 transition-colors hover:bg-[var(--color-bravo)]/[0.12]"
+      className="flex w-full cursor-pointer items-center justify-between border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 py-3 transition-colors hover:bg-[var(--color-cuero-viejo)]"
     >
       <div className="flex flex-col gap-1">
         <span className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">

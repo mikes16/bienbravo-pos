@@ -30,26 +30,32 @@ describe('CartLineRow', () => {
     expect(screen.getByText(/antonio/i)).toBeInTheDocument()
   })
 
-  it('+ button fires onIncQty', async () => {
+  // El nuevo CartLineRow esconde controles (qty stepper, barbero picker)
+  // por default — la fila se ve compacta. Tap en la fila la expande. Estos
+  // tests primero expanden y después interactúan con los controles internos.
+  it('+ button fires onIncQty after expanding the row', async () => {
     const onIncQty = vi.fn()
     const user = userEvent.setup()
     render(<CartLineRow line={LINE} barbers={BARBERS} onIncQty={onIncQty} onDecQty={() => {}} onSetBarber={() => {}} onRemove={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /toca para modificar/i }))
     await user.click(screen.getByRole('button', { name: /aumentar/i }))
     expect(onIncQty).toHaveBeenCalledWith('l1')
   })
 
-  it('− button fires onDecQty', async () => {
+  it('− button fires onDecQty after expanding the row', async () => {
     const onDecQty = vi.fn()
     const user = userEvent.setup()
     render(<CartLineRow line={LINE} barbers={BARBERS} onIncQty={() => {}} onDecQty={onDecQty} onSetBarber={() => {}} onRemove={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /toca para modificar/i }))
     await user.click(screen.getByRole('button', { name: /disminuir/i }))
     expect(onDecQty).toHaveBeenCalledWith('l1')
   })
 
-  it('tap barber chip expands BarberPickerInline', async () => {
+  it('tap row → tap "Cambiar barbero" expands BarberPickerInline', async () => {
     const user = userEvent.setup()
     render(<CartLineRow line={LINE} barbers={BARBERS} onIncQty={() => {}} onDecQty={() => {}} onSetBarber={() => {}} onRemove={() => {}} />)
-    await user.click(screen.getByRole('button', { name: /antonio/i }))
+    await user.click(screen.getByRole('button', { name: /toca para modificar/i }))
+    await user.click(screen.getByRole('button', { name: /cambiar barbero/i }))
     expect(screen.getByLabelText('Beto')).toBeInTheDocument()
   })
 })

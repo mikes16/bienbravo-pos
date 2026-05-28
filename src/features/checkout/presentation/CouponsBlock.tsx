@@ -40,6 +40,10 @@ export function CouponsBlock({
 }: CouponsBlockProps) {
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Input colapsado por default — la mayoría de ventas no usan cupón.
+  // Auto-expandido cuando hay un error (el cajero está intentando aplicar
+  // algo) o cuando ya hay cupones aplicados Y el cajero quiere stackear.
+  const [expanded, setExpanded] = useState(false)
 
   if (!canApply) return null
 
@@ -48,20 +52,22 @@ export function CouponsBlock({
     setSubmitting(true)
     try {
       await onApply(code.trim())
-      // Solo limpiamos el input si la promesa resolvió. Si hubo error de
-      // validación, el código sigue visible para que el cajero edite/reintente.
       setCode('')
+      // Collapse de vuelta después de aplicar exitoso — el cupón se ve
+      // como card aplicada; el input ya no necesita estar visible.
+      setExpanded(false)
     } finally {
       setSubmitting(false)
     }
   }
 
+  // Auto-expandir cuando hay un error pendiente de mostrar al cajero.
+  const showInput = expanded || !!couponError
+
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--color-leather-muted)]/40 px-4 py-3">
-      <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-        Cupones
-      </div>
-
+      {/* Cupones aplicados — siempre visibles cuando existen. Card success
+          tone, button "Quitar" como link sutil. */}
       {appliedCoupons.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {appliedCoupons.map((c) => (
@@ -95,39 +101,71 @@ export function CouponsBlock({
         </ul>
       )}
 
-      <div className="flex items-stretch gap-2">
-        <input
-          type="text"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void handleApply()
-            }
-          }}
-          placeholder="Código de cupón"
-          aria-label="Código de cupón"
-          disabled={submitting}
-          className="min-w-0 flex-1 border border-[var(--color-leather-muted)]/60 bg-[var(--color-carbon)] px-3 py-2 font-mono text-[13px] uppercase tracking-[0.12em] text-[var(--color-bone)] placeholder:text-[var(--color-bone-muted)]/50 focus:border-[var(--color-bravo)] focus:outline-none disabled:opacity-50"
-        />
+      {/* Toggle "+ Agregar cupón" — link discreto cuando el input está
+          colapsado. Cuando expanded, se vuelve "− Cerrar" para regresar
+          al estado mínimo sin tener que aplicar. */}
+      {!showInput ? (
         <button
           type="button"
-          onClick={() => void handleApply()}
-          disabled={!code.trim() || submitting}
-          className="cursor-pointer bg-[var(--color-bravo)] px-4 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:bg-[var(--color-bravo-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => setExpanded(true)}
+          className="self-start cursor-pointer font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] hover:text-[var(--color-bone)]"
         >
-          {submitting ? '…' : 'Aplicar'}
+          {appliedCoupons.length > 0 ? '+ Otro cupón' : '+ Agregar cupón'}
         </button>
-      </div>
-
-      {couponError && (
-        <p
-          role="alert"
-          className="text-[12px] leading-snug text-[var(--color-bravo)]"
-        >
-          {couponError}
-        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-stretch gap-2">
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void handleApply()
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setExpanded(false)
+                  setCode('')
+                }
+              }}
+              autoFocus
+              placeholder="Código de cupón"
+              aria-label="Código de cupón"
+              disabled={submitting}
+              className="min-w-0 flex-1 border border-[var(--color-leather-muted)]/60 bg-[var(--color-carbon)] px-3 py-2 font-mono text-[13px] uppercase tracking-[0.12em] text-[var(--color-bone)] placeholder:text-[var(--color-bone-muted)]/50 focus:border-[var(--color-bravo)] focus:outline-none disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={() => void handleApply()}
+              disabled={!code.trim() || submitting}
+              className="cursor-pointer bg-[var(--color-bravo)] px-4 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:bg-[var(--color-bravo-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? '…' : 'Aplicar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setExpanded(false)
+                setCode('')
+              }}
+              disabled={submitting}
+              aria-label="Cancelar"
+              className="cursor-pointer font-mono text-[14px] text-[var(--color-bone-muted)] hover:text-[var(--color-bone)]"
+            >
+              ×
+            </button>
+          </div>
+          {couponError && (
+            <p
+              role="alert"
+              className="text-[12px] leading-snug text-[var(--color-bravo)]"
+            >
+              {couponError}
+            </p>
+          )}
+        </div>
       )}
     </div>
   )

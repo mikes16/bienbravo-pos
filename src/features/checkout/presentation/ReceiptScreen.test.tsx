@@ -18,11 +18,15 @@ const SALE = {
 describe('ReceiptScreen', () => {
   it('renders sale items + totals + customer', () => {
     render(<ReceiptScreen sale={SALE} onListo={() => {}} />)
-    expect(screen.getByText('Corte')).toBeInTheDocument()
-    expect(screen.getByText('Shampoo')).toBeInTheDocument()
-    expect(screen.getByText('$810')).toBeInTheDocument()
-    expect(screen.getByText(/carlos méndez/i)).toBeInTheDocument()
-    expect(screen.getByText(/antonio/i)).toBeInTheDocument()
+    // El ReceiptScreen ahora renderiza dos copias del contenido del sale:
+    // la preview en pantalla (visible) y el PrintableTicket (display: none
+    // por default, visible solo en @media print). Por eso usamos
+    // getAllByText / queryAllByText — ambas existen en el DOM.
+    expect(screen.getAllByText('Corte').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Shampoo').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('$810').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/carlos méndez/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/antonio/i).length).toBeGreaterThan(0)
   })
 
   it('Imprimir CTA calls window.print', async () => {

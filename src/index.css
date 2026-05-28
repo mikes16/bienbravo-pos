@@ -165,3 +165,161 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * Print: ticket térmico de 80mm
+ *
+ * Por default el componente PrintableTicket está oculto (display: none).
+ * Al imprimir:
+ *   1. Todo el resto de la UI se esconde (PosShell, headers, tabs, etc.)
+ *   2. Solo el .bb-print-receipt es visible
+ *   3. El @page elimina los márgenes del navegador
+ *   4. Tipografía mono black-on-white, layout vertical denso
+ *
+ * El ancho fijo de 80mm coincide con impresoras térmicas estándar (Epson
+ * TM-T20, Star TSP100, etc.). En hoja Letter/A4 cae al inicio sin estirarse.
+ * ───────────────────────────────────────────────────────────────────── */
+
+.bb-print-receipt {
+  display: none;
+}
+
+@media print {
+  /* Resetear el viewport del browser */
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  /* Ocultar TODO menos el ticket */
+  html, body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+
+  /* Mostrar el ticket — posicionado al inicio del page */
+  .bb-print-receipt,
+  .bb-print-receipt * {
+    visibility: visible;
+  }
+  .bb-print-receipt {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 80mm;
+    padding: 6mm 4mm;
+    background: white;
+    color: black;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11pt;
+    line-height: 1.35;
+  }
+
+  /* Bloques del ticket */
+  .bb-print-header {
+    text-align: center;
+    margin-bottom: 3mm;
+  }
+  .bb-print-brand {
+    font-size: 18pt;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    margin-bottom: 1mm;
+  }
+  .bb-print-meta {
+    font-size: 9pt;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .bb-print-rule {
+    border-top: 1px dashed #000;
+    margin: 2.5mm 0;
+  }
+
+  .bb-print-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 3mm;
+    font-size: 10pt;
+    line-height: 1.4;
+  }
+  .bb-print-meta-row > span:first-child {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 8pt;
+    opacity: 0.7;
+  }
+
+  .bb-print-items {
+    margin: 2mm 0;
+  }
+  .bb-print-item {
+    margin-bottom: 1.5mm;
+  }
+  .bb-print-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 3mm;
+    font-size: 11pt;
+    font-weight: 700;
+  }
+  .bb-print-item-name {
+    flex: 1;
+  }
+  .bb-print-item-amount {
+    font-variant-numeric: tabular-nums;
+  }
+  .bb-print-item-staff {
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.7;
+    padding-left: 4mm;
+    margin-top: 0.5mm;
+  }
+
+  .bb-print-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 14pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .bb-print-total > span:last-child {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bb-print-section-label {
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.7;
+    margin-bottom: 1mm;
+  }
+
+  .bb-print-footer {
+    text-align: center;
+    margin-top: 3mm;
+    font-size: 9pt;
+    line-height: 1.5;
+  }
+  .bb-print-spacer {
+    height: 3mm;
+  }
+  .bb-print-code {
+    font-size: 8pt;
+    letter-spacing: 0.15em;
+    opacity: 0.6;
+  }
+}
