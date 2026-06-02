@@ -4,7 +4,7 @@ import { formatMoney } from '@/shared/lib/money.ts'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
-import { POS_HOME_COMMISSION } from '@/features/home/data/home.queries'
+import { POS_MY_DAY_EARNINGS } from '@/features/home/data/home.queries'
 import type { Appointment } from '@/features/agenda/domain/agenda.types.ts'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository.ts'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types.ts'
@@ -32,6 +32,23 @@ interface CompletedItem {
   customerName: string
   serviceLabel: string
   totalCents: number | null
+  /** Sale id linkado a esta cita/walk-in. Permite resolver "Tu parte" desde
+   *  el desglose per-sale del API. Null si la cita aún no cerró su venta. */
+  saleId: string | null
+  /** Comisión + propina derivadas del API para esta venta específica.
+   *  Null si todavía no hay sale linkado. */
+  commissionCents: number | null
+  tipCents: number | null
+  earningsCents: number | null
+}
+
+interface EarningsBreakdown {
+  serviceCommissionCents: number
+  productCommissionCents: number
+  tipsCents: number
+  totalCommissionCents: number
+  serviceRevenueCents: number
+  productRevenueCents: number
 }
 
 interface UpcomingAppt {
@@ -43,12 +60,11 @@ interface UpcomingAppt {
 
 interface DaySummary {
   completedCount: number
-  revenueCents: number
-  commissionCents: number
   hoursWorked: string
   clockedIn: boolean
   completedItems: CompletedItem[]
   upcomingAppts: UpcomingAppt[]
+  breakdown: EarningsBreakdown
 }
 
 /**
@@ -98,8 +114,8 @@ function computeWorkSummary(
   walkIns: WalkIn[],
   clockEvents: TimeClockEvent[],
   staffUserId: string,
-  revenueCents: number,
-  commissionCents: number,
+  breakdown: EarningsBreakdown,
+  perSaleMap: Map<string, { commissionCents: number; tipCents: number; earningsCents: number }>,
 ): DaySummary {
   // Walk-ins ya vienen pre-filtrados por fecha del servidor (fromDate/toDate
   // del query). Solo aplicamos los filtros semánticos restantes: status DONE
@@ -113,11 +129,17 @@ function computeWorkSummary(
   )
   const completedCount = completedAppts.length + completedWalkIns.length
 
-  // Timeline ordenado cronológicamente descendente — lo más reciente arriba,
-  // que es lo que el operador quiere revisar primero ("¿qué acabo de hacer?").
-  // Citas usan endAt; walk-ins assignedAt como aproximación (no tenemos
-  // completedAt en el shape actual).
+  // Timeline ordenado cronológicamente descendente — lo más reciente arriba.
+  // Para cada row enriquezco con earnings derivado del per-sale del API:
+  // si esta cita/walk-in tiene sale linkado, busco su entrada y muestro
+  // "Tu parte". Si no hay sale aún (cita completada sin cerrar venta),
+  // los campos quedan null y la UI lo señala.
   const completedItems: CompletedItem[] = [
+    // Citas: el shape de Appointment del POS no incluye `sale.id`, así que
+    // por ahora dejamos earnings en null para appointments. El total del UI
+    // sale del totalCents de la cita; la comisión se ve agregada en el hero.
+    // Si en una futura iteración expandimos la query de agenda con sale.id,
+    // las citas también mostrarán "Tu parte" per-row.
     ...completedAppts.map((a): CompletedItem => ({
       id: `appt-${a.id}`,
       kind: 'appt',
@@ -125,18 +147,27 @@ function computeWorkSummary(
       customerName: a.customer?.fullName ?? 'Mostrador',
       serviceLabel: apptServiceLabel(a),
       totalCents: a.totalCents,
+      saleId: null,
+      commissionCents: null,
+      tipCents: null,
+      earningsCents: null,
     })),
-    ...completedWalkIns.map((w): CompletedItem => ({
-      id: `walkin-${w.id}`,
-      kind: 'walkin',
-      timeAt: w.assignedAt ?? w.createdAt,
-      customerName: w.customer?.fullName ?? w.customerName ?? 'Mostrador',
-      serviceLabel: walkInServiceLabel(w),
-      // Monto real del Sale asociado. El walk-in trae sale { totalCents }
-      // gracias al subselect en WALKINS_QUERY — single source of truth, sin
-      // denormalización. Null si todavía no se cobró.
-      totalCents: w.sale?.totalCents ?? null,
-    })),
+    ...completedWalkIns.map((w): CompletedItem => {
+      const saleId = w.sale?.id ?? null
+      const e = saleId ? perSaleMap.get(saleId) : undefined
+      return {
+        id: `walkin-${w.id}`,
+        kind: 'walkin',
+        timeAt: w.assignedAt ?? w.createdAt,
+        customerName: w.customer?.fullName ?? w.customerName ?? 'Mostrador',
+        serviceLabel: walkInServiceLabel(w),
+        totalCents: w.sale?.totalCents ?? null,
+        saleId,
+        commissionCents: e?.commissionCents ?? null,
+        tipCents: e?.tipCents ?? null,
+        earningsCents: e?.earningsCents ?? null,
+      }
+    }),
   ].sort((a, b) => new Date(b.timeAt).getTime() - new Date(a.timeAt).getTime())
 
   // Próximas citas asignadas al viewer — para "lo que viene en el día".
@@ -170,12 +201,11 @@ function computeWorkSummary(
 
   return {
     completedCount,
-    revenueCents,
-    commissionCents,
     hoursWorked: `${h}h ${m}m`,
     clockedIn,
     completedItems,
     upcomingAppts,
+    breakdown,
   }
 }
 
@@ -230,24 +260,62 @@ export function MyDayPage() {
       clock.getEvents(viewer.staff.id, locationId, d, d),
       walkins.getWalkIns(locationId, todayStart.toISOString(), todayEnd.toISOString()),
       apollo.query<{
-        staffServiceRevenueToday: number
-        staffProductRevenueToday: number
-        staffCommissionToday: number
+        staffDayEarnings: {
+          serviceCommissionCents: number
+          productCommissionCents: number
+          tipsCents: number
+          totalCommissionCents: number
+          serviceRevenueCents: number
+          productRevenueCents: number
+          perSale: Array<{
+            saleId: string
+            commissionCents: number
+            tipCents: number
+            earningsCents: number
+          }>
+        }
       }>({
-        query: POS_HOME_COMMISSION,
+        query: POS_MY_DAY_EARNINGS,
         variables: { staffUserId: viewer.staff.id, locationId, date: d },
         fetchPolicy: 'network-only',
       }),
     ])
-      .then(([apptsRes, eventsRes, walkinsRes, commRes]) => {
+      .then(([apptsRes, eventsRes, walkinsRes, earningsRes]) => {
         const appts = apptsRes.status === 'fulfilled' ? apptsRes.value : []
         const events = eventsRes.status === 'fulfilled' ? eventsRes.value : []
         const wkins = walkinsRes.status === 'fulfilled' ? walkinsRes.value : []
-        const comm = commRes.status === 'fulfilled' ? commRes.value.data : null
-        const revenueCents = (comm?.staffServiceRevenueToday ?? 0) + (comm?.staffProductRevenueToday ?? 0)
-        const commissionCents = comm?.staffCommissionToday ?? 0
+        const earnings =
+          earningsRes.status === 'fulfilled' ? earningsRes.value.data?.staffDayEarnings : null
+        const breakdown: EarningsBreakdown = earnings
+          ? {
+              serviceCommissionCents: earnings.serviceCommissionCents,
+              productCommissionCents: earnings.productCommissionCents,
+              tipsCents: earnings.tipsCents,
+              totalCommissionCents: earnings.totalCommissionCents,
+              serviceRevenueCents: earnings.serviceRevenueCents,
+              productRevenueCents: earnings.productRevenueCents,
+            }
+          : {
+              serviceCommissionCents: 0,
+              productCommissionCents: 0,
+              tipsCents: 0,
+              totalCommissionCents: 0,
+              serviceRevenueCents: 0,
+              productRevenueCents: 0,
+            }
+        const perSaleMap = new Map<
+          string,
+          { commissionCents: number; tipCents: number; earningsCents: number }
+        >()
+        earnings?.perSale.forEach((entry) => {
+          perSaleMap.set(entry.saleId, {
+            commissionCents: entry.commissionCents,
+            tipCents: entry.tipCents,
+            earningsCents: entry.earningsCents,
+          })
+        })
         setSummary(
-          computeWorkSummary(appts, wkins, events, viewer.staff.id, revenueCents, commissionCents),
+          computeWorkSummary(appts, wkins, events, viewer.staff.id, breakdown, perSaleMap),
         )
 
         // Surface partial failures so the operator doesn't see "$0 ventas" silently
@@ -257,12 +325,12 @@ export function MyDayPage() {
         if (apptsRes.status === 'rejected') failures.push('citas')
         if (eventsRes.status === 'rejected') failures.push('reloj')
         if (walkinsRes.status === 'rejected') failures.push('fila')
-        if (commRes.status === 'rejected') failures.push('ventas')
+        if (earningsRes.status === 'rejected') failures.push('ganancias')
         if (failures.length > 0) {
           setLoadError(`No se pudo cargar: ${failures.join(', ')}. Refresca o avisa al admin si persiste.`)
           if (import.meta.env.DEV) {
             // eslint-disable-next-line no-console
-            console.error('[MyDayPage] partial load failure', { apptsRes, eventsRes, walkinsRes, commRes })
+            console.error('[MyDayPage] partial load failure', { apptsRes, eventsRes, walkinsRes, earningsRes })
           }
         }
       })
@@ -292,17 +360,16 @@ export function MyDayPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KPICard
-          label="Ventas hoy"
-          value={summary ? formatMoney(summary.revenueCents) : '—'}
-          loading={loading}
-        />
-        <KPICard
-          label="Comisiones"
-          value={summary ? formatMoney(summary.commissionCents) : '—'}
-          loading={loading}
-        />
+      {/* HERO: ganancias del barbero, no ventas brutas. El barbero quiere
+          saber CUÁNTO se lleva hoy, no cuánto vendió el negocio. */}
+      <EarningsHero summary={summary} loading={loading} />
+
+      {/* DESGLOSE: de dónde viene el total — servicios, productos, propinas. */}
+      <EarningsBreakdownRow summary={summary} loading={loading} />
+
+      {/* OPERACIÓN: stats secundarios — citas + tiempo. Más chicos, no compiten
+          con el hero. */}
+      <div className="grid grid-cols-2 gap-3">
         <KPICard
           label="Citas completadas"
           value={summary ? String(summary.completedCount) : '—'}
@@ -408,6 +475,8 @@ function CompletedRow({
   customerName,
   serviceLabel,
   totalCents,
+  earningsCents,
+  tipCents,
   kind,
 }: CompletedItem) {
   const time = new Date(timeAt).toLocaleTimeString('es-MX', {
@@ -415,9 +484,12 @@ function CompletedRow({
     minute: '2-digit',
     hour12: false,
   })
+  // "Tu parte" es el protagonista visual; el total es contexto. Cuando no
+  // tenemos el earnings (sin sale linkado), mostramos solo el total como
+  // fallback — pasa para citas pre-sale linkada en este modelo.
   return (
-    <div className="grid grid-cols-[64px_1fr_auto] items-baseline gap-4 border-b border-[var(--color-leather-muted)]/20 px-4 py-3 last:border-b-0">
-      <span className="font-mono text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
+    <div className="grid grid-cols-[64px_1fr_auto] items-start gap-4 border-b border-[var(--color-leather-muted)]/20 px-4 py-3 last:border-b-0">
+      <span className="pt-0.5 font-mono text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
         {time}
       </span>
       <div className="min-w-0">
@@ -428,16 +500,155 @@ function CompletedRow({
           {kind === 'walkin' ? 'Walk-in' : 'Cita'} · {serviceLabel}
         </p>
       </div>
-      {/* Monto a la derecha — solo se renderiza cuando lo tenemos. Para
-          walk-ins (totalCents null) la celda queda vacía: el agregado real
-          ya está en el KPI "Ventas hoy" arriba; mostrar un placeholder ahí
-          se leía como columna ruidosa de rayitas. */}
-      {totalCents != null ? (
-        <span className="font-[var(--font-pos-display)] text-[20px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
-          {formatMoney(totalCents)}
-        </span>
+      <div className="flex flex-col items-end gap-0.5">
+        {earningsCents != null ? (
+          <>
+            <span className="font-[var(--font-pos-display)] text-[20px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
+              {formatMoney(earningsCents)}
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+              Tu parte{tipCents && tipCents > 0 ? ` · incl. ${formatMoney(tipCents)} propina` : ''}
+            </span>
+            {totalCents != null && totalCents !== earningsCents && (
+              <span className="font-mono text-[9px] tabular-nums text-[var(--color-leather)]">
+                Total {formatMoney(totalCents)}
+              </span>
+            )}
+          </>
+        ) : totalCents != null ? (
+          <>
+            <span className="font-[var(--font-pos-display)] text-[18px] font-extrabold tabular-nums leading-none text-[var(--color-bone-muted)]">
+              {formatMoney(totalCents)}
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-leather)]">
+              Total venta
+            </span>
+          </>
+        ) : (
+          <span aria-hidden />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Hero principal: lo que el barbero se lleva hoy. Display monumental
+ * carbón sobre bone, subtitle muted con contexto de ventas brutas.
+ */
+function EarningsHero({
+  summary,
+  loading,
+}: {
+  summary: DaySummary | null
+  loading: boolean
+}) {
+  const totalEarnings = summary?.breakdown.totalCommissionCents ?? 0
+  const grossRevenue =
+    (summary?.breakdown.serviceRevenueCents ?? 0) +
+    (summary?.breakdown.productRevenueCents ?? 0)
+  return (
+    <div className="border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-5 py-6">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
+        Lo que llevas hoy
+      </p>
+      {loading ? (
+        <div className="mt-2 h-12 w-48 animate-pulse rounded bg-[var(--color-leather-muted)]/20" />
       ) : (
-        <span aria-hidden />
+        <p className="mt-2 font-[var(--font-pos-display)] text-[48px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-[var(--color-bone)]">
+          {formatMoney(totalEarnings)}
+        </p>
+      )}
+      {!loading && grossRevenue > 0 && (
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-leather)]">
+          De {formatMoney(grossRevenue)} en ventas
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Desglose 3 categorías: Servicios · Productos · Propinas. Cada columna
+ * muestra cuánto del total viene de esa fuente. Si una categoría es 0 se
+ * muestra apagada para no romper el grid pero quede claro el aporte.
+ */
+function EarningsBreakdownRow({
+  summary,
+  loading,
+}: {
+  summary: DaySummary | null
+  loading: boolean
+}) {
+  if (loading || !summary) {
+    return (
+      <div className="grid grid-cols-3 gap-3">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="h-20 animate-pulse border border-[var(--color-leather-muted)]/40 bg-[var(--color-cuero-viejo)]/20"
+          />
+        ))}
+      </div>
+    )
+  }
+  const { serviceCommissionCents, productCommissionCents, tipsCents, totalCommissionCents } =
+    summary.breakdown
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <BreakdownCard
+        label="Cortes & Barba"
+        valueCents={serviceCommissionCents}
+        totalCents={totalCommissionCents}
+      />
+      <BreakdownCard
+        label="Propinas"
+        valueCents={tipsCents}
+        totalCents={totalCommissionCents}
+        accent
+      />
+      <BreakdownCard
+        label="Productos"
+        valueCents={productCommissionCents}
+        totalCents={totalCommissionCents}
+      />
+    </div>
+  )
+}
+
+function BreakdownCard({
+  label,
+  valueCents,
+  totalCents,
+  accent,
+}: {
+  label: string
+  valueCents: number
+  totalCents: number
+  accent?: boolean
+}) {
+  const pct = totalCents > 0 ? Math.round((valueCents / totalCents) * 100) : 0
+  const isZero = valueCents === 0
+  return (
+    <div
+      className={`border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-4 ${
+        accent && !isZero ? 'border-l-[2px] border-l-[var(--color-bravo)]' : ''
+      }`}
+    >
+      <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+        {label}
+      </p>
+      <p
+        className={`mt-2 font-[var(--font-pos-display)] text-[22px] font-extrabold leading-none tabular-nums ${
+          isZero ? 'text-[var(--color-leather)]' : 'text-[var(--color-bone)]'
+        }`}
+      >
+        {formatMoney(valueCents)}
+      </p>
+      {totalCents > 0 && !isZero && (
+        <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-leather)]">
+          {pct}% del día
+        </p>
       )}
     </div>
   )

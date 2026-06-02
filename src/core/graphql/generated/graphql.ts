@@ -2261,6 +2261,7 @@ export type Query = {
   shiftTemplates: Array<ShiftTemplate>;
   staff?: Maybe<StaffUser>;
   staffCommissionToday: Scalars['Int']['output'];
+  staffDayEarnings: StaffDayEarnings;
   staffList: Array<StaffUser>;
   staffLocationsWithSchedules: Array<StaffLocationScheduleSummary>;
   staffMemberships: Array<StaffMembership>;
@@ -2759,6 +2760,13 @@ export type QueryStaffArgs = {
 
 
 export type QueryStaffCommissionTodayArgs = {
+  date: Scalars['String']['input'];
+  locationId: Scalars['ID']['input'];
+  staffUserId: Scalars['ID']['input'];
+};
+
+
+export type QueryStaffDayEarningsArgs = {
   date: Scalars['String']['input'];
   locationId: Scalars['ID']['input'];
   staffUserId: Scalars['ID']['input'];
@@ -3363,6 +3371,17 @@ export enum StaffContextRole {
   Manager = 'MANAGER'
 }
 
+export type StaffDayEarnings = {
+  __typename?: 'StaffDayEarnings';
+  perSale: Array<StaffSaleEarnings>;
+  productCommissionCents: Scalars['Int']['output'];
+  productRevenueCents: Scalars['Int']['output'];
+  serviceCommissionCents: Scalars['Int']['output'];
+  serviceRevenueCents: Scalars['Int']['output'];
+  tipsCents: Scalars['Int']['output'];
+  totalCommissionCents: Scalars['Int']['output'];
+};
+
 export type StaffLocationScheduleSummary = {
   __typename?: 'StaffLocationScheduleSummary';
   locationId: Scalars['ID']['output'];
@@ -3400,6 +3419,14 @@ export type StaffRoleSummary = {
   posRoleId?: Maybe<Scalars['ID']['output']>;
   posRoleName?: Maybe<Scalars['String']['output']>;
   rolesCount: Scalars['Int']['output'];
+};
+
+export type StaffSaleEarnings = {
+  __typename?: 'StaffSaleEarnings';
+  commissionCents: Scalars['Int']['output'];
+  earningsCents: Scalars['Int']['output'];
+  saleId: Scalars['ID']['output'];
+  tipCents: Scalars['Int']['output'];
 };
 
 export type StaffServicePrice = {
@@ -4068,6 +4095,15 @@ export type PosHomeCommissionQueryVariables = Exact<{
 
 export type PosHomeCommissionQuery = { __typename?: 'Query', staffServiceRevenueToday: number, staffProductRevenueToday: number, staffCommissionToday: number };
 
+export type PosMyDayEarningsQueryVariables = Exact<{
+  staffUserId: Scalars['ID']['input'];
+  locationId: Scalars['ID']['input'];
+  date: Scalars['String']['input'];
+}>;
+
+
+export type PosMyDayEarningsQuery = { __typename?: 'Query', staffDayEarnings: { __typename?: 'StaffDayEarnings', serviceCommissionCents: number, productCommissionCents: number, tipsCents: number, totalCommissionCents: number, serviceRevenueCents: number, productRevenueCents: number, perSale: Array<{ __typename?: 'StaffSaleEarnings', saleId: string, commissionCents: number, tipCents: number, earningsCents: number }> } };
+
 export type PosHomeCajaStatusQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
@@ -4218,6 +4254,7 @@ export const ClockOutDocument = {"kind":"Document","definitions":[{"kind":"Opera
 export const TimeClockEventsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"TimeClockEvents"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"fromDate"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"toDate"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"timeClockEvents"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"fromDate"},"value":{"kind":"Variable","name":{"kind":"Name","value":"fromDate"}}},{"kind":"Argument","name":{"kind":"Name","value":"toDate"},"value":{"kind":"Variable","name":{"kind":"Name","value":"toDate"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"at"}}]}}]}}]} as unknown as DocumentNode<TimeClockEventsQuery, TimeClockEventsQueryVariables>;
 export const ShiftTemplatesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"ShiftTemplates"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"shiftTemplates"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"staffUserId"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}},{"kind":"Field","name":{"kind":"Name","value":"dayOfWeek"}},{"kind":"Field","name":{"kind":"Name","value":"startMin"}},{"kind":"Field","name":{"kind":"Name","value":"endMin"}}]}}]}}]} as unknown as DocumentNode<ShiftTemplatesQuery, ShiftTemplatesQueryVariables>;
 export const PosHomeCommissionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosHomeCommission"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"date"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffServiceRevenueToday"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}]},{"kind":"Field","name":{"kind":"Name","value":"staffProductRevenueToday"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}]},{"kind":"Field","name":{"kind":"Name","value":"staffCommissionToday"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}]}]}}]} as unknown as DocumentNode<PosHomeCommissionQuery, PosHomeCommissionQueryVariables>;
+export const PosMyDayEarningsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosMyDayEarnings"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"date"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffDayEarnings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"serviceCommissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"productCommissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"tipsCents"}},{"kind":"Field","name":{"kind":"Name","value":"totalCommissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"serviceRevenueCents"}},{"kind":"Field","name":{"kind":"Name","value":"productRevenueCents"}},{"kind":"Field","name":{"kind":"Name","value":"perSale"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"saleId"}},{"kind":"Field","name":{"kind":"Name","value":"commissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"tipCents"}},{"kind":"Field","name":{"kind":"Name","value":"earningsCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosMyDayEarningsQuery, PosMyDayEarningsQueryVariables>;
 export const PosHomeCajaStatusDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosHomeCajaStatus"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"posCajaStatusHome"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"isOpen"}},{"kind":"Field","name":{"kind":"Name","value":"accumulatedCents"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeCajaStatusQuery, PosHomeCajaStatusQueryVariables>;
 export const PosRegistersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosRegisters"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"registers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}},{"kind":"Field","name":{"kind":"Name","value":"openSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosRegistersQuery, PosRegistersQueryVariables>;
 export const OpenRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"OpenRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"openRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"registerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}}},{"kind":"Argument","name":{"kind":"Name","value":"openingCashCents"},"value":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<OpenRegisterSessionMutation, OpenRegisterSessionMutationVariables>;

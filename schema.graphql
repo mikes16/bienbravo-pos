@@ -1426,6 +1426,7 @@ type Query {
   shiftTemplates(locationId: ID!, staffUserId: ID!): [ShiftTemplate!]!
   staff(id: ID!): StaffUser
   staffCommissionToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
+  staffDayEarnings(date: String!, locationId: ID!, staffUserId: ID!): StaffDayEarnings!
   staffList: [StaffUser!]!
   staffLocationsWithSchedules(staffUserId: ID!): [StaffLocationScheduleSummary!]!
   staffMemberships(locationId: ID, staffUserId: ID): [StaffMembership!]!
@@ -1910,6 +1911,16 @@ enum StaffContextRole {
   MANAGER
 }
 
+type StaffDayEarnings {
+  perSale: [StaffSaleEarnings!]!
+  productCommissionCents: Int!
+  productRevenueCents: Int!
+  serviceCommissionCents: Int!
+  serviceRevenueCents: Int!
+  tipsCents: Int!
+  totalCommissionCents: Int!
+}
+
 type StaffLocationScheduleSummary {
   locationId: ID!
   locationName: String!
@@ -1943,6 +1954,13 @@ type StaffRoleSummary {
   posRoleId: ID
   posRoleName: String
   rolesCount: Int!
+}
+
+type StaffSaleEarnings {
+  commissionCents: Int!
+  earningsCents: Int!
+  saleId: ID!
+  tipCents: Int!
 }
 
 type StaffServicePrice {

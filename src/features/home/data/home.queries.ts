@@ -8,6 +8,30 @@ export const POS_HOME_COMMISSION = graphql(`
   }
 `)
 
+// Mi Día — desglose detallado de ganancias del barbero. A diferencia de
+// POS_HOME_COMMISSION (que da 3 ints planos), esta query retorna service
+// vs product vs tips por separado, y un array per-sale con la comisión
+// derivada para cada venta. Permite que el UI muestre "Tu parte" por row
+// sin queries adicionales.
+export const POS_MY_DAY_EARNINGS = graphql(`
+  query PosMyDayEarnings($staffUserId: ID!, $locationId: ID!, $date: String!) {
+    staffDayEarnings(staffUserId: $staffUserId, locationId: $locationId, date: $date) {
+      serviceCommissionCents
+      productCommissionCents
+      tipsCents
+      totalCommissionCents
+      serviceRevenueCents
+      productRevenueCents
+      perSale {
+        saleId
+        commissionCents
+        tipCents
+        earningsCents
+      }
+    }
+  }
+`)
+
 export const POS_HOME_CAJA_STATUS = graphql(`
   query PosHomeCajaStatus($locationId: ID!) {
     posCajaStatusHome(locationId: $locationId) {
