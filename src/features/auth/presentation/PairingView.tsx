@@ -32,13 +32,7 @@ export function PairingView({ locations, loading, onPair }: PairingViewProps) {
   const [submitting, setSubmitting] = useState(false)
 
   if (loading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center">
-        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
-          Cargando sucursales…
-        </p>
-      </div>
-    )
+    return <PairingLoadingState />
   }
 
   if (locations.length === 0) {
@@ -212,6 +206,90 @@ function getLocationInitial(name: string): string {
 /** Limpia "Sucursal Centro" → "Centro" para mostrar como nombre principal. */
 function getShortName(name: string): string {
   return name.replace(/^sucursal\s+/i, '').trim()
+}
+
+/**
+ * Loading state ceremonial. Reemplaza al texto solo "Cargando sucursales…".
+ *
+ * Composición:
+ *  - PairingHeader/Footer preservados para continuidad visual con el resto
+ *    del flow — el usuario percibe que ya está "dentro" de la app, no en
+ *    un splash genérico.
+ *  - Motion centerpiece: 3 hairlines verticales bone que crecen desde abajo
+ *    con stagger (cubic-bezier-expo, mismo easing que bb-loc-rise). Loop
+ *    infinito con pausas. Conceptualmente: sucursales materializándose como
+ *    pilares editoriales, sin gritar "spinner SaaS".
+ *  - Eyebrow "Preparando taller" con pulse de opacidad sutil (2.2s).
+ *  - `prefers-reduced-motion`: cero animación, contenido estático visible.
+ *
+ * Apple-style restraint: una sola idea cinética (3 bars + pulse), no múltiples
+ * animaciones compitiendo. Easing suave (ease-out-expo), no bouncy.
+ */
+function PairingLoadingState() {
+  return (
+    <div className="flex h-full w-full flex-col">
+      <PairingHeader />
+
+      <div className="flex flex-1 flex-col items-center justify-center gap-10 px-8">
+        {/* 3 hairlines verticales — pilares editoriales que se "levantan" */}
+        <div
+          aria-hidden
+          className="flex items-end justify-center gap-4"
+          style={{ height: 64 }}
+        >
+          <span className="bb-pair-loading-bar" />
+          <span className="bb-pair-loading-bar" />
+          <span className="bb-pair-loading-bar" />
+        </div>
+
+        {/* Eyebrow editorial — pulsing soft */}
+        <p
+          aria-live="polite"
+          className="bb-pair-loading-label font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]"
+        >
+          Preparando taller
+        </p>
+      </div>
+
+      <footer className="flex shrink-0 items-center justify-between border-t border-[var(--color-leather-muted)]/30 px-8 py-5">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-leather)]">
+          Cargando sucursales
+        </p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--color-leather)]">
+          POS v0.7.0
+        </p>
+      </footer>
+
+      <style>{`
+        .bb-pair-loading-bar {
+          display: inline-block;
+          width: 1px;
+          height: 100%;
+          background: var(--color-bone);
+          transform: scaleY(0);
+          transform-origin: bottom;
+          animation: bb-pair-loading-bar 1.9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+        }
+        .bb-pair-loading-bar:nth-child(2) { animation-delay: 220ms; }
+        .bb-pair-loading-bar:nth-child(3) { animation-delay: 440ms; }
+        @keyframes bb-pair-loading-bar {
+          0%, 100% { transform: scaleY(0); opacity: 0; }
+          40%, 60% { transform: scaleY(1); opacity: 1; }
+        }
+        .bb-pair-loading-label {
+          animation: bb-pair-loading-pulse 2.2s ease-in-out infinite;
+        }
+        @keyframes bb-pair-loading-pulse {
+          0%, 100% { opacity: 0.4; }
+          50%      { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .bb-pair-loading-bar { animation: none; transform: scaleY(1); opacity: 1; }
+          .bb-pair-loading-label { animation: none; opacity: 1; }
+        }
+      `}</style>
+    </div>
+  )
 }
 
 function PairingHeader() {

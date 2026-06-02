@@ -123,13 +123,20 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
         className="w-full max-w-2xl border-t border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-6 py-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-baseline justify-between">
+        <div className="mb-4 flex items-baseline justify-between gap-4">
           <p className="font-[var(--font-pos-display)] text-[20px] font-extrabold leading-none tracking-[-0.02em] text-[var(--color-bone)]">
             Pago
           </p>
-          <p className="text-[18px] font-extrabold tabular-nums text-[var(--color-bone)]">
-            {formatMoney(totalCents)}
-          </p>
+          <div className="flex flex-col items-end gap-0.5">
+            <p className="text-[20px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
+              {formatMoney(totalCents + tipCents)}
+            </p>
+            {tipCents > 0 && (
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] tabular-nums text-[var(--color-bone-muted)]">
+                {formatMoney(totalCents)} + {formatMoney(tipCents)} propina
+              </p>
+            )}
+          </div>
         </div>
 
         {mode === 'simple' && (
