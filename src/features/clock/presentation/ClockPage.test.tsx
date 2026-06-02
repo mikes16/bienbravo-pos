@@ -23,22 +23,26 @@ describe('ClockPage', () => {
     window.localStorage.setItem('bb-pos-location-id', 'loc1')
   })
 
-  it('renders staff name + Inactivo status when no events today', async () => {
+  it('renders "Listo para empezar" status when no events and no shift today', async () => {
     renderWithProviders(<ClockPage />, {
       repos: { ...makeRepos(), auth: new TestAuthRepo() },
     })
-    expect(await screen.findByText(/inactivo/i)).toBeInTheDocument()
-    expect(screen.getByText(MOCK_VIEWER.staff.fullName)).toBeInTheDocument()
+    // Sin shift asignado + sin eventos → status card neutral "Listo para
+    // empezar". El nombre del barbero no se duplica en la página (ya está
+    // en el header global del PosShell con avatar + iniciales).
+    expect(await screen.findByText(/listo para empezar/i)).toBeInTheDocument()
   })
 
-  it('renders Activo status when last event is CLOCK_IN', async () => {
+  it('renders "Estás trabajando" status when last event is CLOCK_IN', async () => {
     renderWithProviders(<ClockPage />, {
       repos: {
         ...makeRepos({ events: [{ id: 'e1', type: 'CLOCK_IN', at: '2026-05-04T10:00:00Z' }] }),
         auth: new TestAuthRepo(),
       },
     })
-    expect(await screen.findByText(/activo/i)).toBeInTheDocument()
+    // Cuando está clocked-in la status card dice "Estás trabajando." en
+    // prosa natural, no en eyebrows de mono uppercase.
+    expect(await screen.findByText(/estás trabajando/i)).toBeInTheDocument()
   })
 
   it('CTA shows "Entrar" when not clocked in', async () => {
@@ -68,14 +72,14 @@ describe('ClockPage', () => {
     expect(repos.clock.clockIn).toHaveBeenCalledWith('loc1')
   })
 
-  it('renders empty events state when none', async () => {
+  it('renders empty history state when no events', async () => {
     renderWithProviders(<ClockPage />, {
       repos: { ...makeRepos(), auth: new TestAuthRepo() },
     })
-    expect(await screen.findByText(/sin registros/i)).toBeInTheDocument()
+    expect(await screen.findByText(/sin movimientos/i)).toBeInTheDocument()
   })
 
-  it('renders events list when present', async () => {
+  it('renders events list directly (no accordion)', async () => {
     renderWithProviders(<ClockPage />, {
       repos: {
         ...makeRepos({
@@ -87,8 +91,10 @@ describe('ClockPage', () => {
         auth: new TestAuthRepo(),
       },
     })
-    expect(await screen.findByText(/entrada/i)).toBeInTheDocument()
-    // "salida" puede aparecer como botón Y como label de evento; aceptamos cualquier instancia.
-    expect(screen.getAllByText(/salida/i).length).toBeGreaterThan(0)
+    // El historial ahora vive siempre visible. Para barberos non-tech-savvy
+    // tener que tappear "ver historial" era una capa de fricción extra
+    // sin valor — la lista cabe sin problema en la pantalla.
+    expect(await screen.findByText('Entrada')).toBeInTheDocument()
+    expect(screen.getByText('Salida')).toBeInTheDocument()
   })
 })

@@ -17,7 +17,9 @@ describe('OpenCajaPage', () => {
       initialRoute: '/caja/abrir?reg=reg-a',
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    expect(screen.getByText(/abrir caja/i)).toBeInTheDocument()
+    // "Abrir caja" aparece como título Y como copy del CTA — usamos
+    // getAllByText. Lo importante: que el título exista en pantalla.
+    expect(screen.getAllByText(/abrir caja/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/fondo inicial/i)).toBeInTheDocument()
   })
 
@@ -47,24 +49,27 @@ describe('OpenCajaPage', () => {
     expect(screen.getByRole('button', { name: /abrir caja · \$500/i })).toBeInTheDocument()
   })
 
-  it('CTA disabled when counts empty AND Sin fondo not checked', () => {
+  it('CTA disabled when counts empty AND Sin fondo not toggled', () => {
     renderWithProviders(<OpenCajaPage />, {
       initialRoute: '/caja/abrir?reg=reg-a',
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    const cta = screen.getByRole('button', { name: /selecciona el fondo|abrir caja/i })
+    // CTA copy ahora siempre es "Abrir caja · $X" (incluso $0 disabled).
+    const cta = screen.getByRole('button', { name: /abrir caja · \$0/i })
     expect(cta).toBeDisabled()
   })
 
-  it('checking "Sin fondo" enables CTA with empty counts', async () => {
+  it('toggling "Sin fondo" link enables CTA with empty counts', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OpenCajaPage />, {
       initialRoute: '/caja/abrir?reg=reg-a',
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    const toggle = screen.getByRole('checkbox', { name: /sin fondo/i })
+    // "Abrir sin fondo" ahora es un link toggle (button aria-pressed),
+    // ya no un checkbox grande del cuerpo.
+    const toggle = screen.getByRole('button', { name: /abrir sin fondo · caja vacía/i })
     await user.click(toggle)
-    const cta = screen.getByRole('button', { name: /abrir sin fondo|abrir caja sin fondo/i })
+    const cta = screen.getByRole('button', { name: /abrir caja sin fondo/i })
     expect(cta).not.toBeDisabled()
   })
 

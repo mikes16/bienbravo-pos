@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { cn } from '@/shared/lib/cn'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useClock } from '../application/useClock'
+import type { TimeClockEvent } from '../data/clock.repository'
 
 function formatTimeMx(iso: string): string {
   return new Date(iso).toLocaleTimeString('es-MX', {
@@ -14,93 +15,173 @@ function formatTimeMx(iso: string): string {
   })
 }
 
+/**
+ * "1:36 PM" — el formato natural del horario en 12h. Construye manual en
+ * vez de usar `toLocaleTimeString('es-MX', { hour12: true })` porque el
+ * locale es-MX devuelve "1:36 p. m." con puntos lowercase, que al embeber
+ * en una oración ("Entraste a las 1:36 p. m..") genera puntos duplicados
+ * y se ve mal. Mayúsculas sin puntos es más limpio y universalmente
+ * legible.
+ */
+function format12h(hours24: number, minutes: number): string {
+  const period = hours24 >= 12 ? 'PM' : 'AM'
+  const h12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24
+  return `${h12}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
+function formatTimeMx12(iso: string): string {
+  const d = new Date(iso)
+  return format12h(d.getHours(), d.getMinutes())
+}
+
+/** Hora actual en formato natural — para frases como "Son las 1:36 PM". */
+function formatNowMx(nowMs: number): string {
+  const d = new Date(nowMs)
+  return format12h(d.getHours(), d.getMinutes())
+}
+
+/** Frase en castellano natural: "3 horas 31 minutos" / "45 minutos" / "2 minutos". */
+function formatDurationWords(totalMin: number): string {
+  const min = Math.max(0, Math.floor(totalMin))
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  if (h === 0) {
+    if (m === 0) return 'menos de 1 minuto'
+    return `${m} ${m === 1 ? 'minuto' : 'minutos'}`
+  }
+  if (m === 0) return `${h} ${h === 1 ? 'hora' : 'horas'}`
+  return `${h} ${h === 1 ? 'hora' : 'horas'} ${m} ${m === 1 ? 'minuto' : 'minutos'}`
+}
+
+/** "10:00 AM" desde minutos desde medianoche. */
+function formatMinTime12(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return format12h(h, m)
+}
+
+/** Tick lento para refrescar "Son las HH:MM" — 30s es suficiente. */
+function useMinuteTick(): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+  return now
+}
+
+/** Suma de spans IN→OUT, incluye span abierto cuando isClockedIn. */
+function computeWorkedMs(events: TimeClockEvent[], nowMs: number): number {
+  const sorted = [...events].sort(
+    (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
+  )
+  let total = 0
+  let inAt: number | null = null
+  for (const evt of sorted) {
+    const at = new Date(evt.at).getTime()
+    if (evt.type === 'CLOCK_IN') {
+      if (inAt === null) inAt = at
+    } else if (evt.type === 'CLOCK_OUT') {
+      if (inAt !== null) {
+        total += at - inAt
+        inAt = null
+      }
+    }
+  }
+  if (inAt !== null) total += nowMs - inAt
+  return Math.max(0, total)
+}
+
+function nowMinutesFromMidnight(nowMs: number): number {
+  const d = new Date(nowMs)
+  return d.getHours() * 60 + d.getMinutes()
+}
+
 export function ClockPage() {
   const { viewer } = usePosAuth()
   const { locationId } = useLocation()
-  const { events, isClockedIn, loading, submitting, error, notAssignedHere, doClockIn, doClockOut, shiftStatus } = useClock(
-    viewer?.staff?.id ?? null,
-    locationId,
-  )
+  const {
+    events,
+    isClockedIn,
+    loading,
+    submitting,
+    error,
+    notAssignedHere,
+    doClockIn,
+    doClockOut,
+    shiftStatus,
+  } = useClock(viewer?.staff?.id ?? null, locationId)
 
-  const staffName = viewer?.staff?.fullName ?? ''
-  const initials = useMemo(
-    () =>
-      staffName
-        .split(' ')
-        .slice(0, 2)
-        .map((w) => w[0])
-        .join('')
-        .toUpperCase(),
-    [staffName],
+  const nowMs = useMinuteTick()
+
+  // Datos derivados para el copy de la status card.
+  const sortedEvents = [...events].sort(
+    (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
   )
+  const sortedClockIns = sortedEvents.filter((e) => e.type === 'CLOCK_IN')
+  const sortedClockOuts = sortedEvents.filter((e) => e.type === 'CLOCK_OUT')
+  // La PRIMERA entrada del día es la que define el retardo de tu jornada.
+  // Reentradas después de salir no son "llegaste tarde al turno" — son
+  // "regresaste". El retardo se fija al momento de la primera entrada.
+  const firstClockInToday = sortedClockIns[0]
+  const latestClockIn = sortedClockIns.at(-1)
+  const latestClockOut = sortedClockOuts.at(-1)
+  const totalWorkedMs = computeWorkedMs(events, nowMs)
+
+  // Retardo del día: diferencia entre la primera entrada y el inicio del
+  // turno, con grace period de 5 min. Null si llegó a tiempo o si no hay
+  // horario asignado o si no ha llegado todavía.
+  const firstArrivalLatenessMin = (() => {
+    if (!firstClockInToday || shiftStatus.scheduledStartMin === null) return null
+    const arrivalMin = nowMinutesFromMidnight(new Date(firstClockInToday.at).getTime())
+    const late = arrivalMin - shiftStatus.scheduledStartMin - 5
+    return late > 0 ? Math.floor(late) : null
+  })()
 
   if (loading) {
     return (
       <div className="flex h-full flex-col gap-6 px-6 py-6">
         <div className="h-12 w-32 animate-pulse bg-[var(--color-cuero-viejo)]" />
-        <div className="h-20 animate-pulse bg-[var(--color-cuero-viejo)]" />
-        <div className="h-16 animate-pulse bg-[var(--color-cuero-viejo)]" />
+        <div className="h-32 animate-pulse bg-[var(--color-cuero-viejo)]" />
+        <div className="h-14 animate-pulse bg-[var(--color-cuero-viejo)]" />
       </div>
     )
   }
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto px-6 py-6">
-      <h1 className="font-[var(--font-pos-display)] text-[28px] font-extrabold leading-none tracking-[-0.02em] text-[var(--color-bone)]">
+    <div className="flex h-full flex-col gap-6 overflow-y-auto px-6 py-6 pb-10">
+      <h1 className="font-[var(--font-pos-display)] text-[32px] font-extrabold leading-none tracking-[-0.02em] text-[var(--color-bone)]">
         Reloj
       </h1>
 
       {error && (
-        <div role="alert" className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
-          <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
+        <div role="alert" className="border-l-[3px] border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] px-5 py-4">
+          <p className="text-[14px] font-bold text-[var(--color-bravo)]">{error}</p>
         </div>
       )}
 
       {notAssignedHere && (
-        <div role="status" className="border border-[var(--color-leather-muted)]/40 bg-[var(--color-cuero-viejo)]/40 px-4 py-3">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-            Cuenta sin acceso aquí
+        <div role="status" className="border-l-[3px] border-[var(--color-leather)] bg-[var(--color-cuero-viejo)]/40 px-5 py-4">
+          <p className="text-[18px] font-bold leading-snug text-[var(--color-bone)]">
+            Tu cuenta no tiene acceso a esta sucursal todavía.
           </p>
-          <p className="mt-1 text-[13px] leading-snug text-[var(--color-bone)]">
-            Esta cuenta aún no está dada de alta como barbero en esta sucursal. Pídele al admin que te agregue al equipo y te asigne tu horario antes de marcar entrada.
+          <p className="mt-2 text-[14px] leading-snug text-[var(--color-bone-muted)]">
+            Pídele a tu admin que te agregue al equipo de esta sucursal antes de marcar entrada.
           </p>
         </div>
       )}
 
-      {/* Staff hero */}
-      <div className="flex items-center gap-4 border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-5 py-4">
-        {viewer?.staff?.photoUrl ? (
-          <img
-            src={viewer.staff.photoUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-16 w-16 border border-[var(--color-leather-muted)] object-cover"
-          />
-        ) : (
-          <div className="flex h-16 w-16 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[24px] font-extrabold text-[var(--color-bone)]">
-            {initials || '—'}
-          </div>
-        )}
-        <div className="flex-1">
-          <p className="text-[18px] font-extrabold leading-tight text-[var(--color-bone)]">{staffName}</p>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">Barbero</p>
-        </div>
-        <span
-          className={cn(
-            'flex items-center gap-2 border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
-            isClockedIn
-              ? 'border-[var(--color-success)]/40 bg-[var(--color-success)]/[0.06] text-[var(--color-success)]'
-              : 'border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[var(--color-bone-muted)]',
-          )}
-        >
-          <span aria-hidden className={cn('h-2 w-2', isClockedIn ? 'bg-[var(--color-success)]' : 'bg-[var(--color-bone-muted)]')} />
-          {isClockedIn ? 'Activo' : 'Inactivo'}
-        </span>
-      </div>
+      <StatusCard
+        isClockedIn={isClockedIn}
+        shiftStatus={shiftStatus}
+        nowMs={nowMs}
+        latestClockInIso={latestClockIn?.at ?? null}
+        latestClockOutIso={latestClockOut?.at ?? null}
+        firstClockInIso={firstClockInToday?.at ?? null}
+        firstArrivalLatenessMin={firstArrivalLatenessMin}
+        totalWorkedMs={totalWorkedMs}
+      />
 
-      {/* Single contextual CTA. Disabled durante submitting para evitar
-          doble-clic mientras la mutación está en vuelo. */}
       <TouchButton
         variant="primary"
         size="primary"
@@ -113,94 +194,228 @@ export function ClockPage() {
           : isClockedIn ? 'Salir →' : 'Entrar →'}
       </TouchButton>
 
-      {/* Shift status */}
-      <div className="flex flex-col gap-2 border border-[var(--color-leather-muted)]/40 px-5 py-4">
-        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-          Turno hoy
-        </p>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="flex flex-col gap-1">
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Programado</p>
-            <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
-              {shiftStatus.scheduledStartLabel ?? '—'}
-            </p>
-          </div>
-          <div className="flex flex-col gap-1">
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Llegada</p>
-            <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
-              {shiftStatus.arrivalLabel ?? '—'}
-            </p>
-          </div>
-          <div className="flex flex-col gap-1">
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Salida</p>
-            <p className="text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
-              {shiftStatus.departureLabel ?? '—'}
-            </p>
-          </div>
-          <div className="flex flex-col gap-1">
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">Estado</p>
-            <p
-              className={cn(
-                'text-[13px] font-bold',
-                shiftStatus.isLate
-                  ? 'text-[var(--color-warning)]'
-                  : shiftStatus.arrivalMin !== null
-                  ? 'text-[var(--color-success)]'
-                  : 'text-[var(--color-bone-muted)]',
-              )}
-            >
-              {shiftStatus.statusLabel}
-            </p>
-          </div>
-        </div>
-        {shiftStatus.scheduledStartMin === null && (
-          <p className="mt-2 border-t border-[var(--color-leather-muted)]/40 pt-2 text-[12px] leading-snug text-[var(--color-bone-muted)]">
-            Sin horario asignado en esta sucursal. Pídele al admin que configure tu turno para que el sistema detecte llegadas y retardos.
-          </p>
-        )}
-      </div>
+      <HistoryList events={events} />
+    </div>
+  )
+}
 
-      {/* Today's history */}
-      <div className="flex flex-col gap-2">
-        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-          Historial de hoy
+/* ────────────────────────────────────────────────────────────────────────
+ * Status Card — la pieza central de la pantalla.
+ *
+ * Habla en castellano natural, no en eyebrows de mono uppercase. El barbero
+ * lee una oración y entiende qué pasa sin tener que decodificar nada. Tono
+ * (bravo / leather / neutral) cambia según urgencia, no decoración. */
+function StatusCard({
+  isClockedIn,
+  shiftStatus,
+  nowMs,
+  latestClockInIso,
+  latestClockOutIso,
+  firstClockInIso,
+  firstArrivalLatenessMin,
+  totalWorkedMs,
+}: {
+  isClockedIn: boolean
+  shiftStatus: ReturnType<typeof useClock>['shiftStatus']
+  nowMs: number
+  latestClockInIso: string | null
+  latestClockOutIso: string | null
+  firstClockInIso: string | null
+  firstArrivalLatenessMin: number | null
+  totalWorkedMs: number
+}) {
+  // Línea contextual del retardo del día — se muestra cuando aplica,
+  // independiente del estado actual (clocked-in o out). Si el barbero llegó
+  // tarde HOY, eso queda visible toda la jornada para que el sistema sea
+  // honesto. Se atenúa visualmente porque ya pasó — no es la acción ahora,
+  // es contexto histórico.
+  const latenessLine = (firstArrivalLatenessMin !== null && firstClockInIso) ? (
+    <p className="mt-2 text-[14px] leading-snug text-[var(--color-bravo)]">
+      Llegaste a las <strong className="font-bold">{formatTimeMx12(firstClockInIso)}</strong>,{' '}
+      con retardo de <strong className="font-bold">{formatDurationWords(firstArrivalLatenessMin)}</strong>.
+    </p>
+  ) : null
+
+  // 1. CLOCKED-IN — está trabajando, mostrar cuánto lleva y desde cuándo
+  if (isClockedIn && latestClockInIso) {
+    const totalMin = Math.floor(totalWorkedMs / 60000)
+    return (
+      <StatusBox tone="leather">
+        <Headline>Estás trabajando.</Headline>
+        <Body>
+          Entraste a las{' '}
+          <DataInline>{formatTimeMx12(latestClockInIso)}</DataInline>. Llevas{' '}
+          <DataInline>{formatDurationWords(totalMin)}</DataInline>.
+        </Body>
+        {latenessLine}
+      </StatusBox>
+    )
+  }
+
+  // 2. SIN HORARIO ASIGNADO — fallback honesto
+  if (shiftStatus.scheduledStartMin === null) {
+    return (
+      <StatusBox tone="neutral">
+        <Headline>Listo para empezar.</Headline>
+        <Body>
+          Marca tu entrada cuando llegues. Tu admin todavía no te asignó un
+          horario fijo en esta sucursal.
+        </Body>
+      </StatusBox>
+    )
+  }
+
+  // Si ya hubo entradas hoy (estás out), no asumimos break vs fin de día —
+  // el sistema no lo sabe. Solo reportamos lo que pasó: cuándo saliste y
+  // cuánto trabajaste. El botón ENTRAR sigue accesible si necesitas volver.
+  if (firstClockInIso) {
+    const totalMin = Math.floor(totalWorkedMs / 60000)
+    return (
+      <StatusBox tone="neutral">
+        <Headline>
+          {latestClockOutIso
+            ? <>Saliste a las <DataInline>{formatTimeMx12(latestClockOutIso)}</DataInline>.</>
+            : <>Estás fuera.</>}
+        </Headline>
+        <Body>
+          Llevas <DataInline>{formatDurationWords(totalMin)}</DataInline>{' '}
+          trabajados hoy. Marca entrada si vas a regresar.
+        </Body>
+        {latenessLine}
+      </StatusBox>
+    )
+  }
+
+  const nowMin = nowMinutesFromMidnight(nowMs)
+  const minsLate = Math.max(0, nowMin - shiftStatus.scheduledStartMin - 5)
+  const isLate = minsLate > 0
+
+  // 3. SIN TURNO + RETARDO EN VIVO — urgencia, tono bravo. Solo aplica
+  //    cuando aún no has marcado entrada hoy y el reloj ya pasó tu horario.
+  if (isLate) {
+    return (
+      <StatusBox tone="bravo">
+        <Headline>
+          Tu horario empezó hace{' '}
+          <DataInline>{formatDurationWords(minsLate)}</DataInline>.
+        </Headline>
+        <Body>
+          Debías llegar a las{' '}
+          <DataInline>{formatMinTime12(shiftStatus.scheduledStartMin)}</DataInline>.
+          Son las <DataInline>{formatNowMx(nowMs)}</DataInline>.
+        </Body>
+      </StatusBox>
+    )
+  }
+
+  // 4. SIN TURNO ANTES DE HORA — tranquilo
+  const minsUntilStart = shiftStatus.scheduledStartMin - nowMin
+  if (minsUntilStart > 0) {
+    return (
+      <StatusBox tone="neutral">
+        <Headline>
+          Tu horario empieza a las{' '}
+          <DataInline>{formatMinTime12(shiftStatus.scheduledStartMin)}</DataInline>.
+        </Headline>
+        <Body>
+          Faltan{' '}
+          <DataInline>{formatDurationWords(minsUntilStart)}</DataInline>.
+          Marca entrada cuando estés listo.
+        </Body>
+      </StatusBox>
+    )
+  }
+
+  // 5. SIN TURNO JUSTO A TIEMPO — sin retardo todavía (dentro del grace period)
+  return (
+    <StatusBox tone="neutral">
+      <Headline>Listo para empezar.</Headline>
+      <Body>
+        Tu horario empieza a las{' '}
+        <DataInline>{formatMinTime12(shiftStatus.scheduledStartMin)}</DataInline>.
+        Marca tu entrada.
+      </Body>
+    </StatusBox>
+  )
+}
+
+function StatusBox({
+  tone,
+  children,
+}: {
+  tone: 'bravo' | 'leather' | 'neutral'
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={cn(
+        'border-l-[3px] px-5 py-5',
+        tone === 'bravo' && 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08]',
+        tone === 'leather' && 'border-[var(--color-leather)] bg-[var(--color-cuero-viejo)]/40',
+        tone === 'neutral' && 'border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)]',
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+function Headline({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[22px] font-bold leading-tight text-[var(--color-bone)]">
+      {children}
+    </p>
+  )
+}
+
+function Body({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-2 text-[16px] leading-snug text-[var(--color-bone-muted)]">
+      {children}
+    </p>
+  )
+}
+
+/** Dato inline destacado dentro de una oración — peso bold y tabular pero
+ *  sin romper el flujo de prosa. Mejor que mono uppercase que se siente
+ *  como código. */
+function DataInline({ children }: { children: React.ReactNode }) {
+  return (
+    <strong className="font-bold tabular-nums text-[var(--color-bone)]">
+      {children}
+    </strong>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Historial — siempre visible, simple, sin pills semaforo. */
+function HistoryList({ events }: { events: TimeClockEvent[] }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="font-[var(--font-pos-display)] text-[20px] font-bold tracking-[-0.01em] text-[var(--color-bone)]">
+        Hoy
+      </h2>
+      {events.length === 0 ? (
+        <p className="text-[14px] text-[var(--color-bone-muted)]">
+          Sin movimientos.
         </p>
-        {events.length === 0 ? (
-          <div className="flex items-center justify-center border border-[var(--color-leather-muted)]/40 px-5 py-8">
-            <p className="text-[13px] text-[var(--color-bone-muted)]">Sin registros hoy</p>
-          </div>
-        ) : (
-          <div className="flex flex-col border border-[var(--color-leather-muted)]/40">
-            {events.map((e) => (
-              <div
-                key={e.id}
-                className="flex items-center justify-between border-b border-[var(--color-leather-muted)]/30 px-4 py-2.5 last:border-b-0"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'h-2 w-2',
-                      e.type === 'CLOCK_IN' ? 'bg-[var(--color-success)]' : 'bg-[var(--color-bravo)]',
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'font-mono text-[10px] font-bold uppercase tracking-[0.18em]',
-                      e.type === 'CLOCK_IN' ? 'text-[var(--color-success)]' : 'text-[var(--color-bravo)]',
-                    )}
-                  >
-                    {e.type === 'CLOCK_IN' ? 'Entrada' : 'Salida'}
-                  </span>
-                </div>
-                <span className="font-mono text-[12px] tabular-nums text-[var(--color-bone)]">
-                  {formatTimeMx(e.at)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      ) : (
+        <ul className="flex flex-col">
+          {events.map((e) => (
+            <li
+              key={e.id}
+              className="grid grid-cols-[80px_1fr] items-baseline gap-4 border-b border-[var(--color-leather-muted)]/30 py-3 last:border-b-0"
+            >
+              <span className="font-mono text-[15px] font-bold tabular-nums text-[var(--color-bone)]">
+                {formatTimeMx(e.at)}
+              </span>
+              <span className="text-[15px] text-[var(--color-bone)]">
+                {e.type === 'CLOCK_IN' ? 'Entrada' : 'Salida'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
