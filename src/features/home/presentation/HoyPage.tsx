@@ -217,6 +217,18 @@ export function HoyPage() {
   // salto — es FIFO normal por tap directo.
   const handleTakeQueueItem = useCallback((row: HoyRowData) => {
     if (!vm || !viewer) return
+    // Guard UX: no se puede tomar un turno nuevo si ya estás atendiendo a
+    // alguien. El backend también lo rechaza (walkIns.assign valida un
+    // activeWalkIn ASSIGNED del mismo staff), pero bloqueamos aquí para
+    // evitar abrir el sheet y luego mostrar un error feo después del confirm.
+    const myActiveRow = vm.rows.find((r) => r.kind === 'active' && r.isMine)
+    if (myActiveRow) {
+      addToast(
+        `Termina con ${myActiveRow.customerName.split(' ')[0]} antes de tomar otro turno.`,
+        'error',
+      )
+      return
+    }
     const firstQueueIdx = vm.rows.findIndex((r) => r.kind === 'queue')
     const myIdx = vm.rows.findIndex((r) => r.id === row.id)
     const isJumping = firstQueueIdx !== -1 && myIdx !== -1 && myIdx > firstQueueIdx
@@ -231,7 +243,7 @@ export function HoyPage() {
       waitMinutes: row.queueWaitMinutes ?? 0,
       isJumpingQueue: isJumping,
     })
-  }, [vm, viewer])
+  }, [vm, viewer, addToast])
 
   const confirmTake = useCallback(async () => {
     if (!takeTarget || taking || !viewer) return
