@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
@@ -323,21 +323,68 @@ export function useCheckout() {
     }
   }, [appliedCoupons, buildDraftItems, cartState.customer, checkout])
 
-  // Invalida cupones cuando cambian las líneas del carrito (qty, items,
-  // precios). La validez de un cupón depende del shape exacto del draft;
-  // mantener cupones "vivos" después de un cambio puede sobre-descontar.
-  // Patrón derived-state para cumplir react-hooks/set-state-in-effect.
+  // Re-valida cupones cuando cambian las líneas del carrito en lugar de
+  // nukearlos. El backend recomputa el descuento contra el nuevo draft, así
+  // el cupón persiste y el total se actualiza solo. Si después del cambio
+  // el cupón ya no aplica (no llega al monto mínimo, expiró, etc.), lo
+  // dropeamos individualmente con un mensaje claro.
   const itemsKey = JSON.stringify(
     cartState.lines.map((l) => `${l.kind}:${l.itemId}:${l.qty}:${l.unitPriceCents}`),
   )
-  const [lastItemsKey, setLastItemsKey] = useState(itemsKey)
-  if (itemsKey !== lastItemsKey) {
-    setLastItemsKey(itemsKey)
-    if (appliedCoupons.length > 0) {
-      setAppliedCoupons([])
-      setCouponError(null)
+  const prevItemsKeyRef = useRef(itemsKey)
+  useEffect(() => {
+    if (prevItemsKeyRef.current === itemsKey) return
+    prevItemsKeyRef.current = itemsKey
+    if (appliedCoupons.length === 0) return
+
+    const codes = appliedCoupons.map((c) => c.code)
+    let cancelled = false
+    ;(async () => {
+      // Re-aplica los cupones uno por uno contra el carrito nuevo. El backend
+      // valida cada uno respetando las reglas de stacking; si un cupón ya no
+      // cualifica con el carrito actual, simplemente no entra a `accepted`.
+      const accepted: AppliedCouponPreview[] = []
+      for (const code of codes) {
+        try {
+          const result = await checkout.applyCoupon({
+            code,
+            items: buildDraftItems(),
+            customerId: cartState.customer?.id ?? null,
+            existingAppliedCouponCodes: accepted.map((c) => c.code),
+          })
+          if (cancelled) return
+          if (!result || result.validationError) continue
+          accepted.length = 0
+          for (const c of result.appliedCoupons) {
+            accepted.push({
+              code: c.code,
+              name: c.name,
+              scope: c.scope,
+              discountAmountCents: c.discountAmountCents,
+            })
+          }
+        } catch {
+          // Tragamos el error individual — si el API falla para un cupón
+          // específico lo dejamos fuera y seguimos con el resto.
+        }
+      }
+      if (cancelled) return
+      setAppliedCoupons(accepted)
+      const droppedCodes = codes.filter((c) => !accepted.some((a) => a.code === c))
+      if (droppedCodes.length > 0) {
+        setCouponError(
+          droppedCodes.length === 1
+            ? `Cupón ${droppedCodes[0]} ya no aplica al carrito actual.`
+            : `Cupones ${droppedCodes.join(', ')} ya no aplican al carrito actual.`,
+        )
+      } else {
+        setCouponError(null)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-  }
+  }, [itemsKey, appliedCoupons, buildDraftItems, cartState.customer, checkout])
 
   const discountTotalCents = appliedCoupons.reduce((s, c) => s + c.discountAmountCents, 0)
 
