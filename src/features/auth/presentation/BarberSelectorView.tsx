@@ -224,26 +224,40 @@ function BarberCard({
         })()}
       </div>
 
-      {/* Monograma — fallback cuando no hay foto. Mismo tratamiento editorial. */}
+      {/* Monograma — fallback cuando no hay foto. Mismo tratamiento editorial.
+          Con foto este bloque queda vacío (solo flex-1 para empujar el
+          nombre abajo) y el dash se reposiciona como kicker bajo el nombre,
+          para no flotar en mitad del cuerpo del barbero. */}
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-4">
         {!showPhoto && (
-          <span
-            className="font-[var(--font-pos-display)] font-extrabold leading-none tracking-[-0.03em] text-[var(--color-bone)] transition-transform duration-300 group-hover:scale-[1.06]"
-            style={{ fontSize: 'clamp(72px, 8vw, 128px)' }}
-          >
-            {initials}
-          </span>
+          <>
+            <span
+              className="font-[var(--font-pos-display)] font-extrabold leading-none tracking-[-0.03em] text-[var(--color-bone)] transition-transform duration-300 group-hover:scale-[1.06]"
+              style={{ fontSize: 'clamp(72px, 8vw, 128px)' }}
+            >
+              {initials}
+            </span>
+            <span
+              aria-hidden
+              className="h-px w-10 bg-[var(--color-leather)] transition-all duration-300 group-hover:w-20 group-hover:bg-[var(--color-bravo)]"
+            />
+          </>
         )}
-        <span
-          aria-hidden
-          className="h-px w-10 bg-[var(--color-leather)] transition-all duration-300 group-hover:w-20 group-hover:bg-[var(--color-bravo)]"
-        />
       </div>
 
-      {/* Nombre completo abajo */}
-      <p className="relative z-10 text-center font-[var(--font-pos-display)] text-[15px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-bone)]">
-        {fullName}
-      </p>
+      {/* Nombre completo abajo (con dash kicker debajo cuando hay foto, para
+          mantener la afordancia de hover sin cortar la composición). */}
+      <div className="relative z-10 flex flex-col items-center gap-2">
+        <p className="text-center font-[var(--font-pos-display)] text-[15px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-bone)]">
+          {fullName}
+        </p>
+        {showPhoto && (
+          <span
+            aria-hidden
+            className="h-px w-8 bg-[var(--color-leather)] transition-all duration-300 group-hover:w-16 group-hover:bg-[var(--color-bravo)]"
+          />
+        )}
+      </div>
 
       <style>{`
         .bb-card-in {
