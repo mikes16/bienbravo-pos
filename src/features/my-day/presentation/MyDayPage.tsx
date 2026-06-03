@@ -21,13 +21,14 @@ function todayISO(): string {
 
 interface CompletedItem {
   id: string
-  /** Origen: cita (appointment) o walk-in. Las citas tienen totalCents
-   *  directo del agendamiento; los walk-ins generan venta via Sale, por
-   *  lo que su totalCents requeriría enriquecimiento — primera versión
-   *  lo deja en null y la fila muestra '—'. */
-  kind: 'appt' | 'walkin'
+  /** Origen: cita (appointment), walk-in, o venta directa de POS sin link.
+   *  - appt/walkin: viene de la cola/agenda, ya estaba renderizado.
+   *  - sale: venta directa (Nueva venta), aparece como row independiente
+   *    si NO tiene linkedWalkInId ni linkedAppointmentId (dedupe). */
+  kind: 'appt' | 'walkin' | 'sale'
   /** Timestamp para sort cronológico. Para appointments es endAt,
-   *  para walk-ins assignedAt (cuando empezó el servicio). */
+   *  para walk-ins assignedAt (cuando empezó el servicio),
+   *  para ventas directas soldAt (sale.createdAt). */
   timeAt: string
   customerName: string
   serviceLabel: string
@@ -109,13 +110,25 @@ function apptServiceLabel(a: Appointment): string {
   return a.items.map((it) => it.label).join(' · ')
 }
 
+interface PerSaleEntry {
+  commissionCents: number
+  tipCents: number
+  earningsCents: number
+  soldAt: string
+  customerName: string | null
+  linkedWalkInId: string | null
+  linkedAppointmentId: string | null
+  itemLabels: string[]
+  attributedRevenueCents: number
+}
+
 function computeWorkSummary(
   appointments: Appointment[],
   walkIns: WalkIn[],
   clockEvents: TimeClockEvent[],
   staffUserId: string,
   breakdown: EarningsBreakdown,
-  perSaleMap: Map<string, { commissionCents: number; tipCents: number; earningsCents: number }>,
+  perSaleMap: Map<string, PerSaleEntry>,
 ): DaySummary {
   // Walk-ins ya vienen pre-filtrados por fecha del servidor (fromDate/toDate
   // del query). Solo aplicamos los filtros semánticos restantes: status DONE
@@ -127,7 +140,12 @@ function computeWorkSummary(
   const completedWalkIns = walkIns.filter(
     (w) => w.status === 'DONE' && w.assignedStaffUser?.id === staffUserId,
   )
-  const completedCount = completedAppts.length + completedWalkIns.length
+  // Ventas directas atribuidas a este staff (no linkadas a walk-in/appt).
+  // Cuentan como "servicios realizados" del día.
+  const directSales = Array.from(perSaleMap.values()).filter(
+    (e) => !e.linkedWalkInId && !e.linkedAppointmentId,
+  )
+  const completedCount = completedAppts.length + completedWalkIns.length + directSales.length
 
   // Timeline ordenado cronológicamente descendente — lo más reciente arriba.
   // Para cada row enriquezco con earnings derivado del per-sale del API:
@@ -168,6 +186,24 @@ function computeWorkSummary(
         earningsCents: e?.earningsCents ?? null,
       }
     }),
+    // Ventas directas — POS sales sin walk-in ni appointment linkados.
+    // Aparecen como rows independientes para que el barbero vea TODA su
+    // actividad del día. Multi-barbero: cada barbero ve solo SUS itemLabels
+    // (no las partes de otros performers en la misma venta).
+    ...Array.from(perSaleMap.entries())
+      .filter(([, e]) => !e.linkedWalkInId && !e.linkedAppointmentId)
+      .map(([saleId, e]): CompletedItem => ({
+        id: `sale-${saleId}`,
+        kind: 'sale',
+        timeAt: e.soldAt,
+        customerName: e.customerName ?? 'Mostrador',
+        serviceLabel: e.itemLabels.length > 0 ? e.itemLabels.join(' · ') : '—',
+        totalCents: e.attributedRevenueCents,
+        saleId,
+        commissionCents: e.commissionCents,
+        tipCents: e.tipCents,
+        earningsCents: e.earningsCents,
+      })),
   ].sort((a, b) => new Date(b.timeAt).getTime() - new Date(a.timeAt).getTime())
 
   // Próximas citas asignadas al viewer — para "lo que viene en el día".
@@ -272,6 +308,12 @@ export function MyDayPage() {
             commissionCents: number
             tipCents: number
             earningsCents: number
+            soldAt: string
+            customerName: string | null
+            linkedWalkInId: string | null
+            linkedAppointmentId: string | null
+            itemLabels: string[]
+            attributedRevenueCents: number
           }>
         }
       }>({
@@ -303,15 +345,18 @@ export function MyDayPage() {
               serviceRevenueCents: 0,
               productRevenueCents: 0,
             }
-        const perSaleMap = new Map<
-          string,
-          { commissionCents: number; tipCents: number; earningsCents: number }
-        >()
+        const perSaleMap = new Map<string, PerSaleEntry>()
         earnings?.perSale.forEach((entry) => {
           perSaleMap.set(entry.saleId, {
             commissionCents: entry.commissionCents,
             tipCents: entry.tipCents,
             earningsCents: entry.earningsCents,
+            soldAt: entry.soldAt,
+            customerName: entry.customerName,
+            linkedWalkInId: entry.linkedWalkInId,
+            linkedAppointmentId: entry.linkedAppointmentId,
+            itemLabels: entry.itemLabels,
+            attributedRevenueCents: entry.attributedRevenueCents,
           })
         })
         setSummary(
@@ -497,7 +542,7 @@ function CompletedRow({
           {customerName}
         </p>
         <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
-          {kind === 'walkin' ? 'Walk-in' : 'Cita'} · {serviceLabel}
+          {kind === 'walkin' ? 'Walk-in' : kind === 'sale' ? 'Venta' : 'Cita'} · {serviceLabel}
         </p>
       </div>
       <div className="flex flex-col items-end gap-0.5">

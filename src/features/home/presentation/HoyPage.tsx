@@ -5,7 +5,7 @@ import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
-import { POS_HOME_COMMISSION, POS_HOME_CAJA_STATUS } from '../data/home.queries'
+import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS } from '../data/home.queries'
 import { deriveHoyViewModel, type HoyViewModel, type HoyRowData } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
 import { FinalizeWalkInSheet } from './FinalizeWalkInSheet'
@@ -60,13 +60,21 @@ export function HoyPage() {
       clock.getEvents(viewer.staff.id, locationId, date, date),
       walkins.getWalkIns(locationId),
       apollo.query<{
-        staffServiceRevenueToday: number
-        staffProductRevenueToday: number
-        staffCommissionToday: number
+        staffDayEarnings: {
+          totalCommissionCents: number
+          perSale: Array<{
+            saleId: string
+            linkedWalkInId: string | null
+            linkedAppointmentId: string | null
+          }>
+        }
       }>({
-        query: POS_HOME_COMMISSION,
+        query: POS_MY_DAY_EARNINGS,
         variables: { staffUserId: viewer.staff.id, locationId, date },
-        fetchPolicy: 'cache-first',
+        // Network-only para evitar staleness — el barbero acaba de cerrar
+        // una venta y debe ver el número actualizado al instante. Mi Día
+        // usa la misma query así que Apollo dedupe entre rutas.
+        fetchPolicy: 'network-only',
       }),
       apollo.query<{
         posCajaStatusHome: { isOpen: boolean; accumulatedCents: number | null; openedAt: string | null }
@@ -80,14 +88,20 @@ export function HoyPage() {
     const appts: Appointment[] = settled[0].status === 'fulfilled' ? settled[0].value : []
     const events: TimeClockEvent[] = settled[1].status === 'fulfilled' ? settled[1].value : []
     const wkins: WalkIn[] = settled[2].status === 'fulfilled' ? settled[2].value : []
-    const commissionRes = settled[3].status === 'fulfilled' ? settled[3].value.data : null
+    const earningsRes = settled[3].status === 'fulfilled' ? settled[3].value.data?.staffDayEarnings : null
     const cajaRes = settled[4].status === 'fulfilled' ? settled[4].value.data?.posCajaStatusHome : null
 
-    // Approximate service count: completed appts + done walk-ins for me today
+    // Service count: completed appts + done walk-ins + direct POS sales
+    // (sales without walk-in/appt link). Antes contábamos solo appts/walk-ins
+    // y las ventas directas quedaban invisibles a este contador.
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    const directSaleCount = (earningsRes?.perSale ?? []).filter(
+      (e) => !e.linkedWalkInId && !e.linkedAppointmentId,
+    ).length
     const serviceCount =
       appts.filter((a) => a.status === 'COMPLETED' && a.staffUser?.id === viewer.staff.id && new Date(a.startAt) >= todayStart).length +
-      wkins.filter((w) => w.status === 'DONE' && w.assignedStaffUser?.id === viewer.staff.id && new Date(w.createdAt) >= todayStart).length
+      wkins.filter((w) => w.status === 'DONE' && w.assignedStaffUser?.id === viewer.staff.id && new Date(w.createdAt) >= todayStart).length +
+      directSaleCount
 
     setVm(
       deriveHoyViewModel({
@@ -97,7 +111,7 @@ export function HoyPage() {
         walkIns: wkins,
         clockEvents: events,
         commission: {
-          amountCents: commissionRes?.staffCommissionToday ?? 0,
+          amountCents: earningsRes?.totalCommissionCents ?? 0,
           serviceCount,
           loading: false,
         },

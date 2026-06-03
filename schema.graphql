@@ -988,6 +988,7 @@ type Mutation {
   deleteLatenessOverride(id: ID!): Boolean!
   deleteLocationBlackout(id: ID!): Boolean!
   deleteMetafieldValue(id: ID!): Boolean!
+  deletePayoutRun(id: ID!): Boolean!
   deleteRole(id: ID!): Boolean!
   deleteService(id: ID!): Service!
   deleteShiftOverride(id: ID!): Boolean!
@@ -1005,6 +1006,8 @@ type Mutation {
   issueLocationKioskToken(input: IssueLocationKioskTokenInput!): IssuedKioskToken!
   logout: Boolean!
   markAppointmentPrepaidManual(input: MarkAppointmentPrepaidManualInput!): Sale!
+  markPayoutEntryPaid(entryId: ID!): PayoutRun!
+  markPayoutRunAllPaid(runId: ID!): PayoutRun!
   markWalkInNoShow(walkInId: ID!): WalkIn!
   mintRotatingKioskToken(deviceToken: String!): MintedRotatingToken!
   noShow(appointmentId: ID!): Appointment!
@@ -1029,7 +1032,7 @@ type Mutation {
   resumeWalkIn(walkInId: ID!): WalkIn!
   revokeLocationKioskToken(id: ID!): KioskToken!
   rotateServiceToken(input: RotateServiceTokenInput!): RotateServiceTokenResult!
-  runPayout(periodEnd: DateTime!, periodStart: DateTime!): PayoutRun!
+  runPayout(periodEnd: DateTime!, periodStart: DateTime!, replace: Boolean = false): PayoutRun!
   setPosLocationPassword(locationId: ID!, password: String!): Boolean!
   setStaffPassword(password: String!, staffUserId: ID!): Boolean!
   setStaffPin(pin4: String!, staffUserId: ID!): Boolean!
@@ -1037,6 +1040,7 @@ type Mutation {
   staffPinLogin(email: String!, pin4: String!): AuthResult!
   startService(appointmentId: ID!): Appointment!
   unassignRoleFromStaff(kind: RoleKind, staffUserId: ID!): Boolean!
+  unmarkPayoutEntryPaid(entryId: ID!): PayoutRun!
   updateBlogPost(id: ID!, input: UpdateBlogPostInput!): BlogPost!
   updateCatalogCategory(id: ID!, input: UpdateCatalogCategoryInput!): CatalogCategory!
   updateCatalogCombo(id: ID!, input: UpdateCatalogComboInput!): CatalogCombo!
@@ -1156,7 +1160,17 @@ type PayoutRunEntry {
   amountCents: Int!
   breakdownJson: JSON
   id: ID!
+  paidAt: DateTime
+  paidByStaffUserId: ID
+  staff: PayoutRunEntryStaff
   staffUserId: ID!
+}
+
+type PayoutRunEntryStaff {
+  fullName: String!
+  id: ID!
+  photoPublicId: String
+  photoUrl: String
 }
 
 type PayrollPreviewRow {
@@ -1957,9 +1971,15 @@ type StaffRoleSummary {
 }
 
 type StaffSaleEarnings {
+  attributedRevenueCents: Int!
   commissionCents: Int!
+  customerName: String
   earningsCents: Int!
+  itemLabels: [String!]!
+  linkedAppointmentId: ID
+  linkedWalkInId: ID
   saleId: ID!
+  soldAt: DateTime!
   tipCents: Int!
 }
 

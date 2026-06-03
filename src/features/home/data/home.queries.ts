@@ -27,6 +27,12 @@ export const POS_MY_DAY_EARNINGS = graphql(`
         commissionCents
         tipCents
         earningsCents
+        soldAt
+        customerName
+        linkedWalkInId
+        linkedAppointmentId
+        itemLabels
+        attributedRevenueCents
       }
     }
   }
