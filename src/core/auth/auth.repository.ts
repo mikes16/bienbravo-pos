@@ -15,6 +15,7 @@ import {
 type RawStaff = {
   id: string; fullName: string; email: string
   phone: string | null; photoUrl: string | null
+  photoPublicId: string | null
   isActive: boolean; hasPosPin: boolean
   pinAttempts: number; pinLockedUntil: string | null
 }
@@ -32,7 +33,7 @@ const VIEWER_QUERY = graphql(`
     viewer {
       kind
       staff {
-        id fullName email phone photoUrl isActive hasPosPin
+        id fullName email phone photoUrl photoPublicId isActive hasPosPin
         pinAttempts pinLockedUntil
       }
       permissions
@@ -62,7 +63,7 @@ const STAFF_PIN_LOGIN = graphql(`
       viewer {
         kind
         staff {
-          id fullName email phone photoUrl isActive hasPosPin
+          id fullName email phone photoUrl photoPublicId isActive hasPosPin
           pinAttempts pinLockedUntil
         }
         permissions
@@ -75,7 +76,7 @@ const STAFF_PIN_LOGIN = graphql(`
 const BARBERS_QUERY = graphql(`
   query PosBarbers($locationId: ID!) {
     barbers(locationId: $locationId) {
-      id fullName email phone photoUrl isActive hasPosPin
+      id fullName email phone photoUrl photoPublicId isActive hasPosPin
       pinAttempts pinLockedUntil
     }
   }
@@ -138,6 +139,7 @@ function mapStaff(s: RawStaff): PosStaffUser {
     email: s.email,
     phone: s.phone,
     photoUrl: s.photoUrl,
+    photoPublicId: s.photoPublicId,
     isActive: s.isActive,
     hasPosPin: s.hasPosPin,
     pinAttempts: s.pinAttempts,

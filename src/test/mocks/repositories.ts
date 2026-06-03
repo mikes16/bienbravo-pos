@@ -25,6 +25,7 @@ export const MOCK_STAFF: PosStaffUser = {
   email: 'carlos@bienbravo.com',
   phone: '+521234567890',
   photoUrl: null,
+  photoPublicId: null,
   isActive: true,
   hasPosPin: true,
   pinAttempts: 0,

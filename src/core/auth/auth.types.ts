@@ -4,6 +4,7 @@ export interface PosStaffUser {
   email: string
   phone: string | null
   photoUrl: string | null
+  photoPublicId: string | null
   isActive: boolean
   hasPosPin: boolean
   pinAttempts: number

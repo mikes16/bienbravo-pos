@@ -125,6 +125,7 @@ export function BarberSelectorView({
               index={idx}
               initials={getInitials(b.fullName)}
               fullName={b.fullName}
+              photoUrl={b.photoUrl}
               status={statuses?.get(b.id) ?? 'fuera_de_turno'}
               onClick={() => onSelect(b)}
             />
@@ -164,15 +165,21 @@ function BarberCard({
   index,
   initials,
   fullName,
+  photoUrl,
   status,
   onClick,
 }: {
   index: number
   initials: string
   fullName: string
+  photoUrl: string | null
   status: PosBarberStatus
   onClick: () => void
 }) {
+  // Si la foto falla (URL stale, 404 de Cloudinary, etc.) caemos al monograma.
+  // Estado local de error para no romper el render del rest del grid.
+  const [photoBroken, setPhotoBroken] = useState(false)
+  const showPhoto = photoUrl && !photoBroken
   return (
     <button
       type="button"
@@ -182,7 +189,7 @@ function BarberCard({
         'group relative flex aspect-[4/5] flex-col items-stretch justify-between border border-[var(--color-leather-muted)]/60 bg-[var(--color-carbon-elevated)] p-6 text-left transition-all duration-200',
         'cursor-pointer hover:border-[var(--color-bravo)] hover:bg-[var(--color-cuero-viejo)]/40 hover:-translate-y-1',
         'active:translate-y-0 active:scale-[0.99]',
-        'bb-card-in',
+        'bb-card-in overflow-hidden',
         // Fuera de turno: opacity 65% para hundir visualmente al barbero
         // que aún no marca entrada. Sigue tappable, pero el operador ve de
         // un vistazo quién está en piso vs quién no.
@@ -190,21 +197,43 @@ function BarberCard({
       )}
       aria-label={fullName}
     >
-      <div className="flex items-center justify-end">
+      {/* Foto fullbleed cuando existe — el barbero se reconoce más rápido por
+          cara que por iniciales. Grayscale + brightness para mantener voz
+          editorial y dejar que el badge/nombre se lean encima. */}
+      {showPhoto && (
+        <img
+          src={photoUrl}
+          alt=""
+          draggable={false}
+          onError={() => setPhotoBroken(true)}
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover grayscale brightness-90 transition-transform duration-500 group-hover:scale-[1.04]"
+        />
+      )}
+      {/* Overlay de gradiente para legibilidad del nombre + badge sobre la foto. */}
+      {showPhoto && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[var(--color-carbon)]/95 via-[var(--color-carbon)]/40 to-[var(--color-carbon)]/60"
+        />
+      )}
+
+      <div className="relative z-10 flex items-center justify-end">
         {(() => {
           const { tone, label } = statusToBadge(status)
           return <StatusBadge tone={tone} label={label} />
         })()}
       </div>
 
-      {/* Monograma — el protagonista absoluto de la card */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-4">
-        <span
-          className="font-[var(--font-pos-display)] font-extrabold leading-none tracking-[-0.03em] text-[var(--color-bone)] transition-transform duration-300 group-hover:scale-[1.06]"
-          style={{ fontSize: 'clamp(72px, 8vw, 128px)' }}
-        >
-          {initials}
-        </span>
+      {/* Monograma — fallback cuando no hay foto. Mismo tratamiento editorial. */}
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-4">
+        {!showPhoto && (
+          <span
+            className="font-[var(--font-pos-display)] font-extrabold leading-none tracking-[-0.03em] text-[var(--color-bone)] transition-transform duration-300 group-hover:scale-[1.06]"
+            style={{ fontSize: 'clamp(72px, 8vw, 128px)' }}
+          >
+            {initials}
+          </span>
+        )}
         <span
           aria-hidden
           className="h-px w-10 bg-[var(--color-leather)] transition-all duration-300 group-hover:w-20 group-hover:bg-[var(--color-bravo)]"
@@ -212,7 +241,7 @@ function BarberCard({
       </div>
 
       {/* Nombre completo abajo */}
-      <p className="text-center font-[var(--font-pos-display)] text-[15px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-bone)]">
+      <p className="relative z-10 text-center font-[var(--font-pos-display)] text-[15px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-bone)]">
         {fullName}
       </p>
 
