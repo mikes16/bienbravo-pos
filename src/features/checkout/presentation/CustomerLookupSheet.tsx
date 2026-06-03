@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 
 interface CustomerLite {
@@ -30,6 +30,28 @@ export function CustomerLookupSheet({
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
 
+  // ESC cierra el sheet. Resetea el modo creating al cerrar para que la
+  // próxima apertura inicie en search step, no en el form a medio llenar.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  // Cuando el sheet cierra (open va a false), limpia el form para que la
+  // próxima apertura no muestre el texto viejo.
+  useEffect(() => {
+    if (!open) {
+      setCreating(false)
+      setName('')
+      setPhone('')
+      setEmail('')
+    }
+  }, [open])
+
   if (!open) return null
 
   return (
@@ -43,6 +65,34 @@ export function CustomerLookupSheet({
         className="w-full max-w-2xl border-t border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-6 py-5"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header con título + back + close. Siempre visible, da al usuario
+            una salida explícita en cualquier paso. */}
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {creating && (
+              <button
+                type="button"
+                onClick={() => setCreating(false)}
+                aria-label="Volver a buscar"
+                className="cursor-pointer font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] transition-colors hover:text-[var(--color-bone)]"
+              >
+                ← Buscar
+              </button>
+            )}
+            <p className="font-[var(--font-pos-display)] text-[16px] font-extrabold uppercase tracking-[0.04em] text-[var(--color-bone)]">
+              {creating ? 'Crear cliente' : 'Buscar cliente'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center text-[20px] leading-none text-[var(--color-bone-muted)] transition-colors hover:text-[var(--color-bone)]"
+          >
+            ×
+          </button>
+        </div>
+
         {!creating ? (
           <>
             <input
@@ -86,9 +136,6 @@ export function CustomerLookupSheet({
           </>
         ) : (
           <div className="flex flex-col gap-3">
-            <p className="font-[var(--font-pos-display)] text-[18px] font-extrabold text-[var(--color-bone)]">
-              Crear cliente
-            </p>
             <input
               type="text"
               placeholder="Nombre completo (requerido)"
