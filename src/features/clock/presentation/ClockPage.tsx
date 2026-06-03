@@ -129,12 +129,13 @@ export function ClockPage() {
   const totalWorkedMs = computeWorkedMs(events, nowMs)
 
   // Retardo del día: diferencia entre la primera entrada y el inicio del
-  // turno, con grace period de 5 min. Null si llegó a tiempo o si no hay
-  // horario asignado o si no ha llegado todavía.
+  // turno, aplicando el umbral de tolerancia configurado por la sucursal
+  // (latenessThresholdMin, default 10). Null si llegó dentro de tolerancia,
+  // o si no hay horario asignado, o si no ha llegado todavía.
   const firstArrivalLatenessMin = (() => {
     if (!firstClockInToday || shiftStatus.scheduledStartMin === null) return null
     const arrivalMin = nowMinutesFromMidnight(new Date(firstClockInToday.at).getTime())
-    const late = arrivalMin - shiftStatus.scheduledStartMin - 5
+    const late = arrivalMin - shiftStatus.scheduledStartMin - shiftStatus.latenessThresholdMin
     return late > 0 ? Math.floor(late) : null
   })()
 
@@ -287,7 +288,9 @@ function StatusCard({
   }
 
   const nowMin = nowMinutesFromMidnight(nowMs)
-  const minsLate = Math.max(0, nowMin - shiftStatus.scheduledStartMin - 5)
+  // Usa el umbral configurado por la sucursal (mismo que el del retardo
+  // del día) en vez de hardcode 5 min.
+  const minsLate = Math.max(0, nowMin - shiftStatus.scheduledStartMin - shiftStatus.latenessThresholdMin)
   const isLate = minsLate > 0
 
   // 3. SIN TURNO + RETARDO EN VIVO — urgencia, tono bravo. Solo aplica

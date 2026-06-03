@@ -25,6 +25,18 @@ const SHIFT_TEMPLATES = graphql(`
   }
 `)
 
+// Tolerancia de retardo de la sucursal. Si no hay regla configurada usamos
+// el default del backend (10 min, alineado con payroll.service.ts).
+const LATENESS_RULE = graphql(`
+  query PosLatenessRule($locationId: ID!) {
+    latenessRule(locationId: $locationId) {
+      id
+      locationId
+      defaultMinutesLateThreshold
+    }
+  }
+`)
+
 export interface TimeClockEvent {
   id: string
   type: 'CLOCK_IN' | 'CLOCK_OUT'
@@ -45,6 +57,7 @@ export interface ClockRepository {
   clockOut(locationId: string): Promise<boolean>
   getEvents(staffUserId: string, locationId: string, fromDate: string, toDate: string): Promise<TimeClockEvent[]>
   getShiftTemplates(staffUserId: string, locationId: string): Promise<ShiftTemplate[]>
+  getLatenessThresholdMin(locationId: string): Promise<number>
 }
 
 export class ApolloClockRepository implements ClockRepository {
@@ -95,5 +108,26 @@ export class ApolloClockRepository implements ClockRepository {
       fetchPolicy: 'cache-first',
     })
     return data!.shiftTemplates
+  }
+
+  async getLatenessThresholdMin(locationId: string): Promise<number> {
+    // Default 10 min — alineado con el fallback de payroll.service.ts
+    // (línea 260: `?? rule?.defaultMinutesLateThreshold ?? 10`).
+    // Si la sucursal no tiene regla configurada, usamos esto.
+    const DEFAULT_THRESHOLD = 10
+    try {
+      const { data } = await this.#client.query<{
+        latenessRule: { defaultMinutesLateThreshold: number } | null
+      }>({
+        query: LATENESS_RULE,
+        variables: { locationId },
+        fetchPolicy: 'cache-first',
+      })
+      return data?.latenessRule?.defaultMinutesLateThreshold ?? DEFAULT_THRESHOLD
+    } catch {
+      // Si la query falla por permisos o red, no romper el reloj —
+      // caer al default sin marcar retardos espurios.
+      return DEFAULT_THRESHOLD
+    }
   }
 }

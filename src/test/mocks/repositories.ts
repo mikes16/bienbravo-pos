@@ -248,6 +248,10 @@ export class InMemoryClockRepository implements ClockRepository {
   async getShiftTemplates(_staffUserId: string, _locationId: string): Promise<ShiftTemplate[]> {
     return []
   }
+
+  async getLatenessThresholdMin(_locationId: string): Promise<number> {
+    return 10
+  }
 }
 
 export class InMemoryAgendaRepository implements AgendaRepository {

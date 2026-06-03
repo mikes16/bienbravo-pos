@@ -41,6 +41,10 @@ export interface ShiftStatus {
   latenessMin: number
   isLate: boolean
   statusLabel: string
+  /** Umbral de tolerancia en minutos para esta sucursal — viene del
+   *  latenessRule del API (default 10). UI lo usa para calcular si el
+   *  barbero llegó "tarde" según la política real, no un hardcode. */
+  latenessThresholdMin: number
 }
 
 function isForbidden(err: unknown): boolean {
@@ -62,6 +66,9 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   // i.e. the barber isn't assigned to this location (a setup task for the
   // admin, not a transient runtime error).
   const [notAssignedHere, setNotAssignedHere] = useState(false)
+  // Tolerancia configurada por la sucursal (default 10 min). Se usa para
+  // calcular el retardo del barbero según la política real, no un hardcode.
+  const [latenessThresholdMin, setLatenessThresholdMin] = useState(10)
 
   const refresh = useCallback(() => {
     if (!staffUserId || !locationId) return
@@ -69,15 +76,14 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     setLoading(true)
     setError(null)
     setNotAssignedHere(false)
-    // Independent fetches: events and shift templates fail / succeed for
-    // different reasons (permissions vs setup). A missing shift template is
-    // not a hard error — it just means the admin hasn't assigned a schedule
-    // yet. Forbidden on either query means the barber isn't a member of this
-    // location — show a setup hint, not a generic failure banner.
+    // Independent fetches: events, shift templates, lateness rule — fallan o
+    // pasan por razones distintas. La lateness rule es informativa: si falla
+    // caemos al default (10 min) en lugar de bloquear el reloj.
     void Promise.allSettled([
       clock.getEvents(staffUserId, locationId, d, d),
       clock.getShiftTemplates(staffUserId, locationId),
-    ]).then(([evtsRes, templatesRes]) => {
+      clock.getLatenessThresholdMin(locationId),
+    ]).then(([evtsRes, templatesRes, latenessRes]) => {
       const eventsForbidden = evtsRes.status === 'rejected' && isForbidden(evtsRes.reason)
       const templatesForbidden = templatesRes.status === 'rejected' && isForbidden(templatesRes.reason)
 
@@ -102,6 +108,10 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
         }
         setShiftTemplates([])
       }
+      if (latenessRes.status === 'fulfilled') {
+        setLatenessThresholdMin(latenessRes.value)
+      }
+      // Si la lateness query falla, mantenemos el default — no bloquea nada.
 
       if (eventsForbidden || templatesForbidden) {
         setNotAssignedHere(true)
@@ -143,11 +153,15 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
         latenessMin: 0,
         isLate: false,
         statusLabel: 'Sin turno programado',
+        latenessThresholdMin,
       }
     }
 
     const scheduledStart = todayShift.startMin
-    const latenessMin = arrivalMin !== null ? Math.max(0, arrivalMin - scheduledStart - 5) : 0
+    // Usar el umbral real de la sucursal en vez del hardcode de 5 min. Si la
+    // sucursal toleró 10 min y el barbero llegó 6 min tarde, NO es retardo.
+    const latenessMin =
+      arrivalMin !== null ? Math.max(0, arrivalMin - scheduledStart - latenessThresholdMin) : 0
     const isLate = latenessMin > 0
 
     let statusLabel: string
@@ -166,8 +180,9 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
       latenessMin,
       isLate,
       statusLabel,
+      latenessThresholdMin,
     }
-  }, [events, shiftTemplates, isClockedIn])
+  }, [events, shiftTemplates, isClockedIn, latenessThresholdMin])
 
   const doClockIn = useCallback(async () => {
     if (!locationId || submitting) return
