@@ -12,7 +12,18 @@ type AppliedCouponPreview {
   code: String!
   discountAmountCents: Int!
   name: String!
+  rule: AppliedCouponRule!
   scope: CouponScope!
+}
+
+type AppliedCouponRule {
+  discountAmountCents: Int
+  discountBps: Int
+  stackable: Boolean!
+  targetCategoryIds: [String!]!
+  targetProductIds: [String!]!
+  targetServiceIds: [String!]!
+  type: CouponType!
 }
 
 input ApplyCouponToDraftSaleInput {

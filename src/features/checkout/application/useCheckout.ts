@@ -4,6 +4,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cartReducer, initialCart } from '../lib/cart'
+import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
 import type { CheckoutPayment } from '../domain/checkout.types'
 import type { AppointmentPrepayState, AppliedCouponPreview, DraftSaleItemArg } from '../data/checkout.repository'
 
@@ -205,6 +206,7 @@ export function useCheckout() {
                 itemId: svc.id,
                 name: svc.name,
                 unitPriceCents: svc.basePriceCents ?? 0,
+                categoryId: svc.categoryId ?? null,
               },
             })
           }
@@ -285,6 +287,7 @@ export function useCheckout() {
           name: c.name,
           scope: c.scope,
           discountAmountCents: c.discountAmountCents,
+          rule: c.rule,
         })),
       )
     } catch (e) {
@@ -314,6 +317,7 @@ export function useCheckout() {
           name: c.name,
           scope: c.scope,
           discountAmountCents: c.discountAmountCents,
+          rule: c.rule,
         })),
       )
     } catch {
@@ -323,13 +327,16 @@ export function useCheckout() {
     }
   }, [appliedCoupons, buildDraftItems, cartState.customer, checkout])
 
-  // Re-valida cupones cuando cambian las líneas del carrito en lugar de
-  // nukearlos. El backend recomputa el descuento contra el nuevo draft, así
-  // el cupón persiste y el total se actualiza solo. Si después del cambio
-  // el cupón ya no aplica (no llega al monto mínimo, expiró, etc.), lo
-  // dropeamos individualmente con un mensaje claro.
+  // Recompute LOCAL del descuento cuando cambia el carrito. La regla cruda
+  // del cupón viaja con el preview (rule.type, scope, targets, etc.); con
+  // eso podemos calcular el nuevo discountAmountCents sin volver al backend.
+  // El backend SIGUE siendo source of truth — en submit recomputa con la
+  // misma math y rechaza si intentamos sobre-descontar.
+  //
+  // Antes: cada cambio del carrito disparaba N round trips secuenciales
+  // (uno por cupón) → ~300-600ms de lag perceptible. Ahora 0ms.
   const itemsKey = JSON.stringify(
-    cartState.lines.map((l) => `${l.kind}:${l.itemId}:${l.qty}:${l.unitPriceCents}`),
+    cartState.lines.map((l) => `${l.kind}:${l.itemId}:${l.qty}:${l.unitPriceCents}:${l.categoryId ?? ''}`),
   )
   const prevItemsKeyRef = useRef(itemsKey)
   useEffect(() => {
@@ -337,54 +344,19 @@ export function useCheckout() {
     prevItemsKeyRef.current = itemsKey
     if (appliedCoupons.length === 0) return
 
-    const codes = appliedCoupons.map((c) => c.code)
-    let cancelled = false
-    ;(async () => {
-      // Re-aplica los cupones uno por uno contra el carrito nuevo. El backend
-      // valida cada uno respetando las reglas de stacking; si un cupón ya no
-      // cualifica con el carrito actual, simplemente no entra a `accepted`.
-      const accepted: AppliedCouponPreview[] = []
-      for (const code of codes) {
-        try {
-          const result = await checkout.applyCoupon({
-            code,
-            items: buildDraftItems(),
-            customerId: cartState.customer?.id ?? null,
-            existingAppliedCouponCodes: accepted.map((c) => c.code),
-          })
-          if (cancelled) return
-          if (!result || result.validationError) continue
-          accepted.length = 0
-          for (const c of result.appliedCoupons) {
-            accepted.push({
-              code: c.code,
-              name: c.name,
-              scope: c.scope,
-              discountAmountCents: c.discountAmountCents,
-            })
-          }
-        } catch {
-          // Tragamos el error individual — si el API falla para un cupón
-          // específico lo dejamos fuera y seguimos con el resto.
-        }
-      }
-      if (cancelled) return
-      setAppliedCoupons(accepted)
-      const droppedCodes = codes.filter((c) => !accepted.some((a) => a.code === c))
-      if (droppedCodes.length > 0) {
-        setCouponError(
-          droppedCodes.length === 1
-            ? `Cupón ${droppedCodes[0]} ya no aplica al carrito actual.`
-            : `Cupones ${droppedCodes.join(', ')} ya no aplican al carrito actual.`,
-        )
-      } else {
-        setCouponError(null)
-      }
-    })()
-    return () => {
-      cancelled = true
+    const items = cartLinesToDiscountItems(cartState.lines)
+    const result = recomputeAppliedCoupons(appliedCoupons, items)
+    setAppliedCoupons(result.appliedCoupons)
+    if (result.droppedCodes.length > 0) {
+      setCouponError(
+        result.droppedCodes.length === 1
+          ? `Cupón ${result.droppedCodes[0]} ya no aplica al carrito actual.`
+          : `Cupones ${result.droppedCodes.join(', ')} ya no aplican al carrito actual.`,
+      )
+    } else {
+      setCouponError(null)
     }
-  }, [itemsKey, appliedCoupons, buildDraftItems, cartState.customer, checkout])
+  }, [itemsKey, appliedCoupons, cartState.lines])
 
   const discountTotalCents = appliedCoupons.reduce((s, c) => s + c.discountAmountCents, 0)
 

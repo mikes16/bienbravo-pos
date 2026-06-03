@@ -10,6 +10,11 @@ export interface CartLineItem {
   itemId: string
   name: string
   unitPriceCents: number
+  // categoryId del servicio / producto. Lo guardamos en cart para que el
+  // compute local de cupones (scope CATEGORY) pueda filtrar sin volver al
+  // backend en cada cambio del carrito. Null si el item no tiene categoría
+  // o es un combo.
+  categoryId?: string | null
 }
 
 export interface CartLine extends CartLineItem {
@@ -55,6 +60,7 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         qty: 1,
         unitPriceCents: action.item.unitPriceCents,
         staffUserId: state.defaultBarberId,
+        categoryId: action.item.categoryId ?? null,
       }
       return { ...state, lines: [...state.lines, line] }
     }

@@ -67,7 +67,7 @@ const WALKINS_FOR_LOOKUP_QUERY = graphql(`
       status
       assignedStaffUser { id fullName }
       customer { id fullName email phone }
-      requestedServices { id name baseDurationMin basePriceCents }
+      requestedServices { id name baseDurationMin basePriceCents categoryId }
       requestedCatalogCombo { id name }
     }
   }
@@ -271,6 +271,15 @@ export const APPLY_COUPON_TO_DRAFT_SALE_MUTATION = graphql(`
         name
         scope
         discountAmountCents
+        rule {
+          type
+          discountBps
+          discountAmountCents
+          stackable
+          targetServiceIds
+          targetProductIds
+          targetCategoryIds
+        }
       }
       validationError {
         valid
@@ -293,6 +302,15 @@ export const REMOVE_COUPON_FROM_DRAFT_SALE_MUTATION = graphql(`
         name
         scope
         discountAmountCents
+        rule {
+          type
+          discountBps
+          discountAmountCents
+          stackable
+          targetServiceIds
+          targetProductIds
+          targetCategoryIds
+        }
       }
     }
   }
@@ -333,6 +351,7 @@ export interface WalkInLite {
     name: string
     baseDurationMin?: number | null
     basePriceCents?: number | null
+    categoryId?: string | null
   }>
   requestedCatalogCombo?: { id: string; name: string } | null
 }
@@ -369,11 +388,25 @@ export interface DraftSaleItemArg {
   unitPriceCents: number
 }
 
+// La "rule" cruda del cupón viaja junto al preview para que el cliente
+// recompute el descuento localmente cuando cambia el carrito (cero round
+// trips). El backend sigue siendo source of truth — re-valida en submit.
+export interface AppliedCouponRule {
+  type: 'PERCENT' | 'AMOUNT'
+  discountBps: number | null
+  discountAmountCents: number | null
+  stackable: boolean
+  targetServiceIds: string[]
+  targetProductIds: string[]
+  targetCategoryIds: string[]
+}
+
 export interface AppliedCouponPreview {
   code: string
   name: string
   scope: string
   discountAmountCents: number
+  rule: AppliedCouponRule
 }
 
 /**
