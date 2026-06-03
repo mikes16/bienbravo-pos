@@ -69,15 +69,23 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
 
   if (!open) return null
 
+  // El total real a cobrar incluye propina. CASH fuerza tip=0 (no se aplica
+  // propina al efectivo), así que para CASH grandTotal === totalCents. Para
+  // CARD/TRANSFER simple y para split, grandTotal = subtotal + propina.
+  // Sin esto, la mutation enviaba amountCents=subtotal y el API rechazaba
+  // con "Total de pagos no cuadra con el total de la venta".
+  const effectiveTipCents = mode === 'simple' && method === 'CASH' ? 0 : tipCents
+  const grandTotalCents = totalCents + effectiveTipCents
+
   // Cash payments must cover the total exactly or higher — anything less is a
   // shortfall the operator has to hand the customer back as "debes $X". The
   // POS doesn't model partial cash payments, so the safer rule is to lock the
   // confirm button until the bills counted reach the total.
   const cashReceivedCents = totalCountedCents(cashCounts)
-  const cashIsShort = method === 'CASH' && cashReceivedCents < totalCents
+  const cashIsShort = method === 'CASH' && cashReceivedCents < grandTotalCents
 
   const splitSum = splits.reduce((s, r) => s + r.amountCents, 0)
-  const splitDelta = totalCents - splitSum
+  const splitDelta = grandTotalCents - splitSum
   const splitMatches = splitDelta === 0
 
   const canConfirm =
@@ -92,13 +100,14 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
     if (mode === 'simple') {
       if (!method) return
       onConfirm({
-        payments: [{ provider: UI_TO_API[method], amountCents: totalCents }],
-        tipCents: method === 'CASH' ? 0 : tipCents,
+        payments: [{ provider: UI_TO_API[method], amountCents: grandTotalCents }],
+        tipCents: effectiveTipCents,
       })
       return
     }
 
-    // Split mode: filter zeros and emit
+    // Split mode: filter zeros and emit. Cada split es un monto y el sum
+    // de splits ya cuadra contra grandTotal (validado arriba).
     const nonZero = splits.filter((r) => r.amountCents > 0)
     if (!splitMatches || nonZero.length === 0) return
     onConfirm({
