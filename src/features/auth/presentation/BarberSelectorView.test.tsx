@@ -7,12 +7,14 @@ import type { PosStaffUser } from '@/core/auth/auth.types'
 const SAMPLE_BARBERS: PosStaffUser[] = [
   {
     id: 'b1', fullName: 'Juan Pérez', email: 'juan@example.com',
-    phone: null, photoUrl: null, isActive: true, hasPosPin: true,
+    phone: null, photoUrl: null, photoPublicId: null,
+    isActive: true, hasPosPin: true,
     pinAttempts: 0, pinLockedUntil: null,
   },
   {
     id: 'b2', fullName: 'Pedro García', email: 'pedro@example.com',
-    phone: null, photoUrl: 'https://example.com/p.jpg', isActive: true, hasPosPin: false,
+    phone: null, photoUrl: 'https://example.com/p.jpg', photoPublicId: null,
+    isActive: true, hasPosPin: false,
     pinAttempts: 0, pinLockedUntil: null,
   },
 ]
