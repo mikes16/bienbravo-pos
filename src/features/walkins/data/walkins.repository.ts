@@ -166,13 +166,15 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
   }
 
   async getWalkIns(locationId: string, fromDate?: string, toDate?: string): Promise<WalkIn[]> {
-    // network-only: the queue mutates on every create / assign / complete /
-    // drop, so cache-first kept showing the previous snapshot until the user
-    // hard-refreshed. Same fix as getEvents in the clock repository.
+    // cache-first: pinta cached al toque (0ms). Las mutaciones del módulo
+    // (assign / complete / drop / create) hacen cache.modify para mantener
+    // freshness sin re-fetch. HoyPage además hace refetch on window.focus
+    // forzando red. `client.query()` no admite cache-and-network — eso
+    // pertenece a watchQuery.
     const { data } = await this.#client.query<{ walkIns: WalkIn[] }>({
       query: WALKINS_QUERY as never,
       variables: { locationId, fromDate: fromDate ?? null, toDate: toDate ?? null },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.walkIns
   }

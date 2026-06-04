@@ -1,6 +1,7 @@
 import { createContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { PosViewer, AuthState } from './auth.types.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
+import { purgePersistedCache } from '@/core/apollo/client.ts'
 
 export interface PosAuthContextValue extends AuthState {
   pinLockedUntil: Date | null
@@ -69,6 +70,11 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(STORAGE_KEY_LAST_BARBER)
       }
+      // Purga el cache persistido — el cache contiene datos asociados al
+      // staff anterior (citas, walk-ins, comisiones). Sin esto el próximo
+      // login podría ver flashes de info ajena antes de que el revalidate
+      // los reemplace.
+      purgePersistedCache()
     }
   }, [auth, setIsLocked])
 

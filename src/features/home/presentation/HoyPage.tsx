@@ -50,10 +50,14 @@ export function HoyPage() {
   const [taking, setTaking] = useState(false)
   const { addToast } = useToast()
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (opts?: { force?: boolean }) => {
     if (!viewer || !locationId) return
     const date = todayISO()
     const { from, to } = todayRangeISO()
+    // force=true → network-only (focus refetch, post-mutación). force=false
+    // → cache-first (mount inicial — pinta del cache persistido al instante
+    // si existe). `client.query()` no admite cache-and-network.
+    const earningsPolicy = opts?.force ? 'network-only' : 'cache-first'
 
     const settled = await Promise.allSettled([
       agenda.getAppointments(from, to, locationId),
@@ -71,17 +75,14 @@ export function HoyPage() {
       }>({
         query: POS_MY_DAY_EARNINGS,
         variables: { staffUserId: viewer.staff.id, locationId, date },
-        // Network-only para evitar staleness — el barbero acaba de cerrar
-        // una venta y debe ver el número actualizado al instante. Mi Día
-        // usa la misma query así que Apollo dedupe entre rutas.
-        fetchPolicy: 'network-only',
+        fetchPolicy: earningsPolicy,
       }),
       apollo.query<{
         posCajaStatusHome: { isOpen: boolean; accumulatedCents: number | null; openedAt: string | null }
       }>({
         query: POS_HOME_CAJA_STATUS,
         variables: { locationId },
-        fetchPolicy: 'cache-first',
+        fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
       }),
     ])
 
@@ -130,7 +131,7 @@ export function HoyPage() {
   }, [viewer, locationId, refetch])
 
   useEffect(() => {
-    const onFocus = () => { void refetch() }
+    const onFocus = () => { void refetch({ force: true }) }
     window.addEventListener('focus', onFocus)
     return () => { window.removeEventListener('focus', onFocus) }
   }, [refetch])
@@ -164,7 +165,7 @@ export function HoyPage() {
           } else {
             await walkins.assign(targetId, viewer.staff.id)
           }
-          await refetch()
+          await refetch({ force: true })
         } catch (err) {
           if (import.meta.env.DEV) {
             // eslint-disable-next-line no-console
@@ -252,7 +253,7 @@ export function HoyPage() {
       await walkins.assign(takeTarget.id, viewer.staff.id)
       addToast(`${takeTarget.name.split(' ')[0]} asignado a ti`, 'success')
       setTakeTarget(null)
-      void refetch()
+      void refetch({ force: true })
     } catch (e) {
       const msg = (e as { message?: string }).message ?? 'No se pudo tomar el walk-in.'
       addToast(msg, 'error')
@@ -268,7 +269,7 @@ export function HoyPage() {
       await walkins.complete(finalizeTarget.id)
       addToast(`${finalizeTarget.name} finalizado`, 'success')
       setFinalizeTarget(null)
-      void refetch()
+      void refetch({ force: true })
     } catch (e) {
       const msg = (e as { message?: string }).message ?? 'No se pudo finalizar.'
       addToast(msg, 'error')
@@ -306,7 +307,7 @@ export function HoyPage() {
           open={addWalkInOpen}
           locationId={locationId}
           onClose={() => setAddWalkInOpen(false)}
-          onCreated={() => { void refetch() }}
+          onCreated={() => { void refetch({ force: true }) }}
         />
       )}
       <FinalizeWalkInSheet

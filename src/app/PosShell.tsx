@@ -12,6 +12,7 @@ import {
 import { BottomTabNav } from '@/shared/pos-ui'
 import { ToastViewport } from '@/core/toast/ToastViewport'
 import { IdentityStripV2 } from './IdentityStripV2.tsx'
+import { routePrefetchers } from './router.tsx'
 
 function useLiveClock() {
   const [now, setNow] = useState(new Date())
@@ -42,11 +43,14 @@ export function PosShell() {
   else if (path.startsWith('/caja') || path.startsWith('/register')) activeTo = '/caja'
   else if (path.startsWith('/hoy') || path.startsWith('/home')) activeTo = '/hoy'
 
+  // Cada tab dispara el dynamic import del chunk en hover/touchstart antes
+  // del click — al tap, el chunk ya está en cache del browser y la
+  // navegación se siente instant. Hoy no necesita prefetch (eager loaded).
   const tabs = [
-    { to: '/reloj', icon: StopwatchIcon, label: 'Reloj' },
+    { to: '/reloj', icon: StopwatchIcon, label: 'Reloj', prefetch: routePrefetchers['/reloj'] },
     { to: '/hoy', icon: GameCalendarIcon, label: 'Hoy' },
-    { to: '/mis-ventas', icon: TwoCoinsIcon, label: 'Mis ventas' },
-    { to: '/caja', icon: StrongboxIcon, label: 'Caja' },
+    { to: '/mis-ventas', icon: TwoCoinsIcon, label: 'Mis ventas', prefetch: routePrefetchers['/mis-ventas'] },
+    { to: '/caja', icon: StrongboxIcon, label: 'Caja', prefetch: routePrefetchers['/caja'] },
   ]
 
   return (

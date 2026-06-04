@@ -1,4 +1,5 @@
 import { cn } from '@/shared/lib/cn'
+import { cldThumb } from '@/shared/lib/cloudinary'
 
 interface Barber {
   id: string
@@ -29,7 +30,7 @@ export function BarberPickerInline({ barbers, currentBarberId, onSelect }: Barbe
           )}
         >
           {b.photoUrl ? (
-            <img src={b.photoUrl} alt="" loading="lazy" decoding="async" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
+            <img src={cldThumb(b.photoUrl, { w: 40, h: 40, dpr: 'auto' }) ?? b.photoUrl} alt="" loading="lazy" decoding="async" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
           ) : (
             <div className="flex h-10 w-10 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[16px] font-extrabold text-[var(--color-bone)]">
               {b.fullName[0]}

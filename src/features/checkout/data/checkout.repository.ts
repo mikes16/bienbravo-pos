@@ -570,10 +570,14 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   }
 
   async getStockLevels(locationId: string): Promise<StockLevel[]> {
+    // cache-first: el snapshot cached del checkout previo pinta el grid al
+    // instante. Stock se decrementa con cache.modify en createSale, y la
+    // próxima entrada al checkout fuerza network-only via Promise.all del
+    // useCheckout para garantizar freshness.
     const { data } = await this.#client.query<{ posInventoryLevels: StockLevel[] }>({
       query: POS_INVENTORY_LEVELS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.posInventoryLevels
   }
@@ -717,12 +721,13 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   }
 
   async getAvailableBarbers(locationId: string): Promise<BarberResult[]> {
-    // network-only so the walk-in modal always sees fresh status. Operators
-    // open the sheet right after a barber clocks in / starts a service.
+    // cache-first: pinta el snapshot del modal al instante. Mutaciones de
+    // walk-in / clock escriben al cache, así que tras un assign el siguiente
+    // open del sheet ve estado actualizado sin round trip.
     const { data } = await this.#client.query({
       query: POS_AVAILABLE_BARBERS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return (data as { posAvailableBarbers: BarberResult[] }).posAvailableBarbers
   }

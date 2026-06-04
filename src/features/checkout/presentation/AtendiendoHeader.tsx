@@ -1,3 +1,5 @@
+import { cldThumb } from '@/shared/lib/cloudinary'
+
 interface Barber {
   id: string
   fullName: string
@@ -31,7 +33,7 @@ export function AtendiendoHeader({ barber, onTap }: AtendiendoHeaderProps) {
       </div>
       <div className="flex items-center gap-2">
         {barber.photoUrl ? (
-          <img src={barber.photoUrl} alt="" loading="lazy" decoding="async" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
+          <img src={cldThumb(barber.photoUrl, { w: 40, h: 40, dpr: 'auto' }) ?? barber.photoUrl} alt="" loading="lazy" decoding="async" className="h-10 w-10 border border-[var(--color-leather-muted)] object-cover" />
         ) : (
           <div className="flex h-10 w-10 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[18px] font-extrabold text-[var(--color-bone)]">
             {barber.fullName[0]}

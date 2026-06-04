@@ -49,14 +49,14 @@ export class ApolloRegisterRepository implements RegisterRepository {
   }
 
   async getRegisters(locationId: string): Promise<Register[]> {
-    // network-only: register state mutates from sales, opens, closes — any
-    // of which can land while the page is mounted. cache-first kept showing
-    // a closed register right after openSession because the previous fetch
-    // (pre-open) was still served from Apollo's normalized store.
+    // cache-first: pinta el último snapshot al toque. Las mutaciones de
+    // abrir/cerrar caja escriben al cache de Apollo, así que el bug histórico
+    // (mostrar "cerrada" tras open por servir el snapshot pre-open) está
+    // cubierto. CajaPage refetcha on window.focus para casos cross-tab.
     const { data } = await this.#client.query<{ registers: Register[] }>({
       query: REGISTERS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'network-only',
+      fetchPolicy: 'cache-first',
     })
     return data!.registers.filter((r: Register) => r.isActive)
   }

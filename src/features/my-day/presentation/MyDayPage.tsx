@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useApolloClient } from '@apollo/client/react'
 import { formatMoney } from '@/shared/lib/money.ts'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
@@ -279,16 +279,19 @@ export function MyDayPage() {
 
   const staffName = viewer?.staff?.fullName ?? ''
 
-  useEffect(() => {
+  // Extracted en un callback para que mount + focus refetch reusen la misma
+  // lógica. `showSpinner` = mount inicial muestra spinner; focus refetch hace
+  // background revalidation sin parpadeo. `force` = focus / post-mutation
+  // empuja network-only para asegurar freshness; mount inicial cache-first
+  // para pintar instant desde el cache persistido (boot subsecuente del POS).
+  const loadDay = useCallback((opts: { showSpinner: boolean; force: boolean }) => {
     if (!viewer || !locationId) return
     const d = todayISO()
-    // Rango ISO de HOY para filtrar walk-ins del lado del servidor en vez
-    // de descargar todo el histórico y filtrar client-side.
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
     const todayEnd = new Date()
     todayEnd.setHours(23, 59, 59, 999)
-    setLoading(true)
+    if (opts.showSpinner) setLoading(true)
 
     setLoadError(null)
     Promise.allSettled([
@@ -319,7 +322,7 @@ export function MyDayPage() {
       }>({
         query: POS_MY_DAY_EARNINGS,
         variables: { staffUserId: viewer.staff.id, locationId, date: d },
-        fetchPolicy: 'network-only',
+        fetchPolicy: opts.force ? 'network-only' : 'cache-first',
       }),
     ])
       .then(([apptsRes, eventsRes, walkinsRes, earningsRes]) => {
@@ -381,6 +384,20 @@ export function MyDayPage() {
       })
       .finally(() => setLoading(false))
   }, [agenda, clock, walkins, viewer, locationId, apollo])
+
+  // Mount inicial con spinner; cache-first para pintar instant si hay cache
+  // persistido.
+  useEffect(() => {
+    loadDay({ showSpinner: true, force: false })
+  }, [loadDay])
+
+  // Refetch al volver a la tab — patrón espejo de HoyPage. Sin spinner +
+  // network-only para asegurar datos frescos sin parpadear.
+  useEffect(() => {
+    const onFocus = () => loadDay({ showSpinner: false, force: true })
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [loadDay])
 
   return (
     // overflow-y-auto en el container hace que TODO el contenido scrollee

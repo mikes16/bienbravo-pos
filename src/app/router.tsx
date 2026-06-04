@@ -5,15 +5,44 @@ import { LockPage } from '@/features/auth/index.ts'
 import { HoyPage } from '@/features/home/index.ts'
 import { RouteLoader } from './RouteLoader.tsx'
 
-const CheckoutPage = lazy(() => import('@/features/checkout/index.ts').then(m => ({ default: m.CheckoutPage })))
-const CajaPage = lazy(() => import('@/features/register/index.ts').then(m => ({ default: m.CajaPage })))
-const OpenCajaPage = lazy(() => import('@/features/register/index.ts').then(m => ({ default: m.OpenCajaPage })))
-const CloseCajaWizard = lazy(() => import('@/features/register/index.ts').then(m => ({ default: m.CloseCajaWizard })))
-const ClockPage = lazy(() => import('@/features/clock/index.ts').then(m => ({ default: m.ClockPage })))
-const AgendaPage = lazy(() => import('@/features/agenda/index.ts').then(m => ({ default: m.AgendaPage })))
-const WalkInsPage = lazy(() => import('@/features/walkins/index.ts').then(m => ({ default: m.WalkInsPage })))
-const MyDayPage = lazy(() => import('@/features/my-day/index.ts').then(m => ({ default: m.MyDayPage })))
-const HelloPosPage = lazy(() => import('@/features/_dev/HelloPosPage').then(m => ({ default: m.HelloPosPage })))
+// Factored as standalone functions para que BottomTabNav pueda llamarlas
+// on hover/touchstart y precachear el chunk antes del click. Llamar dos veces
+// la misma función no re-fetch: el browser cachea el modulo dinámico.
+const importCheckout = () => import('@/features/checkout/index.ts')
+const importRegister = () => import('@/features/register/index.ts')
+const importClock = () => import('@/features/clock/index.ts')
+const importAgenda = () => import('@/features/agenda/index.ts')
+const importWalkIns = () => import('@/features/walkins/index.ts')
+const importMyDay = () => import('@/features/my-day/index.ts')
+const importHelloPos = () => import('@/features/_dev/HelloPosPage')
+
+const CheckoutPage = lazy(() => importCheckout().then(m => ({ default: m.CheckoutPage })))
+const CajaPage = lazy(() => importRegister().then(m => ({ default: m.CajaPage })))
+const OpenCajaPage = lazy(() => importRegister().then(m => ({ default: m.OpenCajaPage })))
+const CloseCajaWizard = lazy(() => importRegister().then(m => ({ default: m.CloseCajaWizard })))
+const ClockPage = lazy(() => importClock().then(m => ({ default: m.ClockPage })))
+const AgendaPage = lazy(() => importAgenda().then(m => ({ default: m.AgendaPage })))
+const WalkInsPage = lazy(() => importWalkIns().then(m => ({ default: m.WalkInsPage })))
+const MyDayPage = lazy(() => importMyDay().then(m => ({ default: m.MyDayPage })))
+const HelloPosPage = lazy(() => importHelloPos().then(m => ({ default: m.HelloPosPage })))
+
+/**
+ * Mapa de prefetchers por path. PosShell + BottomTabNav lo usan para
+ * disparar el dynamic import en hover/touchstart antes del click — cuando
+ * el operador tape, el chunk ya está descargado y parseado.
+ */
+export const routePrefetchers: Record<string, () => Promise<unknown>> = {
+  '/checkout': importCheckout,
+  '/caja': importRegister,
+  '/caja/abrir': importRegister,
+  '/caja/cerrar': importRegister,
+  '/clock': importClock,
+  '/reloj': importClock,
+  '/agenda': importAgenda,
+  '/walkins': importWalkIns,
+  '/my-day': importMyDay,
+  '/mis-ventas': importMyDay,
+}
 
 function lazyRoute(Component: React.LazyExoticComponent<React.ComponentType>) {
   return (

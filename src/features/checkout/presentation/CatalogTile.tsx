@@ -1,5 +1,6 @@
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
+import { cldThumb } from '@/shared/lib/cloudinary'
 
 interface CatalogTileProps {
   kind: 'service' | 'product' | 'combo'
@@ -35,7 +36,10 @@ export function CatalogTile({ kind, name, priceCents, stockQty, imageUrl, onAdd 
         style={
           imageUrl
             ? {
-                backgroundImage: `url(${encodeURI(imageUrl)})`,
+                // Tiles render ~200×200 (responsive grid). dpr:auto sirve 1x
+                // o 2x según el device; antes serving full-res significaba
+                // 1-3MB por tile en algunos productos.
+                backgroundImage: `url(${encodeURI(cldThumb(imageUrl, { w: 200, h: 200, dpr: 'auto' }) ?? imageUrl)})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
               }

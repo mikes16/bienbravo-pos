@@ -8,6 +8,9 @@ export interface BottomTabNavTab {
   label: string
   meta?: string
   badge?: number
+  /** Llamada en hover / touchstart para precachear el chunk antes del click.
+   *  Llamarla varias veces es idempotente (el browser cachea el módulo). */
+  prefetch?: () => void
 }
 
 interface BottomTabNavProps {
@@ -33,6 +36,9 @@ export function BottomTabNav({ tabs, activeTo, className }: BottomTabNavProps) {
             key={tab.to}
             type="button"
             onClick={() => navigate(tab.to)}
+            onMouseEnter={tab.prefetch}
+            onTouchStart={tab.prefetch}
+            onFocus={tab.prefetch}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
               'group relative flex h-16 cursor-pointer flex-col items-center justify-center gap-1 px-2 py-3 transition-colors sm:h-20',

@@ -1,5 +1,6 @@
 import { StatusBadge, type StatusTone } from '@/shared/pos-ui'
 import type { PosBarberStatus } from '@/core/auth/auth.repository'
+import { cldThumb } from '@/shared/lib/cloudinary'
 
 // Inline padlock — Material Symbols was being loaded just for this one icon.
 function LockIcon({ className }: { className?: string }) {
@@ -103,8 +104,10 @@ export function IdentityStripV2({
 
         {staffPhotoUrl ? (
           <img
-            src={staffPhotoUrl}
+            src={cldThumb(staffPhotoUrl, { w: 36, h: 36, dpr: 'auto' }) ?? staffPhotoUrl}
             alt={staffName}
+            loading="lazy"
+            decoding="async"
             className="h-9 w-9 rounded-full object-cover"
           />
         ) : (

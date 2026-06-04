@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EmptyStateV2, StatusBadge, type StatusTone } from '@/shared/pos-ui'
 import { cn } from '@/shared/lib/cn'
+import { cldThumb } from '@/shared/lib/cloudinary'
 import type { PosStaffUser } from '@/core/auth/auth.types'
 import type { PosBarberStatus } from '@/core/auth/auth.repository'
 
@@ -202,9 +203,14 @@ function BarberCard({
           editorial y dejar que el badge/nombre se lean encima. */}
       {showPhoto && (
         <img
-          src={photoUrl}
+          // Cards rinden ~400×500 px en mobile / desktop. DPR auto deja que
+          // Cloudinary sirva 1x o 2x según el dispositivo, sin bajar fotos
+          // full-res que pesarían MB.
+          src={cldThumb(photoUrl, { w: 400, h: 500, dpr: 'auto' }) ?? photoUrl}
           alt=""
           draggable={false}
+          loading="lazy"
+          decoding="async"
           onError={() => setPhotoBroken(true)}
           className="pointer-events-none absolute inset-0 h-full w-full object-cover grayscale brightness-90 transition-transform duration-500 group-hover:scale-[1.04]"
         />
