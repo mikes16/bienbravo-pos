@@ -35,6 +35,7 @@ export class PinLoginException extends Error {
 export interface PosLocation {
   id: string
   name: string
+  slug: string
 }
 
 export interface LocationScope {

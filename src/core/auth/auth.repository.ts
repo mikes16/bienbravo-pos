@@ -47,6 +47,7 @@ const LOCATIONS_QUERY = graphql(`
     posPublicLocations {
       id
       name
+      slug
     }
   }
 `)

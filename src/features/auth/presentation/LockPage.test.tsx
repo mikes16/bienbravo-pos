@@ -18,7 +18,7 @@ const BARBER_WITH_PIN: PosStaffUser = {
   pinLockedUntil: null,
 }
 
-const LOCATION: PosLocation = { id: 'loc1', name: 'Centro' }
+const LOCATION: PosLocation = { id: 'loc1', name: 'Centro', slug: 'centro' }
 
 // ── Repo helpers ───────────────────────────────────────────────────────────
 

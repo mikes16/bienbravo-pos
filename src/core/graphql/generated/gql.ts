@@ -15,7 +15,7 @@ import type { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-
  */
 type Documents = {
     "\n  query PosViewer {\n    viewer {\n      kind\n      staff {\n        id fullName email phone photoUrl photoPublicId isActive hasPosPin\n        pinAttempts pinLockedUntil\n      }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n": typeof types.PosViewerDocument,
-    "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n    }\n  }\n": typeof types.PosPublicLocationsDocument,
+    "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n      slug\n    }\n  }\n": typeof types.PosPublicLocationsDocument,
     "\n  mutation VerifyPosLocationAccess($locationId: ID!, $password: String!) {\n    verifyPosLocationAccess(locationId: $locationId, password: $password)\n  }\n": typeof types.VerifyPosLocationAccessDocument,
     "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff {\n          id fullName email phone photoUrl photoPublicId isActive hasPosPin\n          pinAttempts pinLockedUntil\n        }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n": typeof types.StaffPinLoginDocument,
     "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl photoPublicId isActive hasPosPin\n      pinAttempts pinLockedUntil\n    }\n  }\n": typeof types.PosBarbersDocument,
@@ -55,6 +55,7 @@ type Documents = {
     "\n  query PosHomeCommission($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n": typeof types.PosHomeCommissionDocument,
     "\n  query PosMyDayEarnings($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffDayEarnings(staffUserId: $staffUserId, locationId: $locationId, date: $date) {\n      serviceCommissionCents\n      productCommissionCents\n      tipsCents\n      totalCommissionCents\n      serviceRevenueCents\n      productRevenueCents\n      perSale {\n        saleId\n        commissionCents\n        tipCents\n        earningsCents\n        soldAt\n        customerName\n        linkedWalkInId\n        linkedAppointmentId\n        itemLabels\n        attributedRevenueCents\n      }\n    }\n  }\n": typeof types.PosMyDayEarningsDocument,
     "\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n": typeof types.PosHomeCajaStatusDocument,
+    "\n  subscription PosHomeWalkInQueueUpdated($slug: String!) {\n    walkInQueueUpdated(slug: $slug) {\n      kind\n      walkInId\n      locationSlug\n      occurredAt\n    }\n  }\n": typeof types.PosHomeWalkInQueueUpdatedDocument,
     "\n  query PosRegisters($locationId: ID!) {\n    registers(locationId: $locationId) {\n      id name isActive locationId\n      openSession {\n        id status openedAt\n        openingCashCents\n        expectedCashCents expectedCardCents expectedTransferCents\n      }\n    }\n  }\n": typeof types.PosRegistersDocument,
     "\n  mutation OpenRegisterSession($registerId: ID!, $openingCashCents: Int) {\n    openRegisterSession(registerId: $registerId, openingCashCents: $openingCashCents) {\n      id status openedAt\n      openingCashCents\n      expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": typeof types.OpenRegisterSessionDocument,
     "\n  mutation CloseRegisterSession($input: CloseRegisterSessionInput!) {\n    closeRegisterSession(input: $input) {\n      id status closedAt\n      openingCashCents\n      countedCashCents countedCardCents countedTransferCents\n      expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": typeof types.CloseRegisterSessionDocument,
@@ -71,7 +72,7 @@ type Documents = {
 };
 const documents: Documents = {
     "\n  query PosViewer {\n    viewer {\n      kind\n      staff {\n        id fullName email phone photoUrl photoPublicId isActive hasPosPin\n        pinAttempts pinLockedUntil\n      }\n      permissions\n      locationScopes { scopeType locationId }\n    }\n  }\n": types.PosViewerDocument,
-    "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n    }\n  }\n": types.PosPublicLocationsDocument,
+    "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n      slug\n    }\n  }\n": types.PosPublicLocationsDocument,
     "\n  mutation VerifyPosLocationAccess($locationId: ID!, $password: String!) {\n    verifyPosLocationAccess(locationId: $locationId, password: $password)\n  }\n": types.VerifyPosLocationAccessDocument,
     "\n  mutation StaffPinLogin($email: String!, $pin4: String!) {\n    staffPinLogin(email: $email, pin4: $pin4) {\n      viewer {\n        kind\n        staff {\n          id fullName email phone photoUrl photoPublicId isActive hasPosPin\n          pinAttempts pinLockedUntil\n        }\n        permissions\n        locationScopes { scopeType locationId }\n      }\n    }\n  }\n": types.StaffPinLoginDocument,
     "\n  query PosBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id fullName email phone photoUrl photoPublicId isActive hasPosPin\n      pinAttempts pinLockedUntil\n    }\n  }\n": types.PosBarbersDocument,
@@ -111,6 +112,7 @@ const documents: Documents = {
     "\n  query PosHomeCommission($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffServiceRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffProductRevenueToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n    staffCommissionToday(staffUserId: $staffUserId, locationId: $locationId, date: $date)\n  }\n": types.PosHomeCommissionDocument,
     "\n  query PosMyDayEarnings($staffUserId: ID!, $locationId: ID!, $date: String!) {\n    staffDayEarnings(staffUserId: $staffUserId, locationId: $locationId, date: $date) {\n      serviceCommissionCents\n      productCommissionCents\n      tipsCents\n      totalCommissionCents\n      serviceRevenueCents\n      productRevenueCents\n      perSale {\n        saleId\n        commissionCents\n        tipCents\n        earningsCents\n        soldAt\n        customerName\n        linkedWalkInId\n        linkedAppointmentId\n        itemLabels\n        attributedRevenueCents\n      }\n    }\n  }\n": types.PosMyDayEarningsDocument,
     "\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n": types.PosHomeCajaStatusDocument,
+    "\n  subscription PosHomeWalkInQueueUpdated($slug: String!) {\n    walkInQueueUpdated(slug: $slug) {\n      kind\n      walkInId\n      locationSlug\n      occurredAt\n    }\n  }\n": types.PosHomeWalkInQueueUpdatedDocument,
     "\n  query PosRegisters($locationId: ID!) {\n    registers(locationId: $locationId) {\n      id name isActive locationId\n      openSession {\n        id status openedAt\n        openingCashCents\n        expectedCashCents expectedCardCents expectedTransferCents\n      }\n    }\n  }\n": types.PosRegistersDocument,
     "\n  mutation OpenRegisterSession($registerId: ID!, $openingCashCents: Int) {\n    openRegisterSession(registerId: $registerId, openingCashCents: $openingCashCents) {\n      id status openedAt\n      openingCashCents\n      expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": types.OpenRegisterSessionDocument,
     "\n  mutation CloseRegisterSession($input: CloseRegisterSessionInput!) {\n    closeRegisterSession(input: $input) {\n      id status closedAt\n      openingCashCents\n      countedCashCents countedCardCents countedTransferCents\n      expectedCashCents expectedCardCents expectedTransferCents\n    }\n  }\n": types.CloseRegisterSessionDocument,
@@ -147,7 +149,7 @@ export function graphql(source: "\n  query PosViewer {\n    viewer {\n      kind
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n    }\n  }\n"): (typeof documents)["\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n    }\n  }\n"];
+export function graphql(source: "\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n      slug\n    }\n  }\n"): (typeof documents)["\n  query PosPublicLocations {\n    posPublicLocations {\n      id\n      name\n      slug\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
@@ -304,6 +306,10 @@ export function graphql(source: "\n  query PosMyDayEarnings($staffUserId: ID!, $
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n"): (typeof documents)["\n  query PosHomeCajaStatus($locationId: ID!) {\n    posCajaStatusHome(locationId: $locationId) {\n      isOpen\n      accumulatedCents\n      openedAt\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  subscription PosHomeWalkInQueueUpdated($slug: String!) {\n    walkInQueueUpdated(slug: $slug) {\n      kind\n      walkInId\n      locationSlug\n      occurredAt\n    }\n  }\n"): (typeof documents)["\n  subscription PosHomeWalkInQueueUpdated($slug: String!) {\n    walkInQueueUpdated(slug: $slug) {\n      kind\n      walkInId\n      locationSlug\n      occurredAt\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

@@ -1,5 +1,8 @@
-import { ApolloClient, InMemoryCache } from '@apollo/client'
+import { ApolloClient, InMemoryCache, split } from '@apollo/client'
 import { BatchHttpLink } from '@apollo/client/link/batch-http'
+import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
+import { getMainDefinition } from '@apollo/client/utilities'
+import { createClient } from 'graphql-ws'
 
 // Bump cuando el shape del schema cambie de forma que el cache persistido
 // pueda quedar inconsistente (campos requeridos nuevos, enums renombrados,
@@ -121,6 +124,8 @@ export function purgePersistedCache(): void {
 
 export function createPosApolloClient(): ApolloClient {
   const uri = (import.meta.env.VITE_API_URL ?? '') + '/graphql'
+  // WS endpoint = mismo path /graphql con esquema ws/wss según origen.
+  const wsUri = uri.replace(/^http/, 'ws')
 
   const cache = makeCache()
   cachePersistor = attachCachePersistence(cache)
@@ -129,13 +134,40 @@ export function createPosApolloClient(): ApolloClient {
   // 1 solo POST con un array de operations. batchInterval bajo (20ms) para
   // que no agregue latencia perceptible. batchMax 10 para evitar payloads
   // monstruosos en el rare caso de un burst grande.
-  const link = new BatchHttpLink({
+  const httpLink = new BatchHttpLink({
     uri,
     credentials: 'include',
     headers: { 'x-bb-client': 'pos' },
     batchInterval: 20,
     batchMax: 10,
   })
+
+  // WebSocket link para subscriptions. Reconnect automático infinito —
+  // el POS de sucursal nunca debe quedar sin push silente. keepAlive 12s
+  // detecta zombies antes de que el browser lo note.
+  // Auth: las cookies bb_session_pos viajan en el WS upgrade request si el
+  // server tiene CORS con credentials:true (ya configurado en api/main.ts).
+  // Sin esto el handshake se haría unauthed, pero como la única subscription
+  // hoy (walkInQueueUpdated) es pública, funciona igual.
+  const wsLink = new GraphQLWsLink(
+    createClient({
+      url: wsUri,
+      retryAttempts: Infinity,
+      shouldRetry: () => true,
+      keepAlive: 12_000,
+      connectionAckWaitTimeout: 8_000,
+    }),
+  )
+
+  // Split: subscriptions van por WS, queries/mutations por HTTP batch.
+  const link = split(
+    ({ query }) => {
+      const def = getMainDefinition(query)
+      return def.kind === 'OperationDefinition' && def.operation === 'subscription'
+    },
+    wsLink,
+    httpLink,
+  )
 
   return new ApolloClient({
     link,

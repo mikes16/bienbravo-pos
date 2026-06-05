@@ -4,9 +4,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { PairingView } from './PairingView'
 
 const SAMPLE_LOCATIONS = [
-  { id: 'loc1', name: 'Centro' },
-  { id: 'loc2', name: 'Norte' },
-  { id: 'loc3', name: 'Sur' },
+  { id: 'loc1', name: 'Centro', slug: 'centro' },
+  { id: 'loc2', name: 'Norte', slug: 'norte' },
+  { id: 'loc3', name: 'Sur', slug: 'sur' },
 ]
 
 describe('PairingView', () => {

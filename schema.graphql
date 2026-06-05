@@ -1216,6 +1216,7 @@ type PosPinLockoutStatus {
 type PosPublicLocation {
   id: ID!
   name: String!
+  slug: String!
 }
 
 type PosRevenueSummary {
@@ -2046,6 +2047,10 @@ type StripePaymentIntentResult {
   provider: String!
 }
 
+type Subscription {
+  walkInQueueUpdated(slug: String!): WalkInQueueEvent!
+}
+
 input SuggestedNextWalkInInput {
   locationId: ID!
   staffUserId: ID!
@@ -2367,6 +2372,20 @@ type WalkInPublicResult {
   estimatedWaitMinutes: Int!
   position: Int!
   ticketCode: String!
+}
+
+type WalkInQueueEvent {
+  kind: WalkInQueueEventKind!
+  locationSlug: String!
+  occurredAt: DateTime!
+  walkInId: ID!
+}
+
+enum WalkInQueueEventKind {
+  ASSIGNED
+  COMPLETED
+  CREATED
+  DROPPED
 }
 
 enum WalkInStatus {

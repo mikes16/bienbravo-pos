@@ -47,3 +47,18 @@ export const POS_HOME_CAJA_STATUS = graphql(`
     }
   }
 `)
+
+// Subscription real-time a la cola de walk-ins. El payload del evento es
+// minimal a propósito — el componente reacciona disparando refetch() del
+// flow normal de Hoy (appointments + walk-ins + earnings + caja). Cada
+// evento llega como un "ping de invalidación", no como data autoritativa.
+export const POS_HOME_WALK_IN_QUEUE_UPDATED = graphql(`
+  subscription PosHomeWalkInQueueUpdated($slug: String!) {
+    walkInQueueUpdated(slug: $slug) {
+      kind
+      walkInId
+      locationSlug
+      occurredAt
+    }
+  }
+`)

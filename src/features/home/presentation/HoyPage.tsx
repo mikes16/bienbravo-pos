@@ -5,7 +5,7 @@ import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
-import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS } from '../data/home.queries'
+import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS, POS_HOME_WALK_IN_QUEUE_UPDATED } from '../data/home.queries'
 import { deriveHoyViewModel, type HoyViewModel, type HoyRowData } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
 import { FinalizeWalkInSheet } from './FinalizeWalkInSheet'
@@ -34,7 +34,7 @@ function todayRangeISO(): { from: string; to: string } {
 export function HoyPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
-  const { locationId } = useLocation()
+  const { locationId, locationSlug } = useLocation()
   const { agenda, clock, walkins } = useRepositories()
   const navigate = useNavigate()
 
@@ -135,6 +135,30 @@ export function HoyPage() {
     window.addEventListener('focus', onFocus)
     return () => { window.removeEventListener('focus', onFocus) }
   }, [refetch])
+
+  // Push real-time: subscription a la cola de walk-ins. Cuando llega un
+  // evento (cliente creó walk-in en kiosk, otro barbero asignó/terminó),
+  // disparamos refetch silencioso para que Hoy refleje el cambio en <1s
+  // sin esperar al refetch on focus o al poll. Apollo `subscribe()` no
+  // expone subscribeToMore aquí porque la data de Hoy no viene de useQuery
+  // sino de Promise.allSettled con repos + apollo.query() one-shot.
+  useEffect(() => {
+    if (!locationSlug) return
+    const obs = apollo.subscribe({
+      query: POS_HOME_WALK_IN_QUEUE_UPDATED,
+      variables: { slug: locationSlug },
+    })
+    const sub = obs.subscribe({
+      next: () => { void refetch({ force: true }) },
+      error: (err) => {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.warn('[HoyPage] walk-in subscription error', err)
+        }
+      },
+    })
+    return () => sub.unsubscribe()
+  }, [apollo, locationSlug, refetch])
 
   const [ctaBusy, setCtaBusy] = useState(false)
 

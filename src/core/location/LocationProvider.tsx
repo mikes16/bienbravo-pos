@@ -6,6 +6,13 @@ const POS_LOCATION_STORAGE_KEY = 'bb-pos-location-id'
 export interface LocationContextValue {
   locationId: string | null
   locationName: string | null
+  /**
+   * Slug de la sucursal — necesario para las subscriptions reales-time
+   * (walkInQueueUpdated usa slug, no id, porque es la clave compartida
+   * entre kiosk display público y staff). Es null hasta que termina la
+   * resolución vía auth.getLocations() en el mount del LocationProvider.
+   */
+  locationSlug: string | null
   setLocationId: (id: string | null) => void
 }
 
@@ -18,6 +25,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     return window.localStorage.getItem(POS_LOCATION_STORAGE_KEY)
   })
   const [locationName, setLocationName] = useState<string | null>(null)
+  const [locationSlug, setLocationSlug] = useState<string | null>(null)
 
   const setLocationId = useCallback((id: string | null) => {
     setLocationIdState(id)
@@ -29,23 +37,27 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Resolve locationName whenever locationId changes.
+  // Resolve locationName + locationSlug whenever locationId changes.
   // All setState calls are inside async callbacks to satisfy react-hooks/set-state-in-effect.
   useEffect(() => {
     let cancelled = false
     const resolvePromise = locationId
       ? auth.getLocations().then((locations) => {
           const match = locations.find((l) => l.id === locationId)
-          return match?.name ?? null
+          return match ? { name: match.name, slug: match.slug } : null
         })
       : Promise.resolve(null)
 
     resolvePromise
-      .then((name) => {
-        if (!cancelled) setLocationName(name)
+      .then((data) => {
+        if (cancelled) return
+        setLocationName(data?.name ?? null)
+        setLocationSlug(data?.slug ?? null)
       })
       .catch(() => {
-        if (!cancelled) setLocationName(null)
+        if (cancelled) return
+        setLocationName(null)
+        setLocationSlug(null)
       })
 
     return () => {
@@ -54,7 +66,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, [locationId, auth])
 
   return (
-    <LocationContext.Provider value={{ locationId, locationName, setLocationId }}>
+    <LocationContext.Provider value={{ locationId, locationName, locationSlug, setLocationId }}>
       {children}
     </LocationContext.Provider>
   )
