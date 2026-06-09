@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useApolloClient } from '@apollo/client/react'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { PinLoginException } from '@/core/auth/auth.types'
+import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS } from '@/features/home/data/home.queries'
 import { LockShell } from './LockShell'
 import { PairingView } from './PairingView'
 import { BarberSelectorView } from './BarberSelectorView'
@@ -12,12 +14,21 @@ import { LockoutView } from './LockoutView'
 import { NoPinMessageView } from './NoPinMessageView'
 import { useLockState } from './useLockState'
 
+function todayISO(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export function LockPage() {
   const navigate = useNavigate()
-  const { auth } = useRepositories()
+  const { auth, agenda, clock, walkins } = useRepositories()
   const { setLocationId, locationName } = useLocation()
   const { pinLogin, isAuthenticated, isLocked } = usePosAuth()
   const { state, setState, actions } = useLockState()
+  const apollo = useApolloClient()
 
   // Per-attempt counter to force PinKeypad remount on each wrong PIN.
   // Without this, PinKeypad keeps its internal `digits` state across attempts.
@@ -115,6 +126,48 @@ export function LockPage() {
     // barberSelectorLocationId + barberSelectorLoading + barberSelectorSkipMemory fully capture
     // the trigger conditions without re-running when other union members change.
   }, [barberSelectorLocationId, barberSelectorLoading, barberSelectorSkipMemory, auth, setState, actions])
+
+  // Pre-warm de queries de Hoy/MyDay mientras el operador escribe el PIN.
+  // Dispara los mismos queries que HoyPage va a pedir (cache-first), así
+  // cuando el PIN se confirma y la app navega a /hoy, la data ya está
+  // caliente en cache → render instant sin spinner.
+  //
+  // Cookie validity:
+  //   - Lock (no logout): cookie sigue siendo válido → queries succeed,
+  //     cache se llena. Caso común: barbero misma sesión sale a comer.
+  //   - Logout: cookie es inválido → queries fallan → Apollo no cachea
+  //     basura, el flujo normal post-login se encarga. Sin daño.
+  //
+  // Solo dispara al entrar a PIN_ENTRY (state.kind change). NO re-dispara
+  // mientras tipean — Apollo dedupea queries en flight con mismas vars de
+  // todas formas, pero esto evita scheduling churn innecesario.
+  const pinEntryStaffId = state.kind === 'PIN_ENTRY' ? state.barber.id : null
+  const pinEntryLocationId = state.kind === 'PIN_ENTRY' ? state.locationId : null
+  useEffect(() => {
+    if (!pinEntryStaffId || !pinEntryLocationId) return
+    const date = todayISO()
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
+    void Promise.allSettled([
+      walkins.getWalkIns(pinEntryLocationId),
+      agenda.getAppointments(date, date, pinEntryLocationId),
+      clock.getEvents(pinEntryStaffId, pinEntryLocationId, date, date),
+      apollo.query({
+        query: POS_MY_DAY_EARNINGS,
+        variables: { staffUserId: pinEntryStaffId, locationId: pinEntryLocationId, date },
+        fetchPolicy: 'cache-first',
+      }),
+      apollo.query({
+        query: POS_HOME_CAJA_STATUS,
+        variables: { locationId: pinEntryLocationId },
+        fetchPolicy: 'cache-first',
+      }),
+      // MyDay también usa este rango de walkIns con todayStart/todayEnd —
+      // distinto cache key que el de Hoy (sin fechas), pero ambos son
+      // baratos y los dos pantallas se sienten igual de instant.
+      walkins.getWalkIns(pinEntryLocationId, todayStart.toISOString(), todayEnd.toISOString()),
+    ])
+  }, [pinEntryStaffId, pinEntryLocationId, walkins, agenda, clock, apollo])
 
   // 4) PIN submit handler
   const handlePinSubmit = useCallback(
