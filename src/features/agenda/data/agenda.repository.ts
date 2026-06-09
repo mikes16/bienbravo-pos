@@ -20,7 +20,7 @@ const COMPLETE = graphql(`mutation Complete($id: ID!) { complete(appointmentId: 
 const NO_SHOW = graphql(`mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }`)
 
 export interface AgendaRepository {
-  getAppointments(dateFrom: string, dateTo: string, locationId: string | null, status?: AppointmentStatus): Promise<Appointment[]>
+  getAppointments(dateFrom: string, dateTo: string, locationId: string | null, status?: AppointmentStatus, opts?: { force?: boolean }): Promise<Appointment[]>
   checkIn(appointmentId: string): Promise<void>
   startService(appointmentId: string): Promise<void>
   complete(appointmentId: string): Promise<void>
@@ -33,11 +33,19 @@ export class ApolloAgendaRepository implements AgendaRepository {
     this.#client = client
   }
 
-  async getAppointments(dateFrom: string, dateTo: string, locationId: string | null, status?: AppointmentStatus): Promise<Appointment[]> {
+  async getAppointments(
+    dateFrom: string,
+    dateTo: string,
+    locationId: string | null,
+    status?: AppointmentStatus,
+    opts?: { force?: boolean },
+  ): Promise<Appointment[]> {
+    // cache-first por default; force:true para refetch on focus / post-evento
+    // / post-mutación que necesitan ver lo último del backend.
     const { data } = await this.#client.query<{ appointments: Appointment[] }>({
       query: APPOINTMENTS_QUERY,
       variables: { dateFrom, dateTo, locationId, status },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     return data!.appointments
   }

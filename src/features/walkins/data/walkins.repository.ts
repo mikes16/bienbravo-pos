@@ -147,7 +147,7 @@ export interface WalkInsRepository {
    * HoyPage que necesita ver todos los pending/assigned. MyDayPage pasa
    * el rango del día para evitar walk-ins viejos.
    */
-  getWalkIns(locationId: string, fromDate?: string, toDate?: string): Promise<WalkIn[]>
+  getWalkIns(locationId: string, fromDate?: string, toDate?: string, opts?: { force?: boolean }): Promise<WalkIn[]>
   create(input: CreateWalkInInput): Promise<WalkIn>
   assign(walkInId: string, staffUserId: string): Promise<{ walkIn: WalkIn; warning: string | null }>
   complete(walkInId: string): Promise<void>
@@ -165,16 +165,23 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
     this.#client = client
   }
 
-  async getWalkIns(locationId: string, fromDate?: string, toDate?: string): Promise<WalkIn[]> {
-    // cache-first: pinta cached al toque (0ms). Las mutaciones del módulo
-    // (assign / complete / drop / create) hacen cache.modify para mantener
-    // freshness sin re-fetch. HoyPage además hace refetch on window.focus
-    // forzando red. `client.query()` no admite cache-and-network — eso
-    // pertenece a watchQuery.
+  async getWalkIns(
+    locationId: string,
+    fromDate?: string,
+    toDate?: string,
+    opts?: { force?: boolean },
+  ): Promise<WalkIn[]> {
+    // cache-first por default (pinta cached al toque, 0ms) — apropiado para
+    // mount inicial. force:true → network-only, usado por:
+    //   - HoyPage tras evento de subscription walkInQueueUpdated
+    //   - HoyPage tras window.focus
+    //   - HoyPage tras mutaciones de cola (assign/complete/drop)
+    // Sin force:true en estos caminos la lista nunca actualizaba con cambios
+    // del backend porque cache-first ignora el server después del primer hit.
     const { data } = await this.#client.query<{ walkIns: WalkIn[] }>({
       query: WALKINS_QUERY as never,
       variables: { locationId, fromDate: fromDate ?? null, toDate: toDate ?? null },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     return data!.walkIns
   }

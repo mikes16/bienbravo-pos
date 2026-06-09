@@ -295,9 +295,9 @@ export function MyDayPage() {
 
     setLoadError(null)
     Promise.allSettled([
-      agenda.getAppointments(d, d, locationId),
+      agenda.getAppointments(d, d, locationId, undefined, { force: opts.force }),
       clock.getEvents(viewer.staff.id, locationId, d, d),
-      walkins.getWalkIns(locationId, todayStart.toISOString(), todayEnd.toISOString()),
+      walkins.getWalkIns(locationId, todayStart.toISOString(), todayEnd.toISOString(), { force: opts.force }),
       apollo.query<{
         staffDayEarnings: {
           serviceCommissionCents: number

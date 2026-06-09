@@ -60,9 +60,9 @@ export function HoyPage() {
     const earningsPolicy = opts?.force ? 'network-only' : 'cache-first'
 
     const settled = await Promise.allSettled([
-      agenda.getAppointments(from, to, locationId),
+      agenda.getAppointments(from, to, locationId, undefined, { force: opts?.force }),
       clock.getEvents(viewer.staff.id, locationId, date, date),
-      walkins.getWalkIns(locationId),
+      walkins.getWalkIns(locationId, undefined, undefined, { force: opts?.force }),
       apollo.query<{
         staffDayEarnings: {
           totalCommissionCents: number

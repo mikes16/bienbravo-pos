@@ -285,7 +285,7 @@ export class InMemoryClockRepository implements ClockRepository {
 }
 
 export class InMemoryAgendaRepository implements AgendaRepository {
-  async getAppointments(_dateFrom: string, _dateTo: string, _locationId: string | null, _status?: AppointmentStatus): Promise<Appointment[]> { return [] }
+  async getAppointments(_dateFrom: string, _dateTo: string, _locationId: string | null, _status?: AppointmentStatus, _opts?: { force?: boolean }): Promise<Appointment[]> { return [] }
   async checkIn(_id: string): Promise<void> {}
   async startService(_id: string): Promise<void> {}
   async complete(_id: string): Promise<void> {}
@@ -293,7 +293,7 @@ export class InMemoryAgendaRepository implements AgendaRepository {
 }
 
 export class InMemoryWalkInsRepository implements WalkInsRepository {
-  async getWalkIns(_locationId: string): Promise<WalkIn[]> { return [] }
+  async getWalkIns(_locationId: string, _fromDate?: string, _toDate?: string, _opts?: { force?: boolean }): Promise<WalkIn[]> { return [] }
   async create(_input: { locationId: string; customerId?: string | null; customerName: string | null; customerPhone?: string | null; customerEmail?: string | null }): Promise<WalkIn> {
     return { id: 'wi-1', status: 'PENDING', customerName: null, customerPhone: null, customerEmail: null, createdAt: new Date().toISOString(), sortOrder: 1, assignedStaffUser: null, customer: null }
   }
