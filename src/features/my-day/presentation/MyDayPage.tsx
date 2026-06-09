@@ -295,9 +295,12 @@ export function MyDayPage() {
 
     setLoadError(null)
     Promise.allSettled([
-      agenda.getAppointments(d, d, locationId, undefined, { force: opts.force }),
+      // walkIns + appointments siempre por red — son listas que cambian
+      // por mutaciones laterales (createPOSSale, assign, complete) y el
+      // cache stale mostraba data zombie tras cobrar (mismo bug que Hoy).
+      agenda.getAppointments(d, d, locationId, undefined, { force: true }),
       clock.getEvents(viewer.staff.id, locationId, d, d),
-      walkins.getWalkIns(locationId, todayStart.toISOString(), todayEnd.toISOString(), { force: opts.force }),
+      walkins.getWalkIns(locationId, todayStart.toISOString(), todayEnd.toISOString(), { force: true }),
       apollo.query<{
         staffDayEarnings: {
           serviceCommissionCents: number

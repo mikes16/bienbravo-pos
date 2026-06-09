@@ -60,9 +60,14 @@ export function HoyPage() {
     const earningsPolicy = opts?.force ? 'network-only' : 'cache-first'
 
     const settled = await Promise.allSettled([
-      agenda.getAppointments(from, to, locationId, undefined, { force: opts?.force }),
+      // walkIns y appointments SIEMPRE van por red en mount. Si subscription
+      // WS pierde un evento (ej. tab oculto, race con createPOSSale, fallo
+      // de publish) el operador igual ve estado correcto al volver a Hoy.
+      // Antes era cache-first → el walk-in "EN SERVICIO 190 MIN" zombie
+      // persistía hasta el siguiente window.focus.
+      agenda.getAppointments(from, to, locationId, undefined, { force: true }),
       clock.getEvents(viewer.staff.id, locationId, date, date),
-      walkins.getWalkIns(locationId, undefined, undefined, { force: opts?.force }),
+      walkins.getWalkIns(locationId, undefined, undefined, { force: true }),
       apollo.query<{
         staffDayEarnings: {
           totalCommissionCents: number
