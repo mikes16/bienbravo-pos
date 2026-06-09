@@ -385,10 +385,13 @@ export function MyDayPage() {
       .finally(() => setLoading(false))
   }, [agenda, clock, walkins, viewer, locationId, apollo])
 
-  // Mount inicial con spinner; cache-first para pintar instant si hay cache
-  // persistido.
+  // Mount: cache-first pinta instant + network-only en background revalida.
+  // Apollo.query() no admite cache-and-network, así que replicamos a mano.
+  // Sin el segundo pase, navegar entre tabs nunca refrescaba data rancia
+  // hasta el siguiente window.focus.
   useEffect(() => {
     loadDay({ showSpinner: true, force: false })
+    loadDay({ showSpinner: false, force: true })
   }, [loadDay])
 
   // Refetch al volver a la tab — patrón espejo de HoyPage. Sin spinner +

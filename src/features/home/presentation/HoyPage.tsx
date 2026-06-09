@@ -127,7 +127,12 @@ export function HoyPage() {
 
   useEffect(() => {
     if (!viewer || !locationId) return
-    void refetch()
+    // Patrón cache-and-network manual (apollo.query() no admite ese policy
+    // como tal): primero refetch con cache-first para pintar instant si
+    // hay cached data, después siempre dispara un network-only para revalidar.
+    // Sin el segundo pase, navegar Reloj → Hoy via tab nav nunca refrescaba
+    // (no hay window.focus en SPA nav) y mostrábamos datos rancios.
+    void refetch().then(() => refetch({ force: true }))
   }, [viewer, locationId, refetch])
 
   useEffect(() => {
