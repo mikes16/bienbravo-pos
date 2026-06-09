@@ -385,13 +385,13 @@ export function MyDayPage() {
       .finally(() => setLoading(false))
   }, [agenda, clock, walkins, viewer, locationId, apollo])
 
-  // Mount: cache-first pinta instant + network-only en background revalida.
-  // Apollo.query() no admite cache-and-network, así que replicamos a mano.
-  // Sin el segundo pase, navegar entre tabs nunca refrescaba data rancia
-  // hasta el siguiente window.focus.
+  // Single load en mount. Antes hacíamos dos pases (cache-first → network-only)
+  // para revalidar al instante, pero eso causaba flash de números viejos
+  // (e.g. comisiones de ayer) → corrección a los 400ms. Para refrescar data
+  // rancia: window.focus listener abajo + el refetch post-mutación que se
+  // dispara desde el flujo de cobro.
   useEffect(() => {
     loadDay({ showSpinner: true, force: false })
-    loadDay({ showSpinner: false, force: true })
   }, [loadDay])
 
   // Refetch al volver a la tab — patrón espejo de HoyPage. Sin spinner +

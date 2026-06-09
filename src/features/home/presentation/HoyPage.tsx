@@ -82,7 +82,12 @@ export function HoyPage() {
       }>({
         query: POS_HOME_CAJA_STATUS,
         variables: { locationId },
-        fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
+        // Caja gating SIEMPRE va por red. Su valor decide si mostramos el
+        // gate "abre la caja" — usar cache-first causaba flash:
+        // mount → cache devuelve caja cerrada de ayer → render gate →
+        // segunda pasada de red corrige a abierta → gate desaparece.
+        // El flicker era visible 200-400ms y se sentía como UI rota.
+        fetchPolicy: 'network-only',
       }),
     ])
 
@@ -127,12 +132,14 @@ export function HoyPage() {
 
   useEffect(() => {
     if (!viewer || !locationId) return
-    // Patrón cache-and-network manual (apollo.query() no admite ese policy
-    // como tal): primero refetch con cache-first para pintar instant si
-    // hay cached data, después siempre dispara un network-only para revalidar.
-    // Sin el segundo pase, navegar Reloj → Hoy via tab nav nunca refrescaba
-    // (no hay window.focus en SPA nav) y mostrábamos datos rancios.
-    void refetch().then(() => refetch({ force: true }))
+    // Single refetch en mount: las queries que afectan el gate (clock +
+    // caja) ya van por red dentro de refetch() — el resto pinta del cache
+    // persistido para que el shell se sienta instant. Antes hacíamos doble
+    // pass (cache-first → network-only) para revalidar todo, pero eso
+    // provocaba un flash del gate "abre tu caja" cuando el cache tenía
+    // estado viejo. Para casos de stale el cliente cuenta con: window.focus,
+    // WS subscription on walk-in events, y refetch post-mutación.
+    void refetch()
   }, [viewer, locationId, refetch])
 
   useEffect(() => {
