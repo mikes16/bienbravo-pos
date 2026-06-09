@@ -86,6 +86,31 @@ export class InMemoryAuthRepository implements AuthRepository {
     return this.#viewer
   }
 
+  /**
+   * Cache helpers en el mock delegan a getViewer() para que subclasses que
+   * override getViewer (común en tests) automáticamente afecten también el
+   * cached / revalidate sin necesidad de overridear tres métodos por test.
+   * En la real Apollo implementation las tres rutas son distintas
+   * (cache vs network); aquí no hay diferencia.
+   */
+  getCachedViewer(): PosViewer | null {
+    // No es async — los tests que necesitan resolución asincrónica usan
+    // revalidate(). Devolvemos lo último que getViewer() devolvió si
+    // existe en el state local, sino null.
+    return this.#viewer
+  }
+
+  async revalidateViewer(): Promise<PosViewer | null> {
+    // Delega a getViewer() para que overrides en subclases lo intercepten.
+    return this.getViewer()
+  }
+
+  evictViewerCache(): void {
+    // El mock no tiene Apollo cache real — el field viewer está en memoria
+    // directa. La operación equivalente es no-op (los tests reset el estado
+    // explícitamente entre casos).
+  }
+
   async pinLogin(_email: string, _pin4: string): Promise<PosViewer> {
     this.#viewer = MOCK_VIEWER
     return MOCK_VIEWER
@@ -96,6 +121,10 @@ export class InMemoryAuthRepository implements AuthRepository {
   }
 
   async getBarbers(_locationId: string): Promise<PosStaffUser[]> {
+    return this.#barbers
+  }
+
+  async getBarbersFresh(_locationId: string): Promise<PosStaffUser[]> {
     return this.#barbers
   }
 

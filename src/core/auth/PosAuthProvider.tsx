@@ -1,7 +1,6 @@
 import { createContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { PosViewer, AuthState } from './auth.types.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
-import { purgePersistedCache } from '@/core/apollo/client.ts'
 
 export interface PosAuthContextValue extends AuthState {
   pinLockedUntil: Date | null
@@ -29,8 +28,27 @@ function writePersistedLocked(locked: boolean): void {
 
 export function PosAuthProvider({ children }: { children: ReactNode }) {
   const { auth } = useRepositories()
-  const [viewer, setViewer] = useState<PosViewer | null>(null)
-  const [loading, setLoading] = useState(true)
+  // SSR-safe initial read: si hay viewer cached desde la sesión anterior
+  // (Apollo cache hidratado desde localStorage al boot del client), lo
+  // pintamos al instante. Si no, queda null y el efecto resuelve después.
+  const [viewer, setViewer] = useState<PosViewer | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      return auth.getCachedViewer()
+    } catch {
+      return null
+    }
+  })
+  // loading=false si ya tenemos viewer en cache: el shell renderiza con
+  // datos cached sin spinner mientras la revalidación corre en background.
+  const [loading, setLoading] = useState(() => {
+    if (typeof window === 'undefined') return true
+    try {
+      return auth.getCachedViewer() === null
+    } catch {
+      return true
+    }
+  })
   // Persisted across reload/server restart so the soft lock holds until the
   // operator types their PIN. If the cookie has since expired, the getViewer
   // effect below clears the flag.
@@ -41,14 +59,22 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
     writePersistedLocked(next)
   }, [])
 
+  // Revalidación silenciosa al mount. Si ya pintamos desde cache, esto solo
+  // confirma que la sesión sigue válida y actualiza si el server tiene info
+  // más fresca. Si no había cache, esto es el primer fetch que desbloquea
+  // el shell.
   useEffect(() => {
     auth
-      .getViewer()
+      .revalidateViewer()
       .then((v) => {
         setViewer(v)
         if (!v) setIsLocked(false)
       })
-      .catch(() => setViewer(null))
+      .catch(() => {
+        // Si la red falla pero teníamos viewer cached, lo mantenemos —
+        // mejor experiencia offline corta que kickear al lock screen.
+        // Si no había cached, ya estamos en null.
+      })
       .finally(() => setLoading(false))
   }, [auth, setIsLocked])
 
@@ -70,11 +96,13 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(STORAGE_KEY_LAST_BARBER)
       }
-      // Purga el cache persistido — el cache contiene datos asociados al
-      // staff anterior (citas, walk-ins, comisiones). Sin esto el próximo
-      // login podría ver flashes de info ajena antes de que el revalidate
-      // los reemplace.
-      purgePersistedCache()
+      // Cirugía: SOLO se evicta el campo viewer del cache. Antes purgábamos
+      // todo el cache persistido, lo cual tiraba barberos, locations,
+      // catálogo, etc. y hacía que el próximo login esperara TODO de nuevo.
+      // El cookie ya es inválido server-side, así que keepar esos otros
+      // datos no es leak — son datos compartidos entre sesiones del mismo
+      // device.
+      auth.evictViewerCache()
     }
   }, [auth, setIsLocked])
 

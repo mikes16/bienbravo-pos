@@ -122,9 +122,13 @@ const BARBER_STATUSES_QUERY = graphql(`
 
 export interface AuthRepository {
   getViewer(): Promise<PosViewer | null>
+  getCachedViewer(): PosViewer | null
+  revalidateViewer(): Promise<PosViewer | null>
+  evictViewerCache(): void
   pinLogin(email: string, pin4: string): Promise<PosViewer>
   logout(): Promise<void>
   getBarbers(locationId: string): Promise<PosStaffUser[]>
+  getBarbersFresh(locationId: string): Promise<PosStaffUser[]>
   getBarberStatuses(locationId: string): Promise<Map<string, PosBarberStatus>>
   getLocations(): Promise<PosLocation[]>
   verifyLocationAccess(locationId: string, password: string): Promise<boolean>
@@ -167,7 +171,41 @@ export class ApolloAuthRepository implements AuthRepository {
     this.#client = client
   }
 
+  /**
+   * Lectura sincrónica del viewer desde el InMemoryCache (que está hidratado
+   * desde localStorage al boot). Devuelve null si no hay cache válido.
+   *
+   * Patrón usado por PosAuthProvider para pintar instant la UI mientras
+   * `revalidateViewer()` corre en background — evita el blanco de 200-400ms
+   * que hace que cada reload se sienta lento.
+   */
+  getCachedViewer(): PosViewer | null {
+    try {
+      const cached = this.#client.cache.readQuery<{ viewer: RawViewer }>({
+        query: VIEWER_QUERY,
+      })
+      return cached ? mapViewer(cached.viewer) : null
+    } catch {
+      return null
+    }
+  }
+
   async getViewer(): Promise<PosViewer | null> {
+    // cache-first: si ya está en cache (típico tras reload con persistencia),
+    // resuelve sin red. La revalidación explícita la hace `revalidateViewer()`.
+    const { data } = await this.#client.query<{ viewer: RawViewer }>({
+      query: VIEWER_QUERY,
+      fetchPolicy: 'cache-first',
+    })
+    return mapViewer(data!.viewer)
+  }
+
+  /**
+   * Forza fetch a red ignorando el cache. Usado después de login/logout y por
+   * el listener de visibility-change para confirmar que la sesión sigue
+   * válida server-side. Re-popula el cache con la respuesta fresca.
+   */
+  async revalidateViewer(): Promise<PosViewer | null> {
     const { data } = await this.#client.query<{ viewer: RawViewer }>({
       query: VIEWER_QUERY,
       fetchPolicy: 'network-only',
@@ -211,7 +249,38 @@ export class ApolloAuthRepository implements AuthRepository {
     await this.#client.mutate({ mutation: LOGOUT_MUTATION })
   }
 
+  /**
+   * Cirugía de cache para logout: SOLO evicta el campo `viewer` del root
+   * Query. NO purgamos todo el cache (lo hacía antes), porque eso tiraba
+   * datos compartidos entre sesiones (catálogo, barberos, locations) que
+   * no son privados — el cookie viejo ya es inválido server-side.
+   *
+   * Resultado: tras logout, la pantalla de selección de barbero pinta
+   * instant desde cache, no espera red.
+   */
+  evictViewerCache(): void {
+    this.#client.cache.evict({ fieldName: 'viewer' })
+    this.#client.cache.gc()
+  }
+
   async getBarbers(locationId: string): Promise<PosStaffUser[]> {
+    // cache-first: el listado de barberos cambia rara vez (admin agrega/baja
+    // staff). Pintar instant desde cache → tap → login. La revalidación pasa
+    // en background via getBarbersFresh() o cuando vuelva el focus.
+    const { data } = await this.#client.query<{ barbers: RawStaff[] }>({
+      query: BARBERS_QUERY,
+      variables: { locationId },
+      fetchPolicy: 'cache-first',
+    })
+    return data!.barbers.filter((b) => b.isActive).map(mapStaff)
+  }
+
+  /**
+   * Forza fetch a red del listado de barberos. Llamado por la pantalla de
+   * selección on mount (background, no bloquea el primer paint) para que la
+   * lista cached muestre el dato fresco en cuanto llegue.
+   */
+  async getBarbersFresh(locationId: string): Promise<PosStaffUser[]> {
     const { data } = await this.#client.query<{ barbers: RawStaff[] }>({
       query: BARBERS_QUERY,
       variables: { locationId },

@@ -100,6 +100,15 @@ export function LockPage() {
         if (cancelled) return
         setState({ kind: 'BARBER_SELECTOR', locationId, barbers: [], statuses: new Map(), loading: false })
       })
+    // Revalidación silenciosa en background: el render inicial vino del
+    // cache (cache-first), así que disparamos un fetch fresco para detectar
+    // staff nuevo/dado de baja sin spinner. Si el dispatch resuelve después
+    // de que el operador tapeó una card, el siguiente paint refleja el
+    // dato fresco — Apollo merge automático en cache.
+    void auth.getBarbersFresh(locationId).catch(() => {
+      // Tragar errores: la red puede fallar y aún tenemos cards utiles
+      // del cache. El siguiente intento de login revalidará.
+    })
     return () => {
       cancelled = true
     }
