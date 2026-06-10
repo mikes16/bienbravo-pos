@@ -184,23 +184,25 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     }
   }, [events, shiftTemplates, isClockedIn, latenessThresholdMin])
 
-  const doClockIn = useCallback(async () => {
-    if (!locationId || submitting) return
+  const doClockIn = useCallback(async (): Promise<boolean> => {
+    if (!locationId || submitting) return false
     setSubmitting(true)
     try {
       const ok = await clock.clockIn(locationId)
       if (!ok) {
         setError('Ya tienes una entrada registrada hoy')
-        return
+        return false
       }
       setError(null)
       refresh()
+      return true
     } catch (err) {
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.error('[doClockIn] failed', err)
       }
       setError('No se pudo registrar entrada')
+      return false
     } finally {
       setSubmitting(false)
     }

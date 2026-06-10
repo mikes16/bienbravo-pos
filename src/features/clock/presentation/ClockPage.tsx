@@ -3,6 +3,7 @@ import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { cn } from '@/shared/lib/cn'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
+import { useToast } from '@/core/toast/useToast'
 import { useClock } from '../application/useClock'
 import type { TimeClockEvent } from '../data/clock.repository'
 
@@ -139,6 +140,28 @@ export function ClockPage() {
     return late > 0 ? Math.floor(late) : null
   })()
 
+  const { addToast } = useToast()
+
+  // A9: leyenda de puntualidad al marcar la PRIMERA entrada del día.
+  // Tarde → mensaje que motiva a llegar antes; temprano → felicitación;
+  // a tiempo → reconocimiento neutro. Las reentradas no la disparan.
+  async function handleClockIn() {
+    const isFirstToday = !firstClockInToday
+    const ok = await doClockIn()
+    if (!ok || !isFirstToday) return
+    const sched = shiftStatus.scheduledStartMin
+    if (sched === null) return
+    const arrivalMin = nowMinutesFromMidnight(Date.now())
+    const lateBy = arrivalMin - sched - shiftStatus.latenessThresholdMin
+    if (lateBy > 0) {
+      addToast('Llegaste tarde. Mañana llega antes — tu puntualidad cuenta 💪', 'info')
+    } else if (arrivalMin < sched) {
+      addToast('¡Felicidades, llegaste temprano! Así se empieza el día 🎯', 'success')
+    } else {
+      addToast('¡A tiempo! Buen inicio 👌', 'success')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-full flex-col gap-6 px-6 py-6">
@@ -187,7 +210,7 @@ export function ClockPage() {
         variant="primary"
         size="primary"
         disabled={notAssignedHere || submitting}
-        onClick={isClockedIn ? doClockOut : doClockIn}
+        onClick={isClockedIn ? doClockOut : handleClockIn}
         className="rounded-none uppercase tracking-[0.06em]"
       >
         {submitting

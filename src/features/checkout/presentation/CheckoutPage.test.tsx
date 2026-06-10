@@ -34,6 +34,11 @@ function makeRepos() {
     { id: 'cat-prod', name: 'Productos', sortOrder: 2, slug: 'productos', appliesTo: 'PRODUCT' },
   ])
   repos.checkout.getBarbers = vi.fn().mockResolvedValue(BARBERS)
+  // A1: checkout ahora carga barberos con estado de turno (getAvailableBarbers).
+  // Mockeamos clocked-in para que sean asignables en el test.
+  repos.checkout.getAvailableBarbers = vi
+    .fn()
+    .mockResolvedValue(BARBERS.map((b: { id: string }) => ({ ...b, hasClockedIn: true, isOccupied: false })))
   repos.checkout.getStockLevels = vi.fn().mockResolvedValue([{ productId: 'prod-shampoo', quantity: 10 }])
   repos.checkout.searchCustomers = vi.fn().mockResolvedValue([])
   repos.checkout.findOrCreateCustomer = vi.fn().mockResolvedValue({ id: 'c-new', fullName: 'New', email: null, phone: null })

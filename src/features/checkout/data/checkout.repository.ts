@@ -653,6 +653,14 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         },
       },
     })
+    // A10: una venta directa no se reflejaba en "Mis Ventas"/Hoy hasta borrar el
+    // cache — staffDayEarnings se lee cache-first en el mount y el refetch por
+    // subscription WS podía llegar tarde (o perderse) en el MISMO device que
+    // cobró. Evictamos el campo para que la próxima lectura cache-first haga
+    // miss y traiga la venta recién creada. No rompe el instant-load: solo
+    // refetchea cuando de verdad hubo una venta.
+    this.#client.cache.evict({ id: 'ROOT_QUERY', fieldName: 'staffDayEarnings' })
+    this.#client.cache.gc()
     return data!.createPOSSale
   }
 

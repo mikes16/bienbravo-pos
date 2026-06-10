@@ -5,6 +5,8 @@ interface Barber {
   id: string
   fullName: string
   photoUrl: string | null
+  // A1: undefined = sin info (se permite); false = sin turno iniciado (bloqueado).
+  hasClockedIn?: boolean
 }
 
 interface BarberSelectorSheetProps {
@@ -33,31 +35,46 @@ export function BarberSelectorSheet({ open, barbers, currentBarberId, onSelect, 
           ¿Quién atiende?
         </p>
         <div className="grid grid-cols-3 gap-3">
-          {barbers.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => {
-                onSelect(b.id)
-                onClose()
-              }}
-              className={cn(
-                'flex cursor-pointer flex-col items-center gap-2 border p-3 transition-colors',
-                b.id === currentBarberId
-                  ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.06]'
-                  : 'border-[var(--color-leather-muted)]/40 hover:bg-[var(--color-cuero-viejo)]',
-              )}
-            >
-              {b.photoUrl ? (
-                <img src={cldThumb(b.photoUrl, { w: 56, h: 56, dpr: 'auto' }) ?? b.photoUrl} alt="" loading="lazy" decoding="async" className="h-14 w-14 border border-[var(--color-leather-muted)] object-cover" />
-              ) : (
-                <div className="flex h-14 w-14 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[24px] font-extrabold text-[var(--color-bone)]">
-                  {b.fullName[0]}
-                </div>
-              )}
-              <span className="text-center text-[12px] text-[var(--color-bone)]">{b.fullName}</span>
-            </button>
-          ))}
+          {barbers.map((b) => {
+            // A1: sin turno iniciado → no se puede asignar (botón deshabilitado).
+            const blocked = b.hasClockedIn === false
+            return (
+              <button
+                key={b.id}
+                type="button"
+                disabled={blocked}
+                onClick={() => {
+                  if (blocked) return
+                  onSelect(b.id)
+                  onClose()
+                }}
+                className={cn(
+                  'flex flex-col items-center gap-2 border p-3 transition-colors',
+                  blocked
+                    ? 'cursor-not-allowed border-[var(--color-leather-muted)]/40 opacity-40'
+                    : 'cursor-pointer',
+                  !blocked &&
+                    (b.id === currentBarberId
+                      ? 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.06]'
+                      : 'border-[var(--color-leather-muted)]/40 hover:bg-[var(--color-cuero-viejo)]'),
+                )}
+              >
+                {b.photoUrl ? (
+                  <img src={cldThumb(b.photoUrl, { w: 56, h: 56, dpr: 'auto' }) ?? b.photoUrl} alt="" loading="lazy" decoding="async" className="h-14 w-14 border border-[var(--color-leather-muted)] object-cover" />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center border border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] text-[24px] font-extrabold text-[var(--color-bone)]">
+                    {b.fullName[0]}
+                  </div>
+                )}
+                <span className="text-center text-[12px] text-[var(--color-bone)]">{b.fullName}</span>
+                {blocked && (
+                  <span className="text-[10px] uppercase tracking-wide text-[var(--color-bone-muted)]">
+                    Sin turno
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

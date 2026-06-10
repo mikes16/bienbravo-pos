@@ -19,6 +19,8 @@ interface Barber {
   id: string
   fullName: string
   photoUrl: string | null
+  // A1: solo se puede asignar a barberos con turno iniciado (clocked-in).
+  hasClockedIn?: boolean
 }
 
 interface CatalogItem {
@@ -127,7 +129,9 @@ export function useCheckout() {
       checkout.getProducts(locationId),
       checkout.getCombos(),
       checkout.getCategories(),
-      checkout.getBarbers(locationId),
+      // A1: barberos CON estado de turno (hasClockedIn) — el checkout solo deja
+      // asignar a los que ya iniciaron su día.
+      checkout.getAvailableBarbers(locationId),
       checkout.getStockLevels(locationId),
       register.getRegisters(locationId),
     ])
