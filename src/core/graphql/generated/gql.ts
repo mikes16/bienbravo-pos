@@ -22,6 +22,7 @@ type Documents = {
     "\n  query PosPinLockoutStatus($email: String!) {\n    posPinLockoutStatus(email: $email) {\n      lockedUntil\n      attemptsRemaining\n    }\n  }\n": typeof types.PosPinLockoutStatusDocument,
     "\n  mutation PosLogout { logout }\n": typeof types.PosLogoutDocument,
     "\n  query PosBarberStatuses($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      hasClockedIn\n      isOccupied\n    }\n  }\n": typeof types.PosBarberStatusesDocument,
+    "\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n": typeof types.PosCatalogVersionDocument,
     "\n  query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {\n    appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {\n      id status salePaymentStatus startAt endAt totalCents\n      customer { id fullName phone }\n      staffUser { id fullName }\n      items { label serviceId qty unitPriceCents }\n      locationId locationName\n    }\n  }\n": typeof types.PosAppointmentsDocument,
     "mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }": typeof types.CheckInDocument,
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": typeof types.StartServiceDocument,
@@ -81,6 +82,7 @@ const documents: Documents = {
     "\n  query PosPinLockoutStatus($email: String!) {\n    posPinLockoutStatus(email: $email) {\n      lockedUntil\n      attemptsRemaining\n    }\n  }\n": types.PosPinLockoutStatusDocument,
     "\n  mutation PosLogout { logout }\n": types.PosLogoutDocument,
     "\n  query PosBarberStatuses($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      hasClockedIn\n      isOccupied\n    }\n  }\n": types.PosBarberStatusesDocument,
+    "\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n": types.PosCatalogVersionDocument,
     "\n  query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {\n    appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {\n      id status salePaymentStatus startAt endAt totalCents\n      customer { id fullName phone }\n      staffUser { id fullName }\n      items { label serviceId qty unitPriceCents }\n      locationId locationName\n    }\n  }\n": types.PosAppointmentsDocument,
     "mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }": types.CheckInDocument,
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": types.StartServiceDocument,
@@ -178,6 +180,10 @@ export function graphql(source: "\n  mutation PosLogout { logout }\n"): (typeof 
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query PosBarberStatuses($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      hasClockedIn\n      isOccupied\n    }\n  }\n"): (typeof documents)["\n  query PosBarberStatuses($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      hasClockedIn\n      isOccupied\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n"): (typeof documents)["\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

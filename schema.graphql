@@ -1397,6 +1397,7 @@ type Query {
   catalogCategory(id: ID!): CatalogCategory
   catalogCombo(id: ID!): CatalogCombo
   catalogCombos(activeOnly: Boolean): [CatalogCombo!]!
+  catalogVersion(locationId: ID!): String!
   cloudinaryConfig: CloudinaryConfig!
   coupon(id: ID!): Coupon
   coupons(filter: CouponsFilterInput): [Coupon!]!

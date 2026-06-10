@@ -20,6 +20,11 @@ jobs:
           npm run codegen
           git diff --exit-code schema.graphql src/core/graphql/generated/
       - run: npm run build
+      - name: Enforce bundle size budgets
+        # Falla el PR si el bundle inicial / vendors / CSS crecen sobre el
+        # presupuesto declarado en package.json#size-limit. "Rápido" deja de
+        # ser esperanza y se vuelve un gate de regresión.
+        run: npm run size
       # Note: `npm run lint` y `npm test` excluidos de CI por ahora.
       # - Lint: el baseline del repo tiene 44 errores pre-existentes (mocks
       #   con params unused). Activar cuando se haga una limpieza aparte.

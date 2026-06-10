@@ -174,7 +174,13 @@ export function createPosApolloClient(): ApolloClient {
     cache,
     assumeImmutableResults: true,
     defaultOptions: {
-      watchQuery: { fetchPolicy: 'cache-and-network', nextFetchPolicy: 'cache-first' },
+      // cache-first (no cache-and-network) como default: en datos STATIC no
+      // queremos revalidación de red en cada mount. Los repos ya usan
+      // client.query() con políticas explícitas; las lecturas LIVE (sesión de
+      // caja, stock, búsqueda de clientes, prepay) llevan su 'network-only'
+      // explícito y no se ven afectadas. Esto cierra el leak para cualquier
+      // useQuery/watchQuery futuro que herede el default.
+      watchQuery: { fetchPolicy: 'cache-first', nextFetchPolicy: 'cache-first' },
       query: { fetchPolicy: 'cache-first' },
     },
   })

@@ -360,14 +360,31 @@ export function useCheckout() {
 
   const discountTotalCents = appliedCoupons.reduce((s, c) => s + c.discountAmountCents, 0)
 
-  const searchCustomers = async (query: string) => {
-    if (!query.trim()) {
-      setCustomerResults([])
-      return
+  // Debounce de la búsqueda: sin esto, teclear "john" disparaba 1 request por
+  // tecla (4 round trips). Con 280ms agrupamos las pulsaciones en 1 sola
+  // llamada. La búsqueda sigue network-only (es dato vivo) — solo evitamos el
+  // spam. Guard de <2 chars antes de agendar (el repo igual corta, pero así ni
+  // siquiera programamos el timeout).
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     }
-    const results = await checkout.searchCustomers(query)
-    setCustomerResults(results)
-  }
+  }, [])
+
+  const searchCustomers = useCallback(
+    (query: string) => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+      if (query.trim().length < 2) {
+        setCustomerResults([])
+        return
+      }
+      searchDebounceRef.current = setTimeout(() => {
+        void checkout.searchCustomers(query).then(setCustomerResults)
+      }, 280)
+    },
+    [checkout],
+  )
 
   const createCustomer = async (input: { fullName: string; phone?: string; email?: string }) => {
     return await checkout.findOrCreateCustomer(
