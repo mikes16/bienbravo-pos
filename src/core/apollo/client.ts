@@ -123,9 +123,18 @@ export function purgePersistedCache(): void {
 }
 
 export function createPosApolloClient(): ApolloClient {
-  const uri = (import.meta.env.VITE_API_URL ?? '') + '/graphql'
-  // WS endpoint = mismo path /graphql con esquema ws/wss según origen.
-  const wsUri = uri.replace(/^http/, 'ws')
+  // HTTP va SAME-ORIGIN a /api/graphql. En prod, vercel.json reescribe esa ruta
+  // a la API en Railway; en dev, el proxy de Vite la manda a :3001. ¿Por qué no
+  // pegarle directo a Railway? Porque el POS vive en vercel.app y la API en
+  // railway.app — sitios distintos, así que la cookie de sesión sería "de
+  // terceros" y Safari/iPad (ITP) NO la manda → la sesión no se respeta en
+  // tablet. Pasando por el mismo origen, la cookie es first-party del POS y
+  // Safari sí la envía.
+  const httpUri = '/api/graphql'
+  // WS NO se puede proxiar por rewrites de Vercel: conecta directo al origen de
+  // la API (VITE_API_URL). La única subscription (walkInQueueUpdated) es pública
+  // — no depende de la cookie, así que el handshake cross-site funciona igual.
+  const wsUri = ((import.meta.env.VITE_API_URL ?? '') + '/graphql').replace(/^http/, 'ws')
 
   const cache = makeCache()
   cachePersistor = attachCachePersistence(cache)
@@ -135,7 +144,7 @@ export function createPosApolloClient(): ApolloClient {
   // que no agregue latencia perceptible. batchMax 10 para evitar payloads
   // monstruosos en el rare caso de un burst grande.
   const batchHttpLink = new BatchHttpLink({
-    uri,
+    uri: httpUri,
     credentials: 'include',
     headers: { 'x-bb-client': 'pos' },
     batchInterval: 20,
@@ -149,7 +158,7 @@ export function createPosApolloClient(): ApolloClient {
   // dejaría colgadas en skeleton. Va por un HttpLink simple (su propio POST),
   // fuera del critical path.
   const singleHttpLink = new HttpLink({
-    uri,
+    uri: httpUri,
     credentials: 'include',
     headers: { 'x-bb-client': 'pos' },
   })

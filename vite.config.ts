@@ -45,8 +45,18 @@ export default defineConfig({
   server: {
     port: 3002,
     host: true,
+    // El cliente pega HTTP a /api/graphql (same-origin) para que la cookie sea
+    // first-party — en dev lo proxeamos a la API local en :3001 quitando el
+    // prefijo /api. En prod lo reescribe vercel.json. Si VITE_API_URL está
+    // seteado (apuntando a una API remota) no proxeamos.
     proxy: process.env.VITE_API_URL
       ? undefined
-      : { '/graphql': { target: 'http://localhost:3001', changeOrigin: true } },
+      : {
+          '/api/graphql': {
+            target: 'http://localhost:3001',
+            changeOrigin: true,
+            rewrite: (p) => p.replace(/^\/api/, ''),
+          },
+        },
   },
 })

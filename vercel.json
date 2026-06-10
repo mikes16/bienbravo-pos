@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/api/graphql", "destination": "https://bienbravo-api-production.up.railway.app/graphql" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
