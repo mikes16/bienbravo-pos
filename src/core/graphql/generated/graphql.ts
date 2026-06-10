@@ -69,6 +69,25 @@ export type Appointment = {
   totalCents: Scalars['Int']['output'];
 };
 
+export type AppointmentEvent = {
+  __typename?: 'AppointmentEvent';
+  appointmentId: Scalars['ID']['output'];
+  kind: AppointmentEventKind;
+  locationSlug: Scalars['String']['output'];
+  occurredAt: Scalars['DateTime']['output'];
+};
+
+export enum AppointmentEventKind {
+  Cancelled = 'CANCELLED',
+  CheckedIn = 'CHECKED_IN',
+  Completed = 'COMPLETED',
+  Created = 'CREATED',
+  NoShow = 'NO_SHOW',
+  Rescheduled = 'RESCHEDULED',
+  Started = 'STARTED',
+  Updated = 'UPDATED'
+}
+
 export type AppointmentItem = {
   __typename?: 'AppointmentItem';
   catalogComboId?: Maybe<Scalars['ID']['output']>;
@@ -3243,6 +3262,20 @@ export type Sale = {
   walkInId?: Maybe<Scalars['ID']['output']>;
 };
 
+export type SaleEvent = {
+  __typename?: 'SaleEvent';
+  kind: SaleEventKind;
+  locationSlug: Scalars['String']['output'];
+  occurredAt: Scalars['DateTime']['output'];
+  saleId: Scalars['ID']['output'];
+};
+
+export enum SaleEventKind {
+  Closed = 'CLOSED',
+  Created = 'CREATED',
+  Voided = 'VOIDED'
+}
+
 export type SaleItem = {
   __typename?: 'SaleItem';
   catalogComboId?: Maybe<Scalars['ID']['output']>;
@@ -3543,7 +3576,19 @@ export type StripePaymentIntentResult = {
 
 export type Subscription = {
   __typename?: 'Subscription';
+  appointmentUpdated: AppointmentEvent;
+  saleEvent: SaleEvent;
   walkInQueueUpdated: WalkInQueueEvent;
+};
+
+
+export type SubscriptionAppointmentUpdatedArgs = {
+  slug: Scalars['String']['input'];
+};
+
+
+export type SubscriptionSaleEventArgs = {
+  slug: Scalars['String']['input'];
 };
 
 
@@ -4205,6 +4250,20 @@ export type PosHomeWalkInQueueUpdatedSubscriptionVariables = Exact<{
 
 export type PosHomeWalkInQueueUpdatedSubscription = { __typename?: 'Subscription', walkInQueueUpdated: { __typename?: 'WalkInQueueEvent', kind: WalkInQueueEventKind, walkInId: string, locationSlug: string, occurredAt: string } };
 
+export type PosHomeAppointmentUpdatedSubscriptionVariables = Exact<{
+  slug: Scalars['String']['input'];
+}>;
+
+
+export type PosHomeAppointmentUpdatedSubscription = { __typename?: 'Subscription', appointmentUpdated: { __typename?: 'AppointmentEvent', kind: AppointmentEventKind, appointmentId: string, locationSlug: string, occurredAt: string } };
+
+export type PosHomeSaleEventSubscriptionVariables = Exact<{
+  slug: Scalars['String']['input'];
+}>;
+
+
+export type PosHomeSaleEventSubscription = { __typename?: 'Subscription', saleEvent: { __typename?: 'SaleEvent', kind: SaleEventKind, saleId: string, locationSlug: string, occurredAt: string } };
+
 export type PosRegistersQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
@@ -4352,6 +4411,8 @@ export const PosHomeCommissionDocument = {"kind":"Document","definitions":[{"kin
 export const PosMyDayEarningsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosMyDayEarnings"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"date"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffDayEarnings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}},{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"date"},"value":{"kind":"Variable","name":{"kind":"Name","value":"date"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"serviceCommissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"productCommissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"tipsCents"}},{"kind":"Field","name":{"kind":"Name","value":"totalCommissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"serviceRevenueCents"}},{"kind":"Field","name":{"kind":"Name","value":"productRevenueCents"}},{"kind":"Field","name":{"kind":"Name","value":"perSale"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"saleId"}},{"kind":"Field","name":{"kind":"Name","value":"commissionCents"}},{"kind":"Field","name":{"kind":"Name","value":"tipCents"}},{"kind":"Field","name":{"kind":"Name","value":"earningsCents"}},{"kind":"Field","name":{"kind":"Name","value":"soldAt"}},{"kind":"Field","name":{"kind":"Name","value":"customerName"}},{"kind":"Field","name":{"kind":"Name","value":"linkedWalkInId"}},{"kind":"Field","name":{"kind":"Name","value":"linkedAppointmentId"}},{"kind":"Field","name":{"kind":"Name","value":"itemLabels"}},{"kind":"Field","name":{"kind":"Name","value":"attributedRevenueCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosMyDayEarningsQuery, PosMyDayEarningsQueryVariables>;
 export const PosHomeCajaStatusDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosHomeCajaStatus"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"posCajaStatusHome"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"isOpen"}},{"kind":"Field","name":{"kind":"Name","value":"accumulatedCents"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeCajaStatusQuery, PosHomeCajaStatusQueryVariables>;
 export const PosHomeWalkInQueueUpdatedDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeWalkInQueueUpdated"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"walkInQueueUpdated"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"walkInId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeWalkInQueueUpdatedSubscription, PosHomeWalkInQueueUpdatedSubscriptionVariables>;
+export const PosHomeAppointmentUpdatedDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeAppointmentUpdated"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"appointmentUpdated"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"appointmentId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeAppointmentUpdatedSubscription, PosHomeAppointmentUpdatedSubscriptionVariables>;
+export const PosHomeSaleEventDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeSaleEvent"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"saleEvent"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"saleId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeSaleEventSubscription, PosHomeSaleEventSubscriptionVariables>;
 export const PosRegistersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosRegisters"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"registers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}},{"kind":"Field","name":{"kind":"Name","value":"openSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosRegistersQuery, PosRegistersQueryVariables>;
 export const OpenRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"OpenRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"openRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"registerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}}},{"kind":"Argument","name":{"kind":"Name","value":"openingCashCents"},"value":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<OpenRegisterSessionMutation, OpenRegisterSessionMutationVariables>;
 export const CloseRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CloseRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CloseRegisterSessionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"closeRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"closedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedTransferCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<CloseRegisterSessionMutation, CloseRegisterSessionMutationVariables>;

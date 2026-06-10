@@ -48,6 +48,24 @@ type Appointment {
   totalCents: Int!
 }
 
+type AppointmentEvent {
+  appointmentId: ID!
+  kind: AppointmentEventKind!
+  locationSlug: String!
+  occurredAt: DateTime!
+}
+
+enum AppointmentEventKind {
+  CANCELLED
+  CHECKED_IN
+  COMPLETED
+  CREATED
+  NO_SHOW
+  RESCHEDULED
+  STARTED
+  UPDATED
+}
+
 type AppointmentItem {
   catalogComboId: ID
   label: String!
@@ -1775,6 +1793,19 @@ type Sale {
   walkInId: ID
 }
 
+type SaleEvent {
+  kind: SaleEventKind!
+  locationSlug: String!
+  occurredAt: DateTime!
+  saleId: ID!
+}
+
+enum SaleEventKind {
+  CLOSED
+  CREATED
+  VOIDED
+}
+
 type SaleItem {
   catalogComboId: ID
   id: ID!
@@ -2048,6 +2079,8 @@ type StripePaymentIntentResult {
 }
 
 type Subscription {
+  appointmentUpdated(slug: String!): AppointmentEvent!
+  saleEvent(slug: String!): SaleEvent!
   walkInQueueUpdated(slug: String!): WalkInQueueEvent!
 }
 

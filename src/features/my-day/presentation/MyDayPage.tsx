@@ -4,7 +4,12 @@ import { formatMoney } from '@/shared/lib/money.ts'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
-import { POS_MY_DAY_EARNINGS } from '@/features/home/data/home.queries'
+import {
+  POS_MY_DAY_EARNINGS,
+  POS_HOME_WALK_IN_QUEUE_UPDATED,
+  POS_HOME_APPOINTMENT_UPDATED,
+  POS_HOME_SALE_EVENT,
+} from '@/features/home/data/home.queries'
 import type { Appointment } from '@/features/agenda/domain/agenda.types.ts'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository.ts'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types.ts'
@@ -271,7 +276,7 @@ function KPICard({ label, value, loading = false }: KPICardProps) {
 export function MyDayPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
-  const { locationId } = useLocation()
+  const { locationId, locationSlug } = useLocation()
   const { agenda, clock, walkins } = useRepositories()
   const [summary, setSummary] = useState<DaySummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -396,6 +401,36 @@ export function MyDayPage() {
   useEffect(() => {
     loadDay({ showSpinner: true, force: false })
   }, [loadDay])
+
+  // Real-time push: subscribe a walk-in, appointment y sale events de la
+  // sucursal. Cuando llega cualquiera, dispara refetch silencioso (sin
+  // spinner). Caso de uso clave: el dueño está mirando "Mi Día" en otro
+  // POS mientras otro barbero cobra una venta — las comisiones del barbero
+  // afectado se actualizan en <1s sin tener que tocar nada.
+  useEffect(() => {
+    if (!locationSlug) return
+    const onEvent = () => loadDay({ showSpinner: false, force: true })
+    const subscribeTo = (query: typeof POS_HOME_WALK_IN_QUEUE_UPDATED, label: string) => {
+      const obs = apollo.subscribe({ query, variables: { slug: locationSlug } })
+      return obs.subscribe({
+        next: onEvent,
+        error: (err) => {
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.warn(`[MyDayPage] ${label} subscription error`, err)
+          }
+        },
+      })
+    }
+    const walkInSub = subscribeTo(POS_HOME_WALK_IN_QUEUE_UPDATED as never, 'walk-in')
+    const apptSub = subscribeTo(POS_HOME_APPOINTMENT_UPDATED as never, 'appointment')
+    const saleSub = subscribeTo(POS_HOME_SALE_EVENT as never, 'sale')
+    return () => {
+      walkInSub.unsubscribe()
+      apptSub.unsubscribe()
+      saleSub.unsubscribe()
+    }
+  }, [apollo, locationSlug, loadDay])
 
   // Refetch al volver a la tab — patrón espejo de HoyPage. Sin spinner +
   // network-only para asegurar datos frescos sin parpadear.

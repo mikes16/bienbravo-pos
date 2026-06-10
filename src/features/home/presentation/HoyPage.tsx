@@ -5,7 +5,13 @@ import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
-import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS, POS_HOME_WALK_IN_QUEUE_UPDATED } from '../data/home.queries'
+import {
+  POS_MY_DAY_EARNINGS,
+  POS_HOME_CAJA_STATUS,
+  POS_HOME_WALK_IN_QUEUE_UPDATED,
+  POS_HOME_APPOINTMENT_UPDATED,
+  POS_HOME_SALE_EVENT,
+} from '../data/home.queries'
 import { deriveHoyViewModel, type HoyViewModel, type HoyRowData } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
 import { FinalizeWalkInSheet } from './FinalizeWalkInSheet'
@@ -161,20 +167,35 @@ export function HoyPage() {
   // sino de Promise.allSettled con repos + apollo.query() one-shot.
   useEffect(() => {
     if (!locationSlug) return
-    const obs = apollo.subscribe({
-      query: POS_HOME_WALK_IN_QUEUE_UPDATED,
-      variables: { slug: locationSlug },
-    })
-    const sub = obs.subscribe({
-      next: () => { void refetch({ force: true }) },
-      error: (err) => {
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.warn('[HoyPage] walk-in subscription error', err)
-        }
-      },
-    })
-    return () => sub.unsubscribe()
+    // Helper local — todas las subscriptions de Hoy comparten el mismo
+    // efecto: cuando llega cualquier evento, dispara refetch silencioso.
+    // Apollo dedupea queries en flight si tres eventos llegan en <50ms.
+    const onEvent = () => { void refetch({ force: true }) }
+    const subscribeTo = (query: typeof POS_HOME_WALK_IN_QUEUE_UPDATED, label: string) => {
+      const obs = apollo.subscribe({ query, variables: { slug: locationSlug } })
+      return obs.subscribe({
+        next: onEvent,
+        error: (err) => {
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.warn(`[HoyPage] ${label} subscription error`, err)
+          }
+        },
+      })
+    }
+
+    // 3 subscriptions paralelas — todas reaccionan disparando el mismo
+    // refetch. Una sola conexión WS las multiplexea (graphql-ws lo hace
+    // por debajo), no son 3 sockets distintos.
+    const walkInSub = subscribeTo(POS_HOME_WALK_IN_QUEUE_UPDATED as never, 'walk-in')
+    const apptSub = subscribeTo(POS_HOME_APPOINTMENT_UPDATED as never, 'appointment')
+    const saleSub = subscribeTo(POS_HOME_SALE_EVENT as never, 'sale')
+
+    return () => {
+      walkInSub.unsubscribe()
+      apptSub.unsubscribe()
+      saleSub.unsubscribe()
+    }
   }, [apollo, locationSlug, refetch])
 
   const [ctaBusy, setCtaBusy] = useState(false)

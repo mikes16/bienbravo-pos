@@ -62,3 +62,33 @@ export const POS_HOME_WALK_IN_QUEUE_UPDATED = graphql(`
     }
   }
 `)
+
+// Subscription a eventos de cita. Cubre: nueva cita, check-in,
+// start-service, complete, no-show, cancelación, reschedule. POS Hoy
+// refetcha agenda + earnings cuando llega — la cita completada/cancelada
+// desaparece de la VM, las nuevas aparecen, los estados actualizan.
+export const POS_HOME_APPOINTMENT_UPDATED = graphql(`
+  subscription PosHomeAppointmentUpdated($slug: String!) {
+    appointmentUpdated(slug: $slug) {
+      kind
+      appointmentId
+      locationSlug
+      occurredAt
+    }
+  }
+`)
+
+// Subscription a eventos de venta (create / void / close prepaid). Caso
+// clave: barbero A en POS A cobra una venta atribuida a barbero B → POS B
+// recibe el evento y refetcha sus comisiones del día. Antes había que
+// esperar al window.focus.
+export const POS_HOME_SALE_EVENT = graphql(`
+  subscription PosHomeSaleEvent($slug: String!) {
+    saleEvent(slug: $slug) {
+      kind
+      saleId
+      locationSlug
+      occurredAt
+    }
+  }
+`)
