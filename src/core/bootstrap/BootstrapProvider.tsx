@@ -75,13 +75,27 @@ export function BootstrapProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void checkVersion()
+    // El primer poll se difiere a idle: el gate no es urgente y no debe
+    // competir con el burst de carga inicial (Hoy/MyDay/checkout). Va por su
+    // propio HttpLink (ver client.ts), así que tampoco comparte POST con ellas.
+    let idleId: number | undefined
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(() => void checkVersion(), { timeout: 3000 })
+    } else {
+      idleId = window.setTimeout(() => void checkVersion(), 1500)
+    }
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible') void checkVersion()
     }
     document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
+    return () => {
+      if (idleId !== undefined) {
+        if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId)
+        else window.clearTimeout(idleId)
+      }
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [client, locationId, isAuthenticated])
 
   return <>{children}</>

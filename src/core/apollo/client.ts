@@ -1,4 +1,4 @@
-import { ApolloClient, InMemoryCache, split } from '@apollo/client'
+import { ApolloClient, HttpLink, InMemoryCache, split } from '@apollo/client'
 import { BatchHttpLink } from '@apollo/client/link/batch-http'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
@@ -134,13 +134,31 @@ export function createPosApolloClient(): ApolloClient {
   // 1 solo POST con un array de operations. batchInterval bajo (20ms) para
   // que no agregue latencia perceptible. batchMax 10 para evitar payloads
   // monstruosos en el rare caso de un burst grande.
-  const httpLink = new BatchHttpLink({
+  const batchHttpLink = new BatchHttpLink({
     uri,
     credentials: 'include',
     headers: { 'x-bb-client': 'pos' },
     batchInterval: 20,
     batchMax: 10,
   })
+
+  // El gate de catálogo (PosCatalogVersion) NO debe viajar en el mismo POST que
+  // las queries críticas. Apollo Server no devuelve la respuesta del batch hasta
+  // que TODOS sus resolvers terminan; como catalogVersion hace trabajo de
+  // catálogo, batcheado retendría la respuesta de Hoy/MyDay/checkout y las
+  // dejaría colgadas en skeleton. Va por un HttpLink simple (su propio POST),
+  // fuera del critical path.
+  const singleHttpLink = new HttpLink({
+    uri,
+    credentials: 'include',
+    headers: { 'x-bb-client': 'pos' },
+  })
+
+  const httpLink = split(
+    (operation) => operation.operationName === 'PosCatalogVersion',
+    singleHttpLink,
+    batchHttpLink,
+  )
 
   // WebSocket link para subscriptions. Reconnect automático infinito —
   // el POS de sucursal nunca debe quedar sin push silente. keepAlive 12s
