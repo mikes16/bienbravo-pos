@@ -1,6 +1,6 @@
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { PrintableTicket } from './PrintableTicket'
-import { SaleTicketBody, type SaleTicketData } from './SaleTicketBody'
+import { SaleTicketBody } from './SaleTicketBody'
 
 interface SaleItem {
   id: string
@@ -84,7 +84,7 @@ export function ReceiptScreen({
           </p>
         </div>
 
-        <SaleTicketBody sale={sale as SaleTicketData} />
+        <SaleTicketBody sale={sale} />
 
         <p className="mt-auto text-center font-mono text-[10px] text-[var(--color-bone-muted)]">
           ¡Gracias por tu visita!

@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
-import {
-  SaleTicketBody,
-  type SaleTicketData,
-} from '@/features/checkout/presentation/SaleTicketBody'
+import { SaleTicketBody } from '@/features/checkout/presentation/SaleTicketBody'
 import type { SaleDetail } from '@/features/checkout/data/checkout.repository.ts'
 
 interface SaleDetailSheetProps {
@@ -89,6 +86,19 @@ export function SaleDetailSheet({ open, saleId, tuParteCents, onClose }: SaleDet
       }
     }
   }, [open, mounted])
+
+  // Escape-to-close: listener barato montado solo mientras el sheet está
+  // abierto. No es un focus-trap completo (fuera de scope para este POS
+  // touch-first) — solo cierra con Escape, espejando el backdrop-click y el
+  // botón ×. Se limpia al cerrar/desmontar.
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
 
   // Fetch del detalle cada vez que se abre con un saleId. cache-first en el
   // repo hace que reabrir la misma venta sea instantáneo.
@@ -189,7 +199,7 @@ export function SaleDetailSheet({ open, saleId, tuParteCents, onClose }: SaleDet
 
           {!loading && !error && detail && (
             <>
-              <SaleTicketBody sale={detail as SaleTicketData} />
+              <SaleTicketBody sale={detail} />
 
               {tuParteCents != null && (
                 <div className="flex items-baseline justify-between border-t border-[var(--color-bravo)]/40 pt-3">

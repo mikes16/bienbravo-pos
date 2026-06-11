@@ -2,7 +2,6 @@ import { type ApolloClient, gql } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
 import { PaymentProvider } from '@/core/graphql/generated/graphql'
 import type { PosSaleDetailQuery } from '@/core/graphql/generated/graphql'
-import { POS_SALE_DETAIL } from '@/features/my-day/data/SALE_DETAIL.ts'
 import type {
   CatalogCategory,
   CatalogService,
@@ -314,6 +313,41 @@ export const REMOVE_COUPON_FROM_DRAFT_SALE_MUTATION = graphql(`
           targetCategoryIds
         }
       }
+    }
+  }
+`)
+
+/**
+ * Detalle completo de una venta para el bottom sheet de "Mi Día".
+ *
+ * Gated por el permiso `pos.sale.read` en el API — el resolver `sale(id)`
+ * rechaza viewers sin ese permiso. El POS además gatea el tap client-side
+ * (MyDayPage no hace la row clickable si el viewer no tiene el permiso),
+ * pero la barrera real es server-side.
+ *
+ * Co-localizado aquí (no en el feature my-day) porque su único consumidor es
+ * `getSaleDetail` de este repo. El repo se instancia eager en boot vía
+ * registry, así que importar desde my-day creaba un back-edge core→feature.
+ *
+ * Los nombres de campo se verificaron contra `schema.graphql` tras
+ * `sync-schema`:
+ *   - `Sale.payments` es `[PaymentTransaction!]` → `{ provider, amountCents }`
+ *   - `Sale.couponApplications` es `[SaleCouponApplication!]`
+ *     → `{ code, name, discountAmountCents }` (name nullable)
+ *   - `SaleItem.name` es el ResolveField nuevo (String nullable)
+ */
+const POS_SALE_DETAIL = graphql(`
+  query PosSaleDetail($id: ID!) {
+    sale(id: $id) {
+      id
+      createdAt
+      subtotalCents
+      taxTotalCents
+      totalCents
+      customer { id fullName }
+      payments { provider amountCents }
+      items { itemType qty unitPriceCents totalCents name staffUser { id fullName } }
+      couponApplications { code name discountAmountCents }
     }
   }
 `)
