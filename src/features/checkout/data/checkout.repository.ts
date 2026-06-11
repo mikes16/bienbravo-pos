@@ -653,14 +653,20 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         },
       },
     })
-    // A10: una venta directa no se reflejaba en "Mis Ventas"/Hoy hasta borrar el
-    // cache — staffDayEarnings se lee cache-first en el mount y el refetch por
-    // subscription WS podía llegar tarde (o perderse) en el MISMO device que
-    // cobró. Evictamos el campo para que la próxima lectura cache-first haga
-    // miss y traiga la venta recién creada. No rompe el instant-load: solo
-    // refetchea cuando de verdad hubo una venta.
-    this.#client.cache.evict({ id: 'ROOT_QUERY', fieldName: 'staffDayEarnings' })
-    this.#client.cache.gc()
+    // Una venta cambia datos que se leen cache-first en otras pantallas; los
+    // evictamos para que la próxima lectura traiga lo fresco. No rompe el
+    // instant-load: solo invalida cuando de verdad hubo una venta.
+    //   - staffDayEarnings (A10): la venta no se reflejaba en "Mis Ventas"/Hoy.
+    //   - registers + posCajaStatusHome: la venta incrementa los montos
+    //     esperados de la caja server-side (efectivo/tarjeta/transfer), pero la
+    //     pantalla Caja (getRegisters es cache-first) mostraba el snapshot viejo
+    //     — ej. TARJETA $0 tras cobrar con tarjeta. El dinero SÍ estaba en la DB;
+    //     era solo el display. Evictar arregla el display al volver a Caja/Hoy.
+    const cache = this.#client.cache
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'staffDayEarnings' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'registers' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'posCajaStatusHome' })
+    cache.gc()
     return data!.createPOSSale
   }
 

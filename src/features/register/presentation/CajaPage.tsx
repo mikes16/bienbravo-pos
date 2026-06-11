@@ -36,11 +36,18 @@ export function CajaPage() {
   const [blocker, setBlocker] = useState<ActiveServiceItem[] | null>(null)
   const [checkingActive, setCheckingActive] = useState(false)
 
-  // Refetch on focus (consistent with sub-#2 D pattern)
+  // Refetch on focus + visibilitychange. En el tablet alternar pantallas/apps
+  // no dispara window.focus; al volver a estar visible refrescamos para que los
+  // montos esperados (efectivo/tarjeta/transfer) reflejen las ventas recientes.
   useEffect(() => {
     const onFocus = () => refresh()
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [refresh])
 
   const openRegister = useMemo(
