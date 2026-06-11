@@ -105,6 +105,7 @@ type AuthResult {
 
 input AvailableSlotsInput {
   date: String!
+  ignoreLeadTime: Boolean
   items: [BookingItemInput!]!
   locationId: ID!
   staffUserId: ID
@@ -246,6 +247,16 @@ enum CategoryAppliesTo {
   SERVICE
 }
 
+type CheckInAppointmentResult {
+  alreadyCheckedIn: Boolean!
+  barberDisplayName: String
+  checkedIn: Boolean!
+  customerDisplayName: String
+  found: Boolean!
+  serviceName: String
+  startAt: DateTime
+}
+
 input CloseRegisterSessionInput {
   countedCardCents: Int!
   countedCashCents: Int!
@@ -354,6 +365,8 @@ input CreateBookingDraftInput {
   customerPhone: String
   items: [BookingItemInput!]!
   locationId: ID!
+  prepaid: Boolean
+  prepaidMethod: PaymentProvider
   staffUserId: ID
   startAt: DateTime!
 }
@@ -970,6 +983,7 @@ type Mutation {
   cancelAppointmentPrepayLink(saleId: ID!): Boolean!
   cancelOrder(orderId: ID!): Order!
   checkIn(appointmentId: ID!): Appointment!
+  checkInAppointmentPublic(kioskToken: String!, phone: String!): CheckInAppointmentResult!
   clearStaffPin(staffUserId: ID!): Boolean!
   clockIn(locationId: ID!): Boolean!
   clockOut(locationId: ID!): Boolean!
@@ -979,6 +993,7 @@ type Mutation {
   completeWalkIn(walkInId: ID!): Boolean!
   confirmAppointment(appointmentId: ID!): Appointment!
   createAppointmentPrepayLink(input: CreateAppointmentPrepayLinkInput!): PrepayLink!
+  createBatchWalkInsPublic(inputs: [CreateWalkInPublicInput!]!, kioskToken: String!): [WalkInPublicResult!]!
   createBlogPost(input: CreateBlogPostInput!): BlogPost!
   createBookingDraft(input: CreateBookingDraftInput!): BookingDraftResult!
   createCatalogCategory(input: CreateCatalogCategoryInput!): CatalogCategory!
@@ -1331,6 +1346,15 @@ enum ProductsSort {
   UPDATED_DESC
 }
 
+type PublicAppointmentEntry {
+  barberDisplayName: String
+  customerDisplayName: String!
+  id: ID!
+  serviceName: String
+  startAt: DateTime!
+  status: AppointmentStatus!
+}
+
 type PublicBarber {
   displayName: String!
   id: ID!
@@ -1345,9 +1369,15 @@ type PublicCatalogForCheckIn {
   services: [PublicService!]!
 }
 
+type PublicCustomerByPhone {
+  firstName: String!
+  lastName: String!
+}
+
 type PublicLocation {
   displayName: String!
   isOpen: Boolean!
+  mode: LocationMode!
   slug: String!
 }
 
@@ -1403,6 +1433,7 @@ type Query {
   coupons(filter: CouponsFilterInput): [Coupon!]!
   customer(id: ID!): Customer
   customerAppointments(customerId: ID!, limit: Int): [Appointment!]!
+  customerByPhonePublic(kioskToken: String!, phone: String!): PublicCustomerByPhone
   customers(limit: Int, offset: Int, query: String): [Customer!]!
   customersCount(query: String): Int!
   dailyLocationMetrics(dateFrom: String!, dateTo: String!, locationId: ID): [DailyLocationMetrics!]!
@@ -1463,6 +1494,8 @@ type Query {
   reportsExportCsv(dateFrom: String!, dateTo: String!, type: String!): String!
   role(id: ID!): Role
   roles(kind: RoleKind): [Role!]!
+  sale(id: ID!): Sale
+  sales(dateFrom: String!, dateTo: String!, limit: Int, locationId: ID, staffUserId: ID): [Sale!]!
   searchCustomers(limit: Int, query: String!): [Customer!]!
   service(id: ID!): Service
   serviceDistribution(filters: DashboardFiltersInput!): [ServiceDistributionRow!]!
@@ -1488,6 +1521,7 @@ type Query {
   stockLocations: [StockLocation!]!
   suggestedNextWalkIn(input: SuggestedNextWalkInInput!): WalkIn
   timeClockEvents(fromDate: String!, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
+  upcomingAppointmentsPublic(slug: String!): [PublicAppointmentEntry!]!
   verifyKioskToken(token: String!): VerifiedKioskToken!
   viewer: Viewer!
   walkIns(fromDate: String, locationId: ID!, toDate: String): [WalkIn!]!
@@ -1779,19 +1813,29 @@ type RotateServiceTokenResult {
 
 type Sale {
   appointmentId: ID
+  couponApplications: [SaleCouponApplication!]
   createdAt: DateTime!
   customer: Customer
   id: ID!
   items: [SaleItem!]!
+  locationId: ID!
   paidTotalCents: Int!
   paymentStatus: SalePaymentStatus!
   payments: [PaymentTransaction!]
   source: String!
+  staffUserId: ID
   status: SaleStatus!
   subtotalCents: Int!
   taxTotalCents: Int!
   totalCents: Int!
   walkInId: ID
+}
+
+type SaleCouponApplication {
+  code: String!
+  discountAmountCents: Int!
+  id: ID!
+  name: String
 }
 
 type SaleEvent {
@@ -1811,6 +1855,7 @@ type SaleItem {
   catalogComboId: ID
   id: ID!
   itemType: SaleItemType!
+  name: String
   productId: ID
   qty: Int!
   serviceId: ID
@@ -2031,6 +2076,7 @@ type StaffServicePrice {
   commissionCentsOverride: Int
   durationMinOverride: Int
   isExcluded: Boolean!
+  penaltyCommissionCentsOverride: Int
   priceCents: Int!
   serviceId: ID!
   staffUserId: ID!
@@ -2348,6 +2394,7 @@ input UpsertStaffServicePriceInput {
   commissionCentsOverride: Int
   durationMinOverride: Int
   isExcluded: Boolean = false
+  penaltyCommissionCentsOverride: Int
   priceCents: Int!
   serviceId: ID!
   staffUserId: ID!
