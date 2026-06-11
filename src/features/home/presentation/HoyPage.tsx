@@ -155,8 +155,17 @@ export function HoyPage() {
 
   useEffect(() => {
     const onFocus = () => { void refetch({ force: true }) }
+    // visibilitychange además de focus: en el tablet el operador alterna entre
+    // pantallas/apps (ej. cerrar caja y volver) sin que dispare window.focus.
+    // Al volver a estar visible, refrescamos el gate (clock + caja) — así una
+    // caja recién cerrada o un clock-out se reflejan y Hoy bloquea como debe.
+    const onVisible = () => { if (document.visibilityState === 'visible') void refetch({ force: true }) }
     window.addEventListener('focus', onFocus)
-    return () => { window.removeEventListener('focus', onFocus) }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [refetch])
 
   // Push real-time: subscription a la cola de walk-ins. Cuando llega un
