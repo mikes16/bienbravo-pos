@@ -1,12 +1,73 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { MyDayPage, computeWorkedMinutes } from './MyDayPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
+import type { PosViewer } from '@/core/auth/auth.types'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
+import { POS_MY_DAY_EARNINGS } from '@/features/home/data/home.queries'
 
 class TestAuthRepo extends InMemoryAuthRepository {
   override async getViewer() { return MOCK_VIEWER }
+}
+
+/** AuthRepo que devuelve un viewer con permisos arbitrarios — para probar el
+ *  gate de `pos.sale.read`. */
+function authRepoWithPermissions(permissions: string[]): InMemoryAuthRepository {
+  const viewer: PosViewer = { ...MOCK_VIEWER, permissions }
+  return new (class extends InMemoryAuthRepository {
+    override async getViewer() { return viewer }
+  })()
+}
+
+/** Mock Apollo del query de earnings con una venta directa atribuida al viewer
+ *  (sin walk-in ni appointment linkados → aparece como row de "Venta"). */
+function earningsMockWithOneSale(saleId: string) {
+  return {
+    request: {
+      query: POS_MY_DAY_EARNINGS,
+      variables: {
+        staffUserId: MOCK_VIEWER.staff.id,
+        locationId: 'loc1',
+        date: new Date(
+          `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
+        )
+          .toISOString()
+          .slice(0, 10),
+      },
+    },
+    // Variables se matchean por igualdad profunda; usamos el mismo todayISO.
+    variableMatcher: () => true,
+    result: {
+      data: {
+        staffDayEarnings: {
+          __typename: 'StaffDayEarnings',
+          serviceCommissionCents: 12000,
+          productCommissionCents: 0,
+          tipsCents: 0,
+          totalCommissionCents: 12000,
+          serviceRevenueCents: 30000,
+          productRevenueCents: 0,
+          perSale: [
+            {
+              __typename: 'StaffDaySaleEarning',
+              saleId,
+              commissionCents: 12000,
+              tipCents: 0,
+              earningsCents: 12000,
+              soldAt: new Date().toISOString(),
+              customerName: 'Juan Pérez',
+              linkedWalkInId: null,
+              linkedAppointmentId: null,
+              itemLabels: ['Corte clásico'],
+              attributedRevenueCents: 30000,
+            },
+          ],
+        },
+      },
+    },
+  }
 }
 
 function evt(at: string, type: 'CLOCK_IN' | 'CLOCK_OUT'): TimeClockEvent {
@@ -36,7 +97,79 @@ describe('MyDayPage', () => {
     renderWithProviders(<MyDayPage />, {
       repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
     })
-    expect(await screen.findByText(/ventas/i)).toBeInTheDocument()
+    // Con el mock vacío (sin ventas) el subtitle "en ventas" del hero no se
+    // renderiza (grossRevenue=0), así que afirmamos sobre un KPI que SIEMPRE
+    // está presente: la sección de operación.
+    expect(await screen.findByText(/citas completadas/i)).toBeInTheDocument()
+    expect(screen.getByText(/tiempo trabajado/i)).toBeInTheDocument()
+  })
+
+  // ── Gate de pos.sale.read ──────────────────────────────────────────────
+
+  it('WITHOUT pos.sale.read: la row de venta NO es clickable (sin button)', async () => {
+    const saleId = 'sale-abc'
+    renderWithProviders(<MyDayPage />, {
+      // MOCK_VIEWER no incluye pos.sale.read por default.
+      repos: { ...createMockRepositories(), auth: authRepoWithPermissions(['pos.sale.create']) },
+      apolloMocks: [earningsMockWithOneSale(saleId)],
+    })
+    // La venta aparece como row con el nombre del cliente.
+    const customer = await screen.findByText('Juan Pérez')
+    expect(customer).toBeInTheDocument()
+    // La row NO debe ser un <button> ni tener role button — gate duro.
+    const row = customer.closest('button')
+    expect(row).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: /ver detalle de venta/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('WITH pos.sale.read: la row es un button y al hacer tap abre el sheet con "Tu parte"', async () => {
+    const saleId = 'sale-abc'
+    const checkout = createMockRepositories().checkout
+    // Override getSaleDetail para que el sheet tenga contenido.
+    checkout.getSaleDetail = async () => ({
+      id: saleId,
+      createdAt: new Date().toISOString(),
+      subtotalCents: 30000,
+      taxTotalCents: 0,
+      totalCents: 30000,
+      customer: { id: 'c1', fullName: 'Juan Pérez' },
+      payments: [{ provider: 'CASH', amountCents: 30000 }],
+      items: [
+        {
+          id: `${saleId}-item-0`,
+          name: 'Corte clásico',
+          qty: 1,
+          unitPriceCents: 30000,
+          totalCents: 30000,
+          staffUser: { id: MOCK_VIEWER.staff.id, fullName: MOCK_VIEWER.staff.fullName },
+        },
+      ],
+      discounts: [],
+    })
+
+    renderWithProviders(<MyDayPage />, {
+      repos: {
+        ...createMockRepositories(),
+        checkout,
+        auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
+      },
+      apolloMocks: [earningsMockWithOneSale(saleId)],
+    })
+
+    const trigger = await screen.findByRole('button', { name: /ver detalle de venta/i })
+    await userEvent.click(trigger)
+
+    // El sheet abre con el desglose + "Tu parte". Scope al dialog para no
+    // colisionar con la sublabel "Tu parte" / monto de la propia row.
+    const dialog = await screen.findByRole('dialog', { name: /detalle de venta/i })
+    const inDialog = within(dialog)
+    expect(inDialog.getByText(/tu parte/i)).toBeInTheDocument()
+    // $120 (12000 cents) — earningsCents (tuParteCents) del perSale entry.
+    expect(inDialog.getByText('$120')).toBeInTheDocument()
+    // El cuerpo compartido (SaleTicketBody) renderiza el item de la venta.
+    expect(inDialog.getByText(/corte clásico/i)).toBeInTheDocument()
   })
 })
 

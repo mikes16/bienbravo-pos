@@ -1,7 +1,7 @@
 import type { AuthRepository } from '@/core/auth/auth.repository.ts'
 import type { PosViewer, PosStaffUser, PosLocation, PosPinLockoutStatus } from '@/core/auth/auth.types.ts'
 import type { Repositories } from '@/core/repositories/registry.ts'
-import type { CheckoutRepository, CustomerResult } from '@/features/checkout/data/checkout.repository.ts'
+import type { CheckoutRepository, CustomerResult, SaleDetail } from '@/features/checkout/data/checkout.repository.ts'
 import type {
   CatalogCategory,
   CatalogCombo,
@@ -252,6 +252,12 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
   }
 
   async removeCoupon(): Promise<null> {
+    return null
+  }
+
+  // Detalle de venta: por defecto null. Tests del sheet de "Mi Día"
+  // sobre-escriben con vi.fn que devuelve un SaleDetail armado.
+  async getSaleDetail(_id: string): Promise<SaleDetail | null> {
     return null
   }
 }

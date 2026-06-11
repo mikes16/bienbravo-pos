@@ -1,6 +1,8 @@
 import { type ApolloClient, gql } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
 import { PaymentProvider } from '@/core/graphql/generated/graphql'
+import type { PosSaleDetailQuery } from '@/core/graphql/generated/graphql'
+import { POS_SALE_DETAIL } from '@/features/my-day/data/SALE_DETAIL.ts'
 import type {
   CatalogCategory,
   CatalogService,
@@ -474,6 +476,13 @@ export interface CheckoutRepository {
   applyCoupon(args: ApplyCouponArgs): Promise<DraftSaleWithDiscount | null>
   /** Quita un cupón ya aplicado del draft y devuelve los totales actualizados. */
   removeCoupon(args: RemoveCouponArgs): Promise<DraftSaleWithDiscount | null>
+  /**
+   * Detalle completo de una venta para el bottom sheet de "Mi Día". El API
+   * gatea este resolver con el permiso `pos.sale.read`; si el viewer no lo
+   * tiene, la query falla. El POS además no abre el sheet sin ese permiso.
+   * Devuelve `null` si la venta no existe.
+   */
+  getSaleDetail(id: string): Promise<SaleDetail | null>
 }
 
 export interface CustomerHistoryEntry {
@@ -481,6 +490,55 @@ export interface CustomerHistoryEntry {
   status: string
   startAt: string
   itemLabels: string[]
+}
+
+/* ── Sale detail (Mi Día → tap en venta) ── */
+
+export interface SaleDetailItem {
+  id: string
+  name: string
+  qty: number
+  unitPriceCents: number
+  totalCents: number
+  staffUser: { id: string; fullName: string } | null
+}
+
+export interface SaleDetailPayment {
+  provider: string
+  amountCents: number
+}
+
+export interface SaleDetailDiscount {
+  code: string
+  name: string | null
+  discountAmountCents: number
+}
+
+/**
+ * Forma mapeada que consume `SaleTicketBody` (vía `SaleDetailSheet`). Es
+ * compatible con `SaleTicketData` del componente compartido — mismos campos
+ * `id/totalCents/payments/customer/items` — más `subtotalCents`,
+ * `taxTotalCents`, `createdAt` y la lista de `discounts` (couponApplications).
+ */
+export interface SaleDetail {
+  id: string
+  createdAt: string
+  subtotalCents: number
+  taxTotalCents: number
+  totalCents: number
+  customer: { id: string; fullName: string } | null
+  payments: SaleDetailPayment[]
+  items: SaleDetailItem[]
+  discounts: SaleDetailDiscount[]
+}
+
+/** Fallback legible cuando `SaleItem.name` viene null (item sin nombre
+ *  resuelto en el API). No debería pasar en la práctica, pero el campo es
+ *  nullable en el schema, así que cubrimos el caso. */
+const ITEM_TYPE_FALLBACK: Record<string, string> = {
+  PRODUCT: 'Producto',
+  SERVICE: 'Servicio',
+  TIP: 'Propina',
 }
 
 /* ── Apollo Implementation ── */
@@ -823,6 +881,57 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       prepaidSaleId,
       prepaidMethod,
       prepaidAt,
+    }
+  }
+
+  async getSaleDetail(id: string): Promise<SaleDetail | null> {
+    // cache-first: una venta cerrada es inmutable, así que el snapshot del
+    // cache es válido. Si el barbero abrió el detalle ya, reabrir es instante.
+    const { data } = await this.#client.query<PosSaleDetailQuery>({
+      query: POS_SALE_DETAIL,
+      variables: { id },
+      fetchPolicy: 'cache-first',
+    })
+    const sale = data?.sale
+    if (!sale) return null
+
+    // El query no selecciona `id` por item (no existe necesidad en el API
+    // para este caso), así que sintetizamos una key estable por índice para
+    // el render. Las ventas son inmutables, el orden no cambia.
+    const items: SaleDetailItem[] = sale.items.map((it, idx) => ({
+      id: `${sale.id}-item-${idx}`,
+      name: it.name ?? ITEM_TYPE_FALLBACK[it.itemType] ?? 'Concepto',
+      qty: it.qty,
+      unitPriceCents: it.unitPriceCents,
+      totalCents: it.totalCents,
+      staffUser: it.staffUser
+        ? { id: it.staffUser.id, fullName: it.staffUser.fullName }
+        : null,
+    }))
+
+    const payments: SaleDetailPayment[] = (sale.payments ?? []).map((p) => ({
+      provider: p.provider,
+      amountCents: p.amountCents,
+    }))
+
+    const discounts: SaleDetailDiscount[] = (sale.couponApplications ?? []).map((c) => ({
+      code: c.code,
+      name: c.name ?? null,
+      discountAmountCents: c.discountAmountCents,
+    }))
+
+    return {
+      id: sale.id,
+      createdAt: sale.createdAt,
+      subtotalCents: sale.subtotalCents,
+      taxTotalCents: sale.taxTotalCents,
+      totalCents: sale.totalCents,
+      customer: sale.customer
+        ? { id: sale.customer.id, fullName: sale.customer.fullName }
+        : null,
+      payments,
+      items,
+      discounts,
     }
   }
 }

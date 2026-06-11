@@ -13,6 +13,14 @@ import {
 import type { Appointment } from '@/features/agenda/domain/agenda.types.ts'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository.ts'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types.ts'
+import { SaleDetailSheet } from './SaleDetailSheet.tsx'
+
+/** Target del bottom sheet de detalle: qué venta abrir y la comisión del
+ *  viewer para esa venta ("Tu parte"). null = sheet cerrado. */
+interface SaleDetailTarget {
+  saleId: string
+  tuParteCents: number | null
+}
 
 function todayISO(): string {
   // Local date so it matches HoyPage and the API's "today" interpretation —
@@ -281,8 +289,15 @@ export function MyDayPage() {
   const [summary, setSummary] = useState<DaySummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [detailTarget, setDetailTarget] = useState<SaleDetailTarget | null>(null)
 
   const staffName = viewer?.staff?.fullName ?? ''
+
+  // Gate del detalle de venta. El permiso `pos.sale.read` decide si las rows
+  // de "Servicios de hoy" son tappables. Sin el permiso, las rows NO son
+  // clickable (sin cursor, sin onClick) y el sheet nunca abre — barrera dura
+  // pedida por el dueño. El API además gatea el resolver `sale(id)`.
+  const canViewSaleDetail = (viewer?.permissions ?? []).includes('pos.sale.read')
 
   // Extracted en un callback para que mount + focus refetch reusen la misma
   // lógica. `showSpinner` = mount inicial muestra spinner; focus refetch hace
@@ -540,12 +555,33 @@ export function MyDayPage() {
           <ul className="flex flex-col border border-[var(--color-leather-muted)]/40">
             {summary.completedItems.map((item) => (
               <li key={item.id}>
-                <CompletedRow {...item} />
+                <CompletedRow
+                  item={item}
+                  onOpenDetail={
+                    canViewSaleDetail && item.saleId
+                      ? () =>
+                          setDetailTarget({
+                            saleId: item.saleId!,
+                            tuParteCents: item.earningsCents,
+                          })
+                      : undefined
+                  }
+                />
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      {/* Bottom sheet del desglose de la venta. Solo se monta con un target
+          activo, que únicamente se setea cuando el viewer tiene el permiso
+          y la row tiene saleId. */}
+      <SaleDetailSheet
+        open={!!detailTarget}
+        saleId={detailTarget?.saleId}
+        tuParteCents={detailTarget?.tuParteCents}
+        onClose={() => setDetailTarget(null)}
+      />
     </div>
   )
 }
@@ -574,24 +610,47 @@ function SectionEyebrow({ label, tone }: { label: string; tone: 'bone' | 'leathe
 }
 
 function CompletedRow({
-  timeAt,
-  customerName,
-  serviceLabel,
-  totalCents,
-  earningsCents,
-  tipCents,
-  kind,
-}: CompletedItem) {
+  item,
+  onOpenDetail,
+}: {
+  item: CompletedItem
+  /** Definido SOLO cuando la row es tappable: el viewer tiene `pos.sale.read`
+   *  y la row tiene saleId. Si es undefined, la row se renderiza como un div
+   *  no interactivo (sin cursor, sin onClick) — el gate duro. */
+  onOpenDetail?: () => void
+}) {
+  const { timeAt, customerName, serviceLabel, totalCents, earningsCents, tipCents, kind } = item
   const time = new Date(timeAt).toLocaleTimeString('es-MX', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   })
+
+  // El permiso decide si la row es interactiva. Con `pos.sale.read` + saleId la
+  // row es un <button> (cursor-pointer + onClick que abre el sheet). Sin el
+  // permiso (o sin saleId) es un <div> plano: ni cursor ni onClick ni
+  // affordance — barrera dura pedida por el dueño.
+  const interactive = !!onOpenDetail
+  const Tag = interactive ? 'button' : 'div'
+
   // "Tu parte" es el protagonista visual; el total es contexto. Cuando no
   // tenemos el earnings (sin sale linkado), mostramos solo el total como
   // fallback — pasa para citas pre-sale linkada en este modelo.
   return (
-    <div className="grid grid-cols-[64px_1fr_auto] items-start gap-4 border-b border-[var(--color-leather-muted)]/20 px-4 py-3 last:border-b-0">
+    <Tag
+      {...(interactive
+        ? {
+            type: 'button' as const,
+            onClick: onOpenDetail,
+            'aria-label': `Ver detalle de venta de ${customerName}`,
+          }
+        : {})}
+      className={`grid w-full grid-cols-[64px_1fr_auto] items-start gap-4 border-b border-[var(--color-leather-muted)]/20 px-4 py-3 text-left last:border-b-0 ${
+        interactive
+          ? 'cursor-pointer transition-colors hover:bg-[var(--color-cuero-viejo)]/20'
+          : ''
+      }`}
+    >
       <span className="pt-0.5 font-mono text-[14px] font-bold tabular-nums text-[var(--color-bone)]">
         {time}
       </span>
@@ -631,7 +690,7 @@ function CompletedRow({
           <span aria-hidden />
         )}
       </div>
-    </div>
+    </Tag>
   )
 }
 

@@ -130,6 +130,7 @@ export type AuthResult = {
 
 export type AvailableSlotsInput = {
   date: Scalars['String']['input'];
+  ignoreLeadTime?: InputMaybe<Scalars['Boolean']['input']>;
   items: Array<BookingItemInput>;
   locationId: Scalars['ID']['input'];
   staffUserId?: InputMaybe<Scalars['ID']['input']>;
@@ -288,6 +289,17 @@ export enum CategoryAppliesTo {
   Service = 'SERVICE'
 }
 
+export type CheckInAppointmentResult = {
+  __typename?: 'CheckInAppointmentResult';
+  alreadyCheckedIn: Scalars['Boolean']['output'];
+  barberDisplayName?: Maybe<Scalars['String']['output']>;
+  checkedIn: Scalars['Boolean']['output'];
+  customerDisplayName?: Maybe<Scalars['String']['output']>;
+  found: Scalars['Boolean']['output'];
+  serviceName?: Maybe<Scalars['String']['output']>;
+  startAt?: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type CloseRegisterSessionInput = {
   countedCardCents: Scalars['Int']['input'];
   countedCashCents: Scalars['Int']['input'];
@@ -401,6 +413,8 @@ export type CreateBookingDraftInput = {
   customerPhone?: InputMaybe<Scalars['String']['input']>;
   items: Array<BookingItemInput>;
   locationId: Scalars['ID']['input'];
+  prepaid?: InputMaybe<Scalars['Boolean']['input']>;
+  prepaidMethod?: InputMaybe<PaymentProvider>;
   staffUserId?: InputMaybe<Scalars['ID']['input']>;
   startAt: Scalars['DateTime']['input'];
 };
@@ -1041,6 +1055,7 @@ export type Mutation = {
   cancelAppointmentPrepayLink: Scalars['Boolean']['output'];
   cancelOrder: Order;
   checkIn: Appointment;
+  checkInAppointmentPublic: CheckInAppointmentResult;
   clearStaffPin: Scalars['Boolean']['output'];
   clockIn: Scalars['Boolean']['output'];
   clockOut: Scalars['Boolean']['output'];
@@ -1050,6 +1065,7 @@ export type Mutation = {
   completeWalkIn: Scalars['Boolean']['output'];
   confirmAppointment: Appointment;
   createAppointmentPrepayLink: PrepayLink;
+  createBatchWalkInsPublic: Array<WalkInPublicResult>;
   createBlogPost: BlogPost;
   createBookingDraft: BookingDraftResult;
   createCatalogCategory: CatalogCategory;
@@ -1250,6 +1266,12 @@ export type MutationCheckInArgs = {
 };
 
 
+export type MutationCheckInAppointmentPublicArgs = {
+  kioskToken: Scalars['String']['input'];
+  phone: Scalars['String']['input'];
+};
+
+
 export type MutationClearStaffPinArgs = {
   staffUserId: Scalars['ID']['input'];
 };
@@ -1292,6 +1314,12 @@ export type MutationConfirmAppointmentArgs = {
 
 export type MutationCreateAppointmentPrepayLinkArgs = {
   input: CreateAppointmentPrepayLinkInput;
+};
+
+
+export type MutationCreateBatchWalkInsPublicArgs = {
+  inputs: Array<CreateWalkInPublicInput>;
+  kioskToken: Scalars['String']['input'];
 };
 
 
@@ -2182,6 +2210,16 @@ export enum ProductsSort {
   UpdatedDesc = 'UPDATED_DESC'
 }
 
+export type PublicAppointmentEntry = {
+  __typename?: 'PublicAppointmentEntry';
+  barberDisplayName?: Maybe<Scalars['String']['output']>;
+  customerDisplayName: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  serviceName?: Maybe<Scalars['String']['output']>;
+  startAt: Scalars['DateTime']['output'];
+  status: AppointmentStatus;
+};
+
 export type PublicBarber = {
   __typename?: 'PublicBarber';
   displayName: Scalars['String']['output'];
@@ -2198,10 +2236,17 @@ export type PublicCatalogForCheckIn = {
   services: Array<PublicService>;
 };
 
+export type PublicCustomerByPhone = {
+  __typename?: 'PublicCustomerByPhone';
+  firstName: Scalars['String']['output'];
+  lastName: Scalars['String']['output'];
+};
+
 export type PublicLocation = {
   __typename?: 'PublicLocation';
   displayName: Scalars['String']['output'];
   isOpen: Scalars['Boolean']['output'];
+  mode: LocationMode;
   slug: Scalars['String']['output'];
 };
 
@@ -2262,6 +2307,7 @@ export type Query = {
   coupons: Array<Coupon>;
   customer?: Maybe<Customer>;
   customerAppointments: Array<Appointment>;
+  customerByPhonePublic?: Maybe<PublicCustomerByPhone>;
   customers: Array<Customer>;
   customersCount: Scalars['Int']['output'];
   dailyLocationMetrics: Array<DailyLocationMetrics>;
@@ -2322,6 +2368,8 @@ export type Query = {
   reportsExportCsv: Scalars['String']['output'];
   role?: Maybe<Role>;
   roles: Array<Role>;
+  sale?: Maybe<Sale>;
+  sales: Array<Sale>;
   searchCustomers: Array<Customer>;
   service?: Maybe<Service>;
   serviceDistribution: Array<ServiceDistributionRow>;
@@ -2347,6 +2395,7 @@ export type Query = {
   stockLocations: Array<StockLocation>;
   suggestedNextWalkIn?: Maybe<WalkIn>;
   timeClockEvents: Array<TimeClockEvent>;
+  upcomingAppointmentsPublic: Array<PublicAppointmentEntry>;
   verifyKioskToken: VerifiedKioskToken;
   viewer: Viewer;
   walkIns: Array<WalkIn>;
@@ -2441,6 +2490,12 @@ export type QueryCustomerArgs = {
 export type QueryCustomerAppointmentsArgs = {
   customerId: Scalars['ID']['input'];
   limit?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QueryCustomerByPhonePublicArgs = {
+  kioskToken: Scalars['String']['input'];
+  phone: Scalars['String']['input'];
 };
 
 
@@ -2794,6 +2849,20 @@ export type QueryRolesArgs = {
 };
 
 
+export type QuerySaleArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QuerySalesArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+  staffUserId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type QuerySearchCustomersArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   query: Scalars['String']['input'];
@@ -2932,6 +3001,11 @@ export type QueryTimeClockEventsArgs = {
   locationId?: InputMaybe<Scalars['ID']['input']>;
   staffUserId: Scalars['ID']['input'];
   toDate: Scalars['String']['input'];
+};
+
+
+export type QueryUpcomingAppointmentsPublicArgs = {
+  slug: Scalars['String']['input'];
 };
 
 
@@ -3253,19 +3327,30 @@ export type RotateServiceTokenResult = {
 export type Sale = {
   __typename?: 'Sale';
   appointmentId?: Maybe<Scalars['ID']['output']>;
+  couponApplications?: Maybe<Array<SaleCouponApplication>>;
   createdAt: Scalars['DateTime']['output'];
   customer?: Maybe<Customer>;
   id: Scalars['ID']['output'];
   items: Array<SaleItem>;
+  locationId: Scalars['ID']['output'];
   paidTotalCents: Scalars['Int']['output'];
   paymentStatus: SalePaymentStatus;
   payments?: Maybe<Array<PaymentTransaction>>;
   source: Scalars['String']['output'];
+  staffUserId?: Maybe<Scalars['ID']['output']>;
   status: SaleStatus;
   subtotalCents: Scalars['Int']['output'];
   taxTotalCents: Scalars['Int']['output'];
   totalCents: Scalars['Int']['output'];
   walkInId?: Maybe<Scalars['ID']['output']>;
+};
+
+export type SaleCouponApplication = {
+  __typename?: 'SaleCouponApplication';
+  code: Scalars['String']['output'];
+  discountAmountCents: Scalars['Int']['output'];
+  id: Scalars['ID']['output'];
+  name?: Maybe<Scalars['String']['output']>;
 };
 
 export type SaleEvent = {
@@ -3287,6 +3372,7 @@ export type SaleItem = {
   catalogComboId?: Maybe<Scalars['ID']['output']>;
   id: Scalars['ID']['output'];
   itemType: SaleItemType;
+  name?: Maybe<Scalars['String']['output']>;
   productId?: Maybe<Scalars['ID']['output']>;
   qty: Scalars['Int']['output'];
   serviceId?: Maybe<Scalars['ID']['output']>;
@@ -3528,6 +3614,7 @@ export type StaffServicePrice = {
   commissionCentsOverride?: Maybe<Scalars['Int']['output']>;
   durationMinOverride?: Maybe<Scalars['Int']['output']>;
   isExcluded: Scalars['Boolean']['output'];
+  penaltyCommissionCentsOverride?: Maybe<Scalars['Int']['output']>;
   priceCents: Scalars['Int']['output'];
   serviceId: Scalars['ID']['output'];
   staffUserId: Scalars['ID']['output'];
@@ -3866,6 +3953,7 @@ export type UpsertStaffServicePriceInput = {
   commissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
   durationMinOverride?: InputMaybe<Scalars['Int']['input']>;
   isExcluded?: InputMaybe<Scalars['Boolean']['input']>;
+  penaltyCommissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
   priceCents: Scalars['Int']['input'];
   serviceId: Scalars['ID']['input'];
   staffUserId: Scalars['ID']['input'];
@@ -4277,6 +4365,13 @@ export type PosHomeSaleEventSubscriptionVariables = Exact<{
 
 export type PosHomeSaleEventSubscription = { __typename?: 'Subscription', saleEvent: { __typename?: 'SaleEvent', kind: SaleEventKind, saleId: string, locationSlug: string, occurredAt: string } };
 
+export type PosSaleDetailQueryVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type PosSaleDetailQuery = { __typename?: 'Query', sale?: { __typename?: 'Sale', id: string, createdAt: string, subtotalCents: number, taxTotalCents: number, totalCents: number, customer?: { __typename?: 'Customer', id: string, fullName: string } | null, payments?: Array<{ __typename?: 'PaymentTransaction', provider: PaymentProvider, amountCents: number }> | null, items: Array<{ __typename?: 'SaleItem', itemType: SaleItemType, qty: number, unitPriceCents: number, totalCents: number, name?: string | null, staffUser?: { __typename?: 'StaffUser', id: string, fullName: string } | null }>, couponApplications?: Array<{ __typename?: 'SaleCouponApplication', code: string, name?: string | null, discountAmountCents: number }> | null } | null };
+
 export type PosRegistersQueryVariables = Exact<{
   locationId: Scalars['ID']['input'];
 }>;
@@ -4427,6 +4522,7 @@ export const PosHomeCajaStatusDocument = {"kind":"Document","definitions":[{"kin
 export const PosHomeWalkInQueueUpdatedDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeWalkInQueueUpdated"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"walkInQueueUpdated"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"walkInId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeWalkInQueueUpdatedSubscription, PosHomeWalkInQueueUpdatedSubscriptionVariables>;
 export const PosHomeAppointmentUpdatedDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeAppointmentUpdated"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"appointmentUpdated"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"appointmentId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeAppointmentUpdatedSubscription, PosHomeAppointmentUpdatedSubscriptionVariables>;
 export const PosHomeSaleEventDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeSaleEvent"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"saleEvent"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"saleId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeSaleEventSubscription, PosHomeSaleEventSubscriptionVariables>;
+export const PosSaleDetailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosSaleDetail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sale"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"subtotalCents"}},{"kind":"Field","name":{"kind":"Name","value":"taxTotalCents"}},{"kind":"Field","name":{"kind":"Name","value":"totalCents"}},{"kind":"Field","name":{"kind":"Name","value":"customer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}}]}},{"kind":"Field","name":{"kind":"Name","value":"payments"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"amountCents"}}]}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"itemType"}},{"kind":"Field","name":{"kind":"Name","value":"qty"}},{"kind":"Field","name":{"kind":"Name","value":"unitPriceCents"}},{"kind":"Field","name":{"kind":"Name","value":"totalCents"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"staffUser"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"couponApplications"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"discountAmountCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosSaleDetailQuery, PosSaleDetailQueryVariables>;
 export const PosRegistersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosRegisters"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"registers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}},{"kind":"Field","name":{"kind":"Name","value":"openSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosRegistersQuery, PosRegistersQueryVariables>;
 export const OpenRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"OpenRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"openRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"registerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}}},{"kind":"Argument","name":{"kind":"Name","value":"openingCashCents"},"value":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<OpenRegisterSessionMutation, OpenRegisterSessionMutationVariables>;
 export const CloseRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CloseRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CloseRegisterSessionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"closeRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"closedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedTransferCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<CloseRegisterSessionMutation, CloseRegisterSessionMutationVariables>;
