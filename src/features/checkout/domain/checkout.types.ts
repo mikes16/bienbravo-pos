@@ -26,6 +26,7 @@ export interface CatalogService {
   isAddOn: boolean
   imageUrl: string | null
   categoryId: string | null
+  sortOrder: number
   extras: ResolvedExtra[]
 }
 
@@ -36,6 +37,7 @@ export interface CatalogProduct {
   priceCents: number
   imageUrl: string | null
   categoryId: string | null
+  sortOrder: number
 }
 
 export interface CatalogComboItem {
@@ -52,6 +54,8 @@ export interface CatalogCombo {
   priceCents: number
   imageUrl: string | null
   effectiveCategoryIds: string[]
+  categoryId: string | null
+  sortOrder: number
   items: CatalogComboItem[]
 }
 

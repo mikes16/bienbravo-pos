@@ -155,14 +155,14 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
 
   async getServices(_locationId: string, _staffUserId?: string | null): Promise<CatalogService[]> {
     return [
-      { id: 'svc-1', name: 'Corte Clásico', priceCents: 35000, durationMin: 30, isAddOn: false, imageUrl: null, categoryId: null, extras: [] },
-      { id: 'svc-2', name: 'Barba', priceCents: 15000, durationMin: 15, isAddOn: true, imageUrl: null, categoryId: null, extras: [] },
+      { id: 'svc-1', name: 'Corte Clásico', priceCents: 35000, durationMin: 30, isAddOn: false, imageUrl: null, categoryId: null, sortOrder: 0, extras: [] },
+      { id: 'svc-2', name: 'Barba', priceCents: 15000, durationMin: 15, isAddOn: true, imageUrl: null, categoryId: null, sortOrder: 1, extras: [] },
     ]
   }
 
   async getProducts(_locationId: string): Promise<CatalogProduct[]> {
     return [
-      { id: 'prod-1', name: 'Cera para cabello', sku: 'WAX-01', priceCents: 25000, imageUrl: null, categoryId: null },
+      { id: 'prod-1', name: 'Cera para cabello', sku: 'WAX-01', priceCents: 25000, imageUrl: null, categoryId: null, sortOrder: 0 },
     ]
   }
 

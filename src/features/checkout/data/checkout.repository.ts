@@ -122,6 +122,7 @@ const SERVICES_QUERY = graphql(`
       isAddOn
       imageUrl
       categoryId
+      sortOrder
       pricingFor(locationId: $locationId, staffUserId: $staffUserId) {
         priceCents
         durationMin
@@ -170,6 +171,7 @@ const PRODUCTS_QUERY = graphql(`
       sku
       imageUrl
       categoryId
+      sortOrder
       isActive
       variants {
         id
@@ -196,6 +198,8 @@ const COMBOS_QUERY = graphql(`
       priceCents
       imageUrl
       effectiveCategoryIds
+      categoryId
+      sortOrder
       items {
         serviceId
         productId
@@ -599,6 +603,7 @@ interface RawService {
   isAddOn: boolean
   imageUrl: string | null
   categoryId: string | null
+  sortOrder: number
   pricingFor: RawPricing | null
 }
 
@@ -608,6 +613,7 @@ interface RawProduct {
   sku: string | null
   imageUrl: string | null
   categoryId: string | null
+  sortOrder: number
   isActive: boolean
   variants: { id: string; priceCents: number }[]
 }
@@ -644,6 +650,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         isAddOn: s.isAddOn,
         imageUrl: s.imageUrl ?? null,
         categoryId: s.categoryId ?? null,
+        sortOrder: s.sortOrder,
         extras: s.pricingFor?.extras ?? [],
       }))
   }
@@ -679,7 +686,11 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       query: COMBOS_QUERY,
       fetchPolicy: 'cache-first',
     })
-    return data!.catalogCombos
+    return data!.catalogCombos.map((c) => ({
+      ...c,
+      sortOrder: c.sortOrder,
+      categoryId: c.categoryId ?? null,
+    }))
   }
 
   async getProducts(locationId: string): Promise<CatalogProduct[]> {
@@ -697,6 +708,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         priceCents: p.variants[0]?.priceCents ?? 0,
         imageUrl: p.imageUrl,
         categoryId: p.categoryId ?? null,
+        sortOrder: p.sortOrder,
       }))
   }
 
