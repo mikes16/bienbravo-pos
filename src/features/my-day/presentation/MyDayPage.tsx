@@ -447,12 +447,21 @@ export function MyDayPage() {
     }
   }, [apollo, locationSlug, loadDay])
 
-  // Refetch al volver a la tab — patrón espejo de HoyPage. Sin spinner +
-  // network-only para asegurar datos frescos sin parpadear.
+  // Refetch al volver a la tab — patrón espejo de HoyPage/CajaPage. Sin
+  // spinner + network-only para asegurar datos frescos sin parpadear.
+  // visibilitychange además de focus: en el tablet el operador alterna entre
+  // pantallas/apps (ej. abrir Caja y volver) sin que dispare window.focus —
+  // sin este listener, Mi Día se queda pintando el snapshot de antes del
+  // app-switch hasta el siguiente focus real.
   useEffect(() => {
     const onFocus = () => loadDay({ showSpinner: false, force: true })
+    const onVisible = () => { if (document.visibilityState === 'visible') loadDay({ showSpinner: false, force: true }) }
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [loadDay])
 
   return (

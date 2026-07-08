@@ -1,6 +1,6 @@
-import { screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { MyDayPage, computeWorkedMinutes } from './MyDayPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
@@ -187,6 +187,36 @@ describe('MyDayPage', () => {
     // está presente: la sección de operación.
     expect(await screen.findByText(/citas completadas/i)).toBeInTheDocument()
     expect(screen.getByText(/tiempo trabajado/i)).toBeInTheDocument()
+  })
+
+  // FIX 6: MyDayPage solo tenía window.focus, no visibilitychange — en tablet,
+  // alternar apps (ej. abrir Caja y volver) no siempre dispara focus. Mirror
+  // de HoyPage/CajaPage: ambos listeners deben forzar network-only.
+  it('reloads with force:true on window focus and visibilitychange', async () => {
+    const repos = createMockRepositories()
+    const getAppointments = vi.fn().mockResolvedValue([])
+    repos.agenda.getAppointments = getAppointments
+    renderWithProviders(<MyDayPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    // El mount ya llama con force:true (walkIns/appointments siempre por red
+    // en MyDayPage — ver comentario en loadDay), así que contamos llamadas
+    // forzadas totales en vez de una transición false→true.
+    await waitFor(() => expect(getAppointments).toHaveBeenCalled())
+    const forcedCallsBefore = getAppointments.mock.calls.filter((c) => c[4]?.force === true).length
+
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() =>
+      expect(getAppointments.mock.calls.filter((c) => c[4]?.force === true).length).toBeGreaterThan(forcedCallsBefore),
+    )
+    const forcedCallsAfterFocus = getAppointments.mock.calls.filter((c) => c[4]?.force === true).length
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() =>
+      expect(getAppointments.mock.calls.filter((c) => c[4]?.force === true).length).toBeGreaterThan(forcedCallsAfterFocus),
+    )
   })
 
   // ── Gate de pos.sale.read ──────────────────────────────────────────────
