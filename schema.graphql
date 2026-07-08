@@ -196,6 +196,7 @@ type CatalogCategory {
 }
 
 type CatalogCombo {
+  categoryId: ID
   commissionCents: Int!
   description: String
   durationMinutes: Int
@@ -238,6 +239,12 @@ type CatalogComboLocation {
   isActive: Boolean!
   locationId: ID!
   priceCentsOverride: Int
+}
+
+enum CatalogItemType {
+  COMBO
+  PRODUCT
+  SERVICE
 }
 
 enum CategoryAppliesTo {
@@ -383,6 +390,7 @@ input CreateCatalogCategoryInput {
 }
 
 input CreateCatalogComboInput {
+  categoryId: ID
   commissionCents: Int!
   description: String
   durationMinutes: Int
@@ -1064,6 +1072,8 @@ type Mutation {
   refundRequest(amountCents: Int!, reason: String, saleId: ID!): String!
   removeCouponFromDraftSale(input: RemoveCouponFromDraftSaleInput!): DraftSaleWithDiscount!
   removeProductImage(imageId: ID!, productId: ID!): Product!
+  reorderCatalogItems(input: ReorderCatalogItemsInput!): Boolean!
+  reorderCategories(orderedIds: [ID!]!): Boolean!
   reorderProductImages(imageIdsInOrder: [ID!]!, productId: ID!): Product!
   reorderWalkIns(input: ReorderWalkInsInput!): [WalkIn!]!
   replaceShiftTemplatesBatch(input: ReplaceShiftTemplatesBatchInput!): [ShiftTemplate!]!
@@ -1290,6 +1300,7 @@ type Product {
   seoDescription: String
   seoTitle: String
   sku: String
+  sortOrder: Int!
   status: ProductStatus!
   tags: [String!]!
   taxCode: String
@@ -1624,6 +1635,16 @@ input RemoveCouponFromDraftSaleInput {
   remainingAppliedCouponCodes: [String!]! = []
 }
 
+input ReorderCatalogItemInput {
+  id: ID!
+  type: CatalogItemType!
+}
+
+input ReorderCatalogItemsInput {
+  categoryId: ID
+  items: [ReorderCatalogItemInput!]!
+}
+
 input ReorderWalkInsInput {
   locationId: ID!
   orderedIds: [ID!]!
@@ -1917,6 +1938,7 @@ type Service {
   name: String!
   penaltyCommissionCents: Int
   pricingFor(locationId: ID!, staffUserId: ID): ResolvedServicePricing!
+  sortOrder: Int!
   staffOverrides: [StaffServicePrice!]!
 }
 
@@ -2173,6 +2195,7 @@ input UpdateCatalogCategoryInput {
 }
 
 input UpdateCatalogComboInput {
+  categoryId: ID
   commissionCents: Int
   description: String
   durationMinutes: Int

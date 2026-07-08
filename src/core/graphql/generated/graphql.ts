@@ -231,6 +231,7 @@ export type CatalogCategory = {
 
 export type CatalogCombo = {
   __typename?: 'CatalogCombo';
+  categoryId?: Maybe<Scalars['ID']['output']>;
   commissionCents: Scalars['Int']['output'];
   description?: Maybe<Scalars['String']['output']>;
   durationMinutes?: Maybe<Scalars['Int']['output']>;
@@ -281,6 +282,12 @@ export type CatalogComboLocation = {
   locationId: Scalars['ID']['output'];
   priceCentsOverride?: Maybe<Scalars['Int']['output']>;
 };
+
+export enum CatalogItemType {
+  Combo = 'COMBO',
+  Product = 'PRODUCT',
+  Service = 'SERVICE'
+}
 
 export enum CategoryAppliesTo {
   Any = 'ANY',
@@ -431,6 +438,7 @@ export type CreateCatalogCategoryInput = {
 };
 
 export type CreateCatalogComboInput = {
+  categoryId?: InputMaybe<Scalars['ID']['input']>;
   commissionCents: Scalars['Int']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
   durationMinutes?: InputMaybe<Scalars['Int']['input']>;
@@ -1136,6 +1144,8 @@ export type Mutation = {
   refundRequest: Scalars['String']['output'];
   removeCouponFromDraftSale: DraftSaleWithDiscount;
   removeProductImage: Product;
+  reorderCatalogItems: Scalars['Boolean']['output'];
+  reorderCategories: Scalars['Boolean']['output'];
   reorderProductImages: Product;
   reorderWalkIns: Array<WalkIn>;
   replaceShiftTemplatesBatch: Array<ShiftTemplate>;
@@ -1690,6 +1700,16 @@ export type MutationRemoveProductImageArgs = {
 };
 
 
+export type MutationReorderCatalogItemsArgs = {
+  input: ReorderCatalogItemsInput;
+};
+
+
+export type MutationReorderCategoriesArgs = {
+  orderedIds: Array<Scalars['ID']['input']>;
+};
+
+
 export type MutationReorderProductImagesArgs = {
   imageIdsInOrder: Array<Scalars['ID']['input']>;
   productId: Scalars['ID']['input'];
@@ -2150,6 +2170,7 @@ export type Product = {
   seoDescription?: Maybe<Scalars['String']['output']>;
   seoTitle?: Maybe<Scalars['String']['output']>;
   sku?: Maybe<Scalars['String']['output']>;
+  sortOrder: Scalars['Int']['output'];
   status: ProductStatus;
   tags: Array<Scalars['String']['output']>;
   taxCode?: Maybe<Scalars['String']['output']>;
@@ -3119,6 +3140,16 @@ export type RemoveCouponFromDraftSaleInput = {
   remainingAppliedCouponCodes?: Array<Scalars['String']['input']>;
 };
 
+export type ReorderCatalogItemInput = {
+  id: Scalars['ID']['input'];
+  type: CatalogItemType;
+};
+
+export type ReorderCatalogItemsInput = {
+  categoryId?: InputMaybe<Scalars['ID']['input']>;
+  items: Array<ReorderCatalogItemInput>;
+};
+
 export type ReorderWalkInsInput = {
   locationId: Scalars['ID']['input'];
   orderedIds: Array<Scalars['ID']['input']>;
@@ -3435,6 +3466,7 @@ export type Service = {
   name: Scalars['String']['output'];
   penaltyCommissionCents?: Maybe<Scalars['Int']['output']>;
   pricingFor: ResolvedServicePricing;
+  sortOrder: Scalars['Int']['output'];
   staffOverrides: Array<StaffServicePrice>;
 };
 
@@ -3732,6 +3764,7 @@ export type UpdateCatalogCategoryInput = {
 };
 
 export type UpdateCatalogComboInput = {
+  categoryId?: InputMaybe<Scalars['ID']['input']>;
   commissionCents?: InputMaybe<Scalars['Int']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   durationMinutes?: InputMaybe<Scalars['Int']['input']>;
