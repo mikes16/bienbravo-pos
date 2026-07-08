@@ -8,12 +8,12 @@ export function useRegister(locationId: string | null) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((opts?: { force?: boolean }) => {
     if (!locationId) return
     setLoading(true)
     setError(null)
     register
-      .getRegisters(locationId)
+      .getRegisters(locationId, opts)
       .then((data) => {
         setRegisters(data)
         setError(null)

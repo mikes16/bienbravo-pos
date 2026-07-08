@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CajaPage } from './CajaPage'
@@ -84,5 +84,25 @@ describe('CajaPage', () => {
       expect.any(String), expect.any(String), 'loc1', 'IN_SERVICE', { force: true },
     )
     expect(getWalkIns).toHaveBeenCalledWith('loc1', undefined, undefined, { force: true })
+  })
+
+  it('refetches registers with force:true on window focus and visibilitychange', async () => {
+    const repos = createMockRepositories()
+    const getRegisters = vi.fn().mockResolvedValue([OPEN_REGISTER])
+    repos.register.getRegisters = getRegisters
+    renderWithProviders(<CajaPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', undefined))
+
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', { force: true }))
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() =>
+      expect(getRegisters.mock.calls.filter((c) => c[1]?.force === true).length).toBeGreaterThanOrEqual(2),
+    )
   })
 })

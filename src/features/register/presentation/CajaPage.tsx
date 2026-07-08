@@ -39,9 +39,12 @@ export function CajaPage() {
   // Refetch on focus + visibilitychange. En el tablet alternar pantallas/apps
   // no dispara window.focus; al volver a estar visible refrescamos para que los
   // montos esperados (efectivo/tarjeta/transfer) reflejen las ventas recientes.
+  // force:true fuerza network-only — sin esto getRegisters cache-first
+  // garantiza un cache hit y el refetch es un no-op: apertura/cierre desde
+  // otro device o desde el admin nunca se vuelve visible aquí sin recargar.
   useEffect(() => {
-    const onFocus = () => refresh()
-    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    const onFocus = () => refresh({ force: true })
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh({ force: true }) }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
@@ -159,7 +162,7 @@ export function CajaPage() {
             Caja
           </h1>
           <p className="mb-4 text-sm text-[var(--color-bone-muted)]">{error}</p>
-          <TouchButton variant="secondary" size="min" onClick={refresh}>
+          <TouchButton variant="secondary" size="min" onClick={() => refresh()}>
             Reintentar
           </TouchButton>
         </div>

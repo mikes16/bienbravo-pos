@@ -37,7 +37,7 @@ const CLOSE_SESSION = graphql(`
 `)
 
 export interface RegisterRepository {
-  getRegisters(locationId: string): Promise<Register[]>
+  getRegisters(locationId: string, opts?: { force?: boolean }): Promise<Register[]>
   openSession(registerId: string, openingCashCents: number): Promise<RegisterSession>
   closeSession(input: CloseSessionInput): Promise<RegisterSession>
 }
@@ -48,15 +48,19 @@ export class ApolloRegisterRepository implements RegisterRepository {
     this.#client = client
   }
 
-  async getRegisters(locationId: string): Promise<Register[]> {
-    // cache-first: pinta el último snapshot al toque. Las mutaciones de
-    // abrir/cerrar caja escriben al cache de Apollo, así que el bug histórico
-    // (mostrar "cerrada" tras open por servir el snapshot pre-open) está
-    // cubierto. CajaPage refetcha on window.focus para casos cross-tab.
+  async getRegisters(locationId: string, opts?: { force?: boolean }): Promise<Register[]> {
+    // cache-first por default: pinta el último snapshot al toque. Las
+    // mutaciones de abrir/cerrar caja evictan el field `registers` del
+    // cache, así que el bug histórico (mostrar "cerrada" tras open por
+    // servir el snapshot pre-open) está cubierto para ESTE cliente Apollo.
+    // Pero apertura/cierre desde OTRO device o desde el admin no evicta
+    // este cache — force:true (network-only) es lo que CajaPage usa en su
+    // refetch de window.focus / visibilitychange para que ese caso
+    // cross-device de verdad llegue a la red.
     const { data } = await this.#client.query<{ registers: Register[] }>({
       query: REGISTERS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     return data!.registers.filter((r: Register) => r.isActive)
   }
