@@ -5,6 +5,7 @@ import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cartReducer, initialCart } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
+import { sortCatalogItems } from '../lib/sort-catalog'
 import type { CheckoutPayment } from '../domain/checkout.types'
 import type { AppointmentPrepayState, AppliedCouponPreview, DraftSaleItemArg } from '../data/checkout.repository'
 
@@ -31,6 +32,7 @@ interface CatalogItem {
   stockQty?: number
   imageUrl?: string | null
   categoryId: string | null
+  sortOrder: number
 }
 
 type CheckoutContext =
@@ -146,6 +148,7 @@ export function useCheckout() {
             priceCents: s.priceCents,
             imageUrl: s.imageUrl,
             categoryId: s.categoryId,
+            sortOrder: s.sortOrder,
           })),
           ...products.map((p) => ({
             id: p.id,
@@ -155,6 +158,7 @@ export function useCheckout() {
             stockQty: stockByProductId.get(p.id),
             imageUrl: p.imageUrl,
             categoryId: p.categoryId,
+            sortOrder: p.sortOrder,
           })),
           ...combos.map((c) => ({
             id: c.id,
@@ -162,10 +166,11 @@ export function useCheckout() {
             name: c.name,
             priceCents: c.priceCents,
             imageUrl: c.imageUrl,
-            categoryId: null,
+            categoryId: c.categoryId,
+            sortOrder: c.sortOrder,
           })),
         ]
-        setCatalogItems(items)
+        setCatalogItems(sortCatalogItems(items, cats))
         setCategories(cats)
         setBarbers(brbs)
         const openSessionRegister = registers.find((r) => r.openSession)
