@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
-import { cartReducer, initialCart } from '../lib/cart'
+import { cartReducer, initialCart, findUnavailableCreditedBarberId } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
 import { sortCatalogItems } from '../lib/sort-catalog'
 import type { CheckoutPayment } from '../domain/checkout.types'
@@ -189,9 +189,14 @@ export function useCheckout() {
     }
   }, [locationId, viewer?.staff?.id, checkout, register])
 
-  // Pre-fill customer/barber/services based on context
+  // Pre-fill customer/barber/services based on context.
+  //
+  // Gated on `loaded` (catalog + posAvailableBarbers settled) so the barber
+  // availability check below always reads a populated `barbers` snapshot —
+  // CheckoutPage shows the loading skeleton until `loaded` is true
+  // regardless, so delaying this until then has no visible cost.
   useEffect(() => {
-    if (!context || !locationId) return
+    if (!context || !locationId || !loaded) return
     if (context.kind === 'walk-in') {
       checkout.getWalkIn(context.walkInId, locationId).then((w) => {
         if (w?.customer) {
@@ -200,8 +205,18 @@ export function useCheckout() {
             customer: { id: w.customer.id, fullName: w.customer.fullName },
           })
         }
+        // A1: solo pre-llenar el barbero default si sigue con turno
+        // iniciado. Un walk-in pudo asignarse hace rato — si ese barbero ya
+        // fichó salida, prefilearlo violaría el gate "solo cobrar
+        // acreditando a barberos con turno activo". Dejamos el default sin
+        // tocar, forzando al cajero a elegir explícitamente en el picker
+        // (que ya oculta/bloquea a los barberos sin turno).
         if (w?.assignedStaffUser?.id) {
-          dispatch({ type: 'setDefaultBarber', staffUserId: w.assignedStaffUser.id })
+          const assignedId = w.assignedStaffUser.id
+          const isAvailable = barbers.some((b) => b.id === assignedId && b.hasClockedIn !== false)
+          if (isAvailable) {
+            dispatch({ type: 'setDefaultBarber', staffUserId: assignedId })
+          }
         }
         // Multi-servicio: pre-llenar el carrito con los servicios que el
         // cliente pidió al registrarse. Si después cambió de opinión, el
@@ -226,7 +241,7 @@ export function useCheckout() {
         if (c) dispatch({ type: 'setCustomer', customer: { id: c.id, fullName: c.fullName } })
       })
     }
-  }, [context, checkout, locationId])
+  }, [context, checkout, locationId, loaded, barbers])
 
   // Load prepay state for the appointment-completion entry. When there's no
   // appointment id (free sale / walk-in / preselected-customer), reset to the
@@ -410,6 +425,23 @@ export function useCheckout() {
     if (!locationId || cartState.lines.length === 0 || submitting) return null
     if (!registerSessionId) {
       setError('No hay caja abierta. Abre caja primero.')
+      return null
+    }
+    // A1/FIX3: re-valida que todo barbero acreditado en el carrito siga
+    // teniendo turno iniciado. El picker de UI ya bloquea la selección de un
+    // barbero sin turno, pero eso es solo un gate de UX en el momento de
+    // elegir — no protege contra un barbero que fichó salida DESPUÉS de ser
+    // asignado (o un default pre-llenado desde un walk-in cuyo
+    // assignedStaffUser ya no tiene turno). Bloqueamos el cobro aquí, justo
+    // antes de mandar la venta al API.
+    const unavailableBarberId = findUnavailableCreditedBarberId(cartState, barbers)
+    if (unavailableBarberId) {
+      const unavailableBarber = barbers.find((b) => b.id === unavailableBarberId)
+      setError(
+        unavailableBarber
+          ? `El barbero ${unavailableBarber.fullName} no tiene turno iniciado — pídele que fiche entrada.`
+          : 'Uno de los barberos asignados ya no está disponible. Vuelve a asignarlo antes de cobrar.',
+      )
       return null
     }
     setSubmitting(true)

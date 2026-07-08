@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cartReducer, computeTotals, initialCart } from './cart'
+import { cartReducer, computeTotals, creditedBarberIds, findUnavailableCreditedBarberId, initialCart } from './cart'
 import type { CartLine } from './cart'
 
 const SERVICE_ITEM = {
@@ -93,5 +93,72 @@ describe('computeTotals', () => {
       { id: '2', kind: 'product', itemId: 'b', name: 'B', qty: 1, unitPriceCents: 25000, staffUserId: null },
     ]
     expect(computeTotals(lines).subtotalCents).toBe(81000)
+  })
+})
+
+// A1: "al cobrar, solo puedas asignar barberos con sesión activa que ya
+// iniciaron su día." — re-validación en el momento de cobrar, no solo en el
+// picker de UI.
+describe('creditedBarberIds', () => {
+  it('includes the default barber even with no lines', () => {
+    const s = initialCart('barber-1')
+    expect(creditedBarberIds(s)).toEqual(['barber-1'])
+  })
+
+  it('includes per-line overrides plus the default for lines without one', () => {
+    let s = cartReducer(initialCart('barber-1'), { type: 'add', item: SERVICE_ITEM })
+    s = cartReducer(s, { type: 'add', item: PRODUCT_ITEM })
+    s = cartReducer(s, { type: 'setLineBarber', lineId: s.lines[1].id, staffUserId: 'barber-2' })
+    expect(creditedBarberIds(s).sort()).toEqual(['barber-1', 'barber-2'])
+  })
+
+  it('omits null/empty default when no barber is set', () => {
+    const s = initialCart('')
+    expect(creditedBarberIds(s)).toEqual([])
+  })
+})
+
+describe('findUnavailableCreditedBarberId', () => {
+  const CLOCKED_IN = [
+    { id: 'barber-1', hasClockedIn: true },
+    { id: 'barber-2', hasClockedIn: true },
+  ]
+
+  it('returns null when every credited barber is clocked in', () => {
+    let s = cartReducer(initialCart('barber-1'), { type: 'add', item: SERVICE_ITEM })
+    s = cartReducer(s, { type: 'setDefaultBarber', staffUserId: 'barber-2' })
+    expect(findUnavailableCreditedBarberId(s, CLOCKED_IN)).toBeNull()
+  })
+
+  it('blocks when the default barber has clocked out', () => {
+    const s = initialCart('barber-1')
+    const barbers = [{ id: 'barber-1', hasClockedIn: false }]
+    expect(findUnavailableCreditedBarberId(s, barbers)).toBe('barber-1')
+  })
+
+  it('blocks when a per-line override barber has clocked out, even if the default is fine', () => {
+    let s = cartReducer(initialCart('barber-1'), { type: 'add', item: SERVICE_ITEM })
+    s = cartReducer(s, { type: 'setLineBarber', lineId: s.lines[0].id, staffUserId: 'barber-2' })
+    const barbers = [
+      { id: 'barber-1', hasClockedIn: true },
+      { id: 'barber-2', hasClockedIn: false },
+    ]
+    expect(findUnavailableCreditedBarberId(s, barbers)).toBe('barber-2')
+  })
+
+  it('blocks when the credited barber is not in the available roster at all', () => {
+    const s = initialCart('ghost-barber')
+    expect(findUnavailableCreditedBarberId(s, CLOCKED_IN)).toBe('ghost-barber')
+  })
+
+  it('allows a barber with no hasClockedIn info (undefined), same rule as the picker gate', () => {
+    const s = initialCart('barber-3')
+    const barbers = [{ id: 'barber-3' }]
+    expect(findUnavailableCreditedBarberId(s, barbers)).toBeNull()
+  })
+
+  it('returns null for an empty cart with no default barber', () => {
+    const s = initialCart('')
+    expect(findUnavailableCreditedBarberId(s, CLOCKED_IN)).toBeNull()
   })
 })

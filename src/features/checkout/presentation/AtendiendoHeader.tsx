@@ -4,6 +4,10 @@ interface Barber {
   id: string
   fullName: string
   photoUrl: string | null
+  // A1: undefined = sin info (no se muestra el badge); false = sin turno
+  // iniciado — el barbero mostrado no puede acreditarse en el cobro hasta
+  // que el cajero elija a otro con turno activo.
+  hasClockedIn?: boolean
 }
 
 interface AtendiendoHeaderProps {
@@ -12,6 +16,7 @@ interface AtendiendoHeaderProps {
 }
 
 export function AtendiendoHeader({ barber, onTap }: AtendiendoHeaderProps) {
+  const noShift = barber.hasClockedIn === false
   // Strip de contexto — leather neutral, NO bravo. El único elemento bravo
   // de la pantalla debe ser el CTA COBRAR. Antes este strip tenía la misma
   // paleta que el CTA y competían por atención visual. Patrón corregido:
@@ -30,6 +35,11 @@ export function AtendiendoHeader({ barber, onTap }: AtendiendoHeaderProps) {
         <span className="text-[16px] font-extrabold leading-none text-[var(--color-bone)]">
           {barber.fullName}
         </span>
+        {noShift && (
+          <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--color-bravo)]">
+            Sin turno — toca para reasignar
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {barber.photoUrl ? (

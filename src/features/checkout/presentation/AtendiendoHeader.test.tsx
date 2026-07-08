@@ -24,4 +24,14 @@ describe('AtendiendoHeader', () => {
     render(<AtendiendoHeader barber={ANTONIO} onTap={() => {}} />)
     expect(screen.getByText('A')).toBeInTheDocument()
   })
+
+  it('shows a "Sin turno" indicator when the barber has clocked out', () => {
+    render(<AtendiendoHeader barber={{ ...ANTONIO, hasClockedIn: false }} onTap={() => {}} />)
+    expect(screen.getByText(/sin turno/i)).toBeInTheDocument()
+  })
+
+  it('does not show the indicator when clocked in or when hasClockedIn is unknown', () => {
+    render(<AtendiendoHeader barber={{ ...ANTONIO, hasClockedIn: true }} onTap={() => {}} />)
+    expect(screen.queryByText(/sin turno/i)).not.toBeInTheDocument()
+  })
 })

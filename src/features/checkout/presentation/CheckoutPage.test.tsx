@@ -112,6 +112,36 @@ describe('CheckoutPage (integration)', () => {
     expect(await screen.findByText(/papá test/i, {}, { timeout: 3000 })).toBeInTheDocument()
   })
 
+  it('walk-in completion: does NOT pre-fill a barber who has clocked out (A1 gate)', async () => {
+    const repos = makeRepos()
+    // b2 (Beto) is the walk-in's assignedStaffUser but has since clocked
+    // out. b1 (Antonio) stays clocked in — it's the display fallback when
+    // no valid default barber is set (ck.barbers[0]).
+    repos.checkout.getAvailableBarbers = vi.fn().mockResolvedValue([
+      { id: 'b1', fullName: 'Antonio', photoUrl: null, hasClockedIn: true, isOccupied: false },
+      { id: 'b2', fullName: 'Beto', photoUrl: null, hasClockedIn: false, isOccupied: false },
+      { id: 'b3', fullName: 'Carlos', photoUrl: null, hasClockedIn: true, isOccupied: false },
+    ])
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1',
+      status: 'ASSIGNED',
+      customer: { id: 'c-papa', fullName: 'Papá Test', email: null, phone: null },
+      assignedStaffUser: { id: 'b2', fullName: 'Beto' },
+    })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    // Customer still pre-fills (unaffected by the barber gate).
+    expect(await screen.findByText(/papá test/i, {}, { timeout: 3000 })).toBeInTheDocument()
+    // The "Atendiendo" strip must NOT show the clocked-out barber — it falls
+    // back to the first clocked-in barber instead of crediting Beto.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /cambiar barbero: beto/i })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /cambiar barbero: antonio/i })).toBeInTheDocument()
+    })
+  })
+
   it('multi-barber split: 3 cortes with 3 different barbers → mutation has 3 distinct staffUserIds', async () => {
     const user = userEvent.setup()
     const repos = makeRepos()
