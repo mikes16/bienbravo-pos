@@ -14,7 +14,7 @@ const CATALOG_VERSION_KEY = 'bb-pos-catalog-version'
  * y se fuerza por separado al entrar a checkout.
  */
 const STATIC_QUERY_FIELDS = [
-  'barbers',
+  'posAvailableBarbers',
   'services',
   'products',
   'catalogCombos',

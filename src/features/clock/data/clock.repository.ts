@@ -71,6 +71,14 @@ export class ApolloClockRepository implements ClockRepository {
       mutation: CLOCK_IN,
       variables: { locationId },
     })
+    // El checkout lee `posAvailableBarbers` cache-first (getAvailableBarbers
+    // en checkout.repository.ts) para pintar el picker "¿Quién atiende?" al
+    // instante. Sin evictar aquí, un barbero recién fichado no aparecía en
+    // el picker hasta un hard reload / limpieza de caché — el síntoma
+    // reportado. Mismo patrón que createSale evictando staffDayEarnings/
+    // registers/posCajaStatusHome en checkout.repository.ts.
+    this.#client.cache.evict({ id: 'ROOT_QUERY', fieldName: 'posAvailableBarbers' })
+    this.#client.cache.gc()
     return data!.clockIn
   }
 
@@ -79,6 +87,11 @@ export class ApolloClockRepository implements ClockRepository {
       mutation: CLOCK_OUT,
       variables: { locationId },
     })
+    // Mismo motivo que clockIn: un barbero que ficha salida debe dejar de
+    // ser seleccionable en el picker del checkout de inmediato, no hasta el
+    // próximo hard reload.
+    this.#client.cache.evict({ id: 'ROOT_QUERY', fieldName: 'posAvailableBarbers' })
+    this.#client.cache.gc()
     return data!.clockOut
   }
 
