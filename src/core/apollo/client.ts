@@ -24,15 +24,41 @@ function makeCache(): InMemoryCache {
     typePolicies: {
       Query: {
         fields: {
-          // keyArgs ensure separate cache buckets per filter/search,
-          // while repeated identical requests hit a single entry.
-          appointments: { keyArgs: ['filter', 'locationId', 'status'] },
-          customers: { keyArgs: ['search'] },
-          products: { keyArgs: ['filter', 'categoryId'] },
-          services: { keyArgs: ['filter', 'categoryId'] },
+          // keyArgs ensure separate cache buckets per filter/search, while
+          // repeated identical requests hit a single entry. Each entry below
+          // was verified against schema.graphql's Query field signature AND
+          // the actual query documents in src/features/**/data/*.repository.ts
+          // — args that don't appear in keyArgs get dropped from the cache
+          // key, so a wrong/missing arg here silently collapses unrelated
+          // requests (e.g. different sucursales) into one bucket.
+          //
+          // `appointments(dateFrom: String!, dateTo: String!, locationId: ID,
+          // status: AppointmentStatus)` — PosAppointments passes all four.
+          // Previously keyed on ['filter','locationId','status']: 'filter'
+          // isn't a real arg (no-op) and dateFrom/dateTo were missing, so the
+          // IN_SERVICE safety-check query (CajaPage), Hoy's today-range query,
+          // and any other date-ranged agenda query collided in one bucket.
+          appointments: { keyArgs: ['locationId', 'dateFrom', 'dateTo', 'status'] },
+          // `products(locationId: ID)` / `services(locationId: ID)` — PosProducts
+          // and PosServices only ever pass locationId (services' $staffUserId
+          // is used inside the `pricingFor` subfield, not as an arg to
+          // `services` itself). Previously keyed on ['filter','categoryId'] —
+          // neither is a real arg on these fields, so locationId was excluded
+          // from the key and every sucursal shared one products/services bucket.
+          products: { keyArgs: ['locationId'] },
+          services: { keyArgs: ['locationId'] },
           catalogCategories: { keyArgs: ['appliesTo'] },
           catalogCombos: { keyArgs: ['activeOnly'] },
-          stockLevels: { keyArgs: ['locationId'] },
+          // DEAD entries removed: `stockLevels` and `customers` are not real
+          // Query field names — no query in this repo selects them (grepped
+          // src/features/**/data/*.ts). The fields the POS actually reads are:
+          //   - `posInventoryLevels(locationId: ID!, limit: Int)` — PosInventoryLevels
+          //     passes locationId only.
+          //   - `searchCustomers(query: String!, limit: Int)` — PosSearchCustomers,
+          //     the typeahead lookup (always fetched network-only, but an explicit
+          //     entry keeps the bucket scoped to the search text, not `limit`).
+          posInventoryLevels: { keyArgs: ['locationId'] },
+          searchCustomers: { keyArgs: ['query'] },
         },
       },
     },
