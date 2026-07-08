@@ -182,6 +182,11 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return { id: 'sale-1', status: 'PAID', paymentStatus: 'PAID', totalCents: 50000, paidTotalCents: 50000 }
   }
 
+  async closeAppointmentSale(_saleId: string): Promise<void> {
+    // No-op por defecto. Tests del flujo de cierre de cita prepagada
+    // sobre-escriben con vi.fn para verificar la llamada.
+  }
+
   async searchCustomers(_query: string, _limit = 10): Promise<CustomerResult[]> {
     return []
   }

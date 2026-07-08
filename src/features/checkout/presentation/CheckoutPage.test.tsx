@@ -236,4 +236,33 @@ describe('CheckoutPage (integration)', () => {
     // Error appears in both the PaymentSheet alert and the cart panel error region.
     await waitFor(() => expect(screen.getAllByText(/no hay caja abierta/i).length).toBeGreaterThan(0))
   })
+
+  // FIX 6: closeAppointmentSale (cita prepagada) debe invalidar Hoy/Mi Día
+  // igual que createSale — de lo contrario el cajero cierra la cita y las
+  // ganancias del día / estado de caja se quedan mostrando el snapshot viejo
+  // hasta un refresh manual. El repo mock expone `closeAppointmentSale`
+  // directamente (la eviction real vive en ApolloCheckoutRepository, probada
+  // ahí contra el cache de Apollo); aquí verificamos que CheckoutPage llame
+  // al repo (no a un `useMutation` sin evict) con el saleId correcto.
+  it('prepaid appointment close: calls repo.closeAppointmentSale (which evicts Hoy/Mi Día) and navigates home', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    repos.checkout.getAppointmentPrepayState = vi.fn().mockResolvedValue({
+      isPrepaid: true,
+      hasPendingLink: false,
+      prepaidSaleId: 'sale-prepaid-99',
+      prepaidMethod: 'STRIPE',
+      prepaidAt: '2026-07-01T12:00:00.000Z',
+    })
+    repos.checkout.closeAppointmentSale = vi.fn().mockResolvedValue(undefined)
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeAppointmentId=appt-1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    const closeBtn = await screen.findByRole('button', { name: /cerrar cita y completar servicio/i }, { timeout: 3000 })
+    await user.click(closeBtn)
+    await waitFor(() => {
+      expect(repos.checkout.closeAppointmentSale).toHaveBeenCalledWith('sale-prepaid-99')
+    })
+  })
 })

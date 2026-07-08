@@ -4,10 +4,8 @@ import { useMutation } from '@apollo/client/react'
 import { useCheckout } from '../application/useCheckout'
 import { computeTotals } from '../lib/cart'
 import { prepayMethodLabel } from '../lib/prepayMethodLabel'
-import {
-  CLOSE_APPOINTMENT_SALE_MUTATION,
-  CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION,
-} from '../data/checkout.repository'
+import { CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION } from '../data/checkout.repository'
+import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { CatalogChips } from './CatalogChips'
 import { CatalogGrid } from './CatalogGrid'
 import { AtendiendoHeader } from './AtendiendoHeader'
@@ -32,6 +30,7 @@ export function CheckoutPage() {
   const { addToast } = useToast()
   const { viewer } = usePosAuth()
   const { locationName } = useLocation()
+  const { checkout } = useRepositories()
   // Permiso server-side dual: el API también valida pos.discount.apply en
   // applyCouponToDraftSale. Esconder el bloque en el cliente es solo UX —
   // no hay risk de bypass.
@@ -58,24 +57,37 @@ export function CheckoutPage() {
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
   const [splashShown, setSplashShown] = useState(false)
 
-  // Prepago: dos branches especiales del checkout. Tipados como `any` por el
-  // mismo motivo que los `graphql()` calls en el repositorio: client-preset
-  // emite un Document genérico que TS no infiere correctamente sobre el
-  // resultado de la mutation. El payload solo necesita `saleId` y devuelve
-  // boolean — no nos perdemos seguridad real aquí.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [closeSale, { loading: closing }] = useMutation(CLOSE_APPOINTMENT_SALE_MUTATION as any)
+  // Prepago: dos branches especiales del checkout.
+  //
+  // `closeAppointmentSale` va por el repositorio (no `useMutation` directo)
+  // porque necesita el MISMO evict de cache que `createSale` — cierra una
+  // venta que ya estaba PAID y el API recalcula reporting server-side en esa
+  // llamada, así que sin evictar staffDayEarnings/registers/posCajaStatusHome
+  // Hoy/Mi Día/Caja se quedaban mostrando el snapshot de antes de cerrar la
+  // cita. Ver `ApolloCheckoutRepository.closeAppointmentSale`.
+  //
+  // `cancelAppointmentPrepayLink` NO necesita ese evict: solo puede
+  // cancelarse un link que sigue UNPAID (el API lo rechaza si ya se pagó), o
+  // sea que nunca hubo dinero capturado que mover a earnings/caja — el sale
+  // simplemente se borra y el checkout cae al flujo normal de cobro (que sí
+  // evict vía `createSale` cuando el cajero cobre en persona). Se queda como
+  // `useMutation` directo; tipado `any` porque client-preset emite un
+  // Document genérico que TS no infiere correctamente sobre el resultado.
+  const [closing, setClosing] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [cancelLink, { loading: cancellingLink }] = useMutation(CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION as any)
 
   const handleCloseSale = async () => {
     if (!ck.prepaidSaleId) return
+    setClosing(true)
     try {
-      await closeSale({ variables: { saleId: ck.prepaidSaleId } })
+      await checkout.closeAppointmentSale(ck.prepaidSaleId)
       addToast('Cita cerrada. Servicio completado.', 'success')
       navigate('/hoy')
     } catch (e) {
       addToast((e as { message?: string })?.message ?? 'No se pudo cerrar la cita.', 'error')
+    } finally {
+      setClosing(false)
     }
   }
 

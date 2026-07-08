@@ -492,6 +492,15 @@ export interface CheckoutRepository {
   resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string): Promise<number>
   getStockLevels(locationId: string): Promise<StockLevel[]>
   createSale(input: CreateSaleInput): Promise<SaleResult>
+  /**
+   * Cierra una venta prepagada (Sale.paymentStatus=PAID) al completar el
+   * servicio — ver `closeAppointmentSale` en el schema del API. El servidor
+   * pasa Sale.status OPEN→PAID + Appointment→COMPLETED y recalcula reporting
+   * (staff day earnings) en la misma transacción. Igual que `createSale`,
+   * evictamos staffDayEarnings/registers/posCajaStatusHome para que Hoy/Mi
+   * Día/Caja dejen de mostrar el snapshot de antes de cerrar la cita.
+   */
+  closeAppointmentSale(saleId: string): Promise<void>
   searchCustomers(query: string, limit?: number): Promise<CustomerResult[]>
   findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult | null>
   findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }>
@@ -772,6 +781,24 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     cache.evict({ id: 'ROOT_QUERY', fieldName: 'posCajaStatusHome' })
     cache.gc()
     return data!.createPOSSale
+  }
+
+  async closeAppointmentSale(saleId: string): Promise<void> {
+    await this.#client.mutate({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mutation: CLOSE_APPOINTMENT_SALE_MUTATION as any,
+      variables: { saleId },
+    })
+    // Mismo evict que createSale arriba: closeAppointmentSale es el momento
+    // en que la venta prepagada pasa de OPEN a PAID y el API dispara
+    // recalcSingleLocationDay/recalcSingleLocationStaffDay server-side. Sin
+    // este evict, Hoy/Mi Día/Caja seguían mostrando el snapshot de antes de
+    // cerrar la cita hasta un refresh manual (mismo bug family que A10).
+    const cache = this.#client.cache
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'staffDayEarnings' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'registers' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'posCajaStatusHome' })
+    cache.gc()
   }
 
   async applyCoupon(args: ApplyCouponArgs): Promise<DraftSaleWithDiscount | null> {
