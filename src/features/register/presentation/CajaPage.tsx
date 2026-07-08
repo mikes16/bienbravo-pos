@@ -67,9 +67,15 @@ export function CajaPage() {
     setCheckingActive(true)
     try {
       const { from, to } = todayRangeISO()
+      // network-only: este es un gate de correctness (¿hay un servicio
+      // corriendo ahora mismo?), no una lista pintada rápido. IN_SERVICE solo
+      // se consulta aquí, así que nada más refresca ese cache — sin force el
+      // segundo intento de "Cerrar caja" en la sesión sigue viendo el
+      // snapshot de la primera consulta y deja cerrar sobre un servicio que
+      // arrancó después.
       const [appts, wkins] = await Promise.all([
-        agenda.getAppointments(from, to, locationId, 'IN_SERVICE'),
-        walkins.getWalkIns(locationId),
+        agenda.getAppointments(from, to, locationId, 'IN_SERVICE', { force: true }),
+        walkins.getWalkIns(locationId, undefined, undefined, { force: true }),
       ])
       const items: ActiveServiceItem[] = []
       for (const a of appts) {
