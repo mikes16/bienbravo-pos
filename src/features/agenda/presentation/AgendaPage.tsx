@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatMoney } from '@/shared/lib/money.ts'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
@@ -402,6 +402,25 @@ export function AgendaPage() {
   )
   const [payingAppt, setPayingAppt] = useState<Appointment | null>(null)
   const [confirmNoShowAppt, setConfirmNoShowAppt] = useState<Appointment | null>(null)
+
+  // Refetch on focus + visibilitychange — patrón espejo de CajaPage. Antes de
+  // que `appointments` tuviera keyArgs correctos (fix de cache), esta pantalla
+  // "funcionaba" por accidente: compartía bucket de cache con Hoy/Mi Día, que
+  // sí se force-refrescaban. Con keyArgs correctos, Agenda tiene su propio
+  // bucket y necesita su propio refresh — si no, queda pintando el snapshot
+  // del último mount toda la sesión. force:true fuerza network-only; en
+  // tablet, alternar apps no siempre dispara window.focus, así que sumamos
+  // visibilitychange.
+  useEffect(() => {
+    const onFocus = () => refresh({ force: true })
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh({ force: true }) }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refresh])
 
   // sort by startAt asc
   const sorted = [...appointments].sort(

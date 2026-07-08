@@ -17,12 +17,18 @@ export function useAgenda(staffUserId: string | null, locationId: string | null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = useCallback(() => {
+  // opts.force → network-only. Tras el fix de keyArgs de `appointments`
+  // (locationId/dateFrom/dateTo/status ahora forman la key real), este bucket
+  // ya no colisiona con el de Hoy/Mi Día — así que sin force, cache-first
+  // serviría el mismo snapshot todo el día. AgendaPage pasa force:true en su
+  // refetch de focus/visibilitychange para ver citas creadas/actualizadas
+  // desde otro device (admin, kiosko, otro POS).
+  const refresh = useCallback((opts?: { force?: boolean }) => {
     if (!locationId) return
     const { from, to } = todayRangeISO()
     setLoading(true)
     agenda
-      .getAppointments(from, to, locationId)
+      .getAppointments(from, to, locationId, undefined, opts)
       .then((all: Appointment[]) => {
         setAppointments(all)
       })

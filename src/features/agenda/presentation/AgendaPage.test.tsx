@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AgendaPage } from './AgendaPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
@@ -62,5 +62,35 @@ describe('AgendaPage', () => {
     // The time appears in both the group header and the row, so use getAllByText
     const timeElements = await screen.findAllByText(/10:00/)
     expect(timeElements.length).toBeGreaterThan(0)
+  })
+
+  // FIX 7: antes de que `appointments` tuviera keyArgs correctos (FIX 5),
+  // AgendaPage "funcionaba" por accidente compartiendo bucket de cache con
+  // Hoy/Mi Día. Con buckets separados, necesita su propio refetch en
+  // focus/visibilitychange (mismo patrón que CajaPage) o pinta el snapshot
+  // del mount inicial toda la sesión.
+  it('refetches appointments with force:true on window focus and visibilitychange', async () => {
+    const repos = createMockRepositories()
+    const getAppointments = vi.fn().mockResolvedValue([])
+    repos.agenda.getAppointments = getAppointments
+    renderWithProviders(<AgendaPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    await waitFor(() =>
+      expect(getAppointments).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), 'loc1', undefined, undefined,
+      ),
+    )
+
+    const forcedCalls = () =>
+      getAppointments.mock.calls.filter((c) => c[4]?.force === true).length
+
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => expect(forcedCalls()).toBeGreaterThanOrEqual(1))
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() => expect(forcedCalls()).toBeGreaterThanOrEqual(2))
   })
 })
