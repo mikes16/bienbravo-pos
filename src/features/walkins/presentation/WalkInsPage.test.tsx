@@ -55,4 +55,14 @@ describe('WalkInsPage', () => {
     // V2 replaces the legacy "Tomar" verb with "Asignar" (opens barber picker).
     expect(await screen.findByRole('button', { name: /asignar/i })).toBeInTheDocument()
   })
+
+  it('loads the queue with force:true so the operator sees live state on entry, not a stale cache-first snapshot from another tablet', async () => {
+    const repos = createMockRepositories()
+    repos.walkins.getWalkIns = vi.fn().mockResolvedValue([])
+    renderWithProviders(<WalkInsPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findByText(/aún no hay clientes esperando|sin clientes/i)
+    expect(repos.walkins.getWalkIns).toHaveBeenCalledWith('loc1', undefined, undefined, { force: true })
+  })
 })

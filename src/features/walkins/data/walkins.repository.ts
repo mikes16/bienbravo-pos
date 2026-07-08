@@ -165,6 +165,23 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
     this.#client = client
   }
 
+  /**
+   * Varias mutations de la cola devuelven un `Boolean` desnudo (complete,
+   * drop) o una entidad parcial que Apollo normaliza pero que no reescribe
+   * la lista `walkIns(locationId, ...)` — ese root field cachea la lista
+   * completa keyed por args, y ninguna mutation la actualiza in-place. Sin
+   * evict, `getWalkIns` cache-first sigue sirviendo la cola de ANTES de la
+   * mutation el resto de la sesión — el operador no ve su propio
+   * create/assign/complete/drop/pause/resume/no-show/reorder. Evictamos el
+   * field completo (todas las variantes de locationId/fromDate/toDate) y
+   * dejamos que el próximo `getWalkIns` (cache-first o force) recargue.
+   */
+  #evictWalkIns(): void {
+    const cache = this.#client.cache
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'walkIns' })
+    cache.gc()
+  }
+
   async getWalkIns(
     locationId: string,
     fromDate?: string,
@@ -201,6 +218,7 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
         preferredStaffUserId: input.preferredStaffUserId ?? null,
       },
     })
+    this.#evictWalkIns()
     return data!.createWalkIn
   }
 
@@ -211,34 +229,41 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
       mutation: ASSIGN_WALKIN,
       variables: { walkInId, staffUserId },
     })
+    this.#evictWalkIns()
     return data!.assignWalkIn
   }
 
   async complete(walkInId: string): Promise<void> {
     await this.#client.mutate({ mutation: COMPLETE_WALKIN, variables: { walkInId } })
+    this.#evictWalkIns()
   }
 
   async drop(walkInId: string, reason?: string | null): Promise<void> {
     await this.#client.mutate({ mutation: DROP_WALKIN, variables: { walkInId, reason: reason ?? null } })
+    this.#evictWalkIns()
   }
 
   async pauseWalkIn(walkInId: string) {
     const r = await this.#client.mutate({ mutation: PAUSE_WALKIN_MUTATION, variables: { walkInId } })
+    this.#evictWalkIns()
     return r.data?.pauseWalkIn ?? null
   }
 
   async resumeWalkIn(walkInId: string) {
     const r = await this.#client.mutate({ mutation: RESUME_WALKIN_MUTATION, variables: { walkInId } })
+    this.#evictWalkIns()
     return r.data?.resumeWalkIn ?? null
   }
 
   async markWalkInNoShow(walkInId: string) {
     const r = await this.#client.mutate({ mutation: MARK_WALKIN_NO_SHOW_MUTATION, variables: { walkInId } })
+    this.#evictWalkIns()
     return r.data?.markWalkInNoShow ?? null
   }
 
   async reorderWalkIns(input: { locationId: string; orderedIds: string[] }) {
     const r = await this.#client.mutate({ mutation: REORDER_WALKINS_MUTATION, variables: { input } })
+    this.#evictWalkIns()
     return r.data?.reorderWalkIns ?? null
   }
 

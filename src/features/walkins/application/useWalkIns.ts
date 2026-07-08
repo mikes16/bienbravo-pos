@@ -8,11 +8,19 @@ export function useWalkIns(locationId: string | null) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = useCallback(() => {
+  // walkIns es dato LIVE compartido entre todos los tablets de la sucursal —
+  // otro operador puede assign/complete/drop desde SU device sin que este
+  // reciba ningún evento local. `opts.force` (default true) fuerza
+  // network-only, mirroring el patrón de HoyPage.refetch (que SIEMPRE lee
+  // walkIns por red, nunca cache-first). El repo además evict-ea el cache
+  // tras cada mutation (ver `#evictWalkIns` en walkins.repository.ts) como
+  // segunda capa: aunque algún caller pasara force:false, el cache-first no
+  // tendría nada cacheado que servir tras una mutation propia.
+  const refresh = useCallback((opts?: { force?: boolean }) => {
     if (!locationId) return
     setLoading(true)
     walkins
-      .getWalkIns(locationId)
+      .getWalkIns(locationId, undefined, undefined, { force: opts?.force ?? true })
       .then(setList)
       .catch(() => setError('No se pudo cargar walk-ins'))
       .finally(() => setLoading(false))
@@ -29,7 +37,7 @@ export function useWalkIns(locationId: string | null) {
     ) => {
       if (!locationId) return
       await walkins.create({ locationId, customerId, customerName, customerPhone, customerEmail })
-      refresh()
+      refresh({ force: true })
     },
     [walkins, locationId, refresh],
   )
@@ -37,7 +45,7 @@ export function useWalkIns(locationId: string | null) {
   const assign = useCallback(
     async (walkInId: string, staffUserId: string) => {
       const result = await walkins.assign(walkInId, staffUserId)
-      refresh()
+      refresh({ force: true })
       return result
     },
     [walkins, refresh],
@@ -46,7 +54,7 @@ export function useWalkIns(locationId: string | null) {
   const complete = useCallback(
     async (walkInId: string) => {
       await walkins.complete(walkInId)
-      refresh()
+      refresh({ force: true })
     },
     [walkins, refresh],
   )
@@ -54,7 +62,7 @@ export function useWalkIns(locationId: string | null) {
   const drop = useCallback(
     async (walkInId: string, reason?: string | null) => {
       await walkins.drop(walkInId, reason)
-      refresh()
+      refresh({ force: true })
     },
     [walkins, refresh],
   )
@@ -62,7 +70,7 @@ export function useWalkIns(locationId: string | null) {
   const pauseWalkIn = useCallback(
     async (walkInId: string) => {
       await walkins.pauseWalkIn(walkInId)
-      refresh()
+      refresh({ force: true })
     },
     [walkins, refresh],
   )
@@ -70,7 +78,7 @@ export function useWalkIns(locationId: string | null) {
   const resumeWalkIn = useCallback(
     async (walkInId: string) => {
       await walkins.resumeWalkIn(walkInId)
-      refresh()
+      refresh({ force: true })
     },
     [walkins, refresh],
   )
@@ -78,7 +86,7 @@ export function useWalkIns(locationId: string | null) {
   const markWalkInNoShow = useCallback(
     async (walkInId: string) => {
       await walkins.markWalkInNoShow(walkInId)
-      refresh()
+      refresh({ force: true })
     },
     [walkins, refresh],
   )
@@ -87,7 +95,7 @@ export function useWalkIns(locationId: string | null) {
     async (orderedIds: string[]) => {
       if (!locationId) return
       await walkins.reorderWalkIns({ locationId, orderedIds })
-      refresh()
+      refresh({ force: true })
     },
     [walkins, refresh, locationId],
   )
