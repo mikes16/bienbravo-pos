@@ -1,4 +1,5 @@
 import { screen, waitFor, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { HoyPage } from './HoyPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
@@ -120,5 +121,47 @@ describe('HoyPage', () => {
       apolloMocks: cajaOpenMocks(),
     })
     expect(await screen.findByText(/todavía no tienes movimiento/i)).toBeInTheDocument()
+  })
+
+  it('tomar una cita "Sin barbero" llama agenda.reassignAppointment (no walkins.assign)', async () => {
+    const repos = makeClockedInRepos()
+    repos.agenda.getAppointments = vi.fn().mockResolvedValue([
+      {
+        id: 'appt-1',
+        status: 'CONFIRMED',
+        salePaymentStatus: null,
+        startAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        endAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+        totalCents: 0,
+        customer: { id: 'c1', fullName: 'Ana Ruiz', phone: null },
+        staffUser: null,
+        items: [{ label: 'Corte', serviceId: 's1', qty: 1, unitPriceCents: 0 }],
+        locationId: 'loc1',
+        locationName: 'Centro',
+      },
+    ])
+    const reassignAppointment = vi.fn().mockResolvedValue(undefined)
+    const walkinsAssign = vi.fn()
+    repos.agenda.reassignAppointment = reassignAppointment
+    repos.walkins.assign = walkinsAssign
+
+    const user = userEvent.setup()
+    renderWithProviders(<HoyPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+      apolloMocks: cajaOpenMocks(),
+    })
+
+    expect(await screen.findByText(/sin barbero/i)).toBeInTheDocument()
+    // Target the row specifically (not the bottom CTA bar, which may also
+    // read "Atender a Ana Ruiz" — the CTA bar's "next" selection doesn't
+    // filter by isMine, a pre-existing gap outside this task's scope). The
+    // "Sin barbero" pill text is unique to the row.
+    await user.click(screen.getByRole('button', { name: /sin barbero/i }))
+
+    expect(await screen.findByText(/¿atender a ana ruiz ahora\?/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /sí, tomar a ana/i }))
+
+    await waitFor(() => expect(reassignAppointment).toHaveBeenCalledWith('appt-1', MOCK_VIEWER.staff.id))
+    expect(walkinsAssign).not.toHaveBeenCalled()
   })
 })

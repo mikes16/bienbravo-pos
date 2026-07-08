@@ -168,6 +168,81 @@ describe('HoyView', () => {
     expect(screen.queryByRole('button', { name: /pedro/i })).toBeNull()
   })
 
+  it('an unassigned appointment row ("Sin barbero") is tappable and fires onTakeAppointment', async () => {
+    const onTakeAppointment = vi.fn()
+    const user = userEvent.setup()
+    const row = {
+      id: 'r1',
+      kind: 'pending' as const,
+      timeLabel: '12:30',
+      customerName: 'Ana Ruiz',
+      customerId: null,
+      customerPhotoUrl: null,
+      customerInitials: 'AR',
+      serviceLabel: 'Corte',
+      meta: null,
+      pillLabel: 'Sin barbero',
+      pillTone: 'walkin' as const,
+      sourceKind: 'appointment' as const,
+      sourceId: 'a1',
+      isMine: false,
+      assignedToName: null,
+      isUnassignedAppt: true,
+    }
+    render(
+      <MemoryRouter>
+        <HoyView
+          vm={makeVm({ rows: [row] })}
+          onCtaClick={() => {}}
+          onGateAction={() => {}}
+          onAddWalkIn={() => {}}
+          onTakeAppointment={onTakeAppointment}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/sin barbero/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /ana ruiz/i }))
+    expect(onTakeAppointment).toHaveBeenCalledTimes(1)
+    expect(onTakeAppointment).toHaveBeenCalledWith(row)
+  })
+
+  it('an assigned appointment row is NOT tappable even when onTakeAppointment is provided', () => {
+    render(
+      <MemoryRouter>
+        <HoyView
+          vm={makeVm({
+            rows: [
+              {
+                id: 'r1',
+                kind: 'pending',
+                timeLabel: '12:30',
+                customerName: 'Pedro Soto',
+                customerId: null,
+                customerPhotoUrl: null,
+                customerInitials: 'PS',
+                serviceLabel: 'Corte',
+                meta: null,
+                pillLabel: 'Cita',
+                pillTone: 'appt',
+                sourceKind: 'appointment',
+                sourceId: 'a1',
+                isMine: true,
+                assignedToName: null,
+                isUnassignedAppt: false,
+              },
+            ],
+          })}
+          onCtaClick={() => {}}
+          onGateAction={() => {}}
+          onAddWalkIn={() => {}}
+          onTakeAppointment={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Pedro Soto')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /pedro soto/i })).toBeNull()
+  })
+
   it('renders the gate when vm.gate is set, hiding the normal Hoy view', async () => {
     const onGateAction = vi.fn()
     const user = userEvent.setup()

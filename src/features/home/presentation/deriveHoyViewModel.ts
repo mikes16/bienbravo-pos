@@ -40,6 +40,12 @@ export interface HoyRowData {
   // Minutos de espera del walk-in en cola. Sirve para el meta de TakeWalkInSheet
   // sin que tenga que recalcularse a partir de createdAt (drift potencial).
   queueWaitMinutes?: number
+  // Solo para sourceKind='appointment'. True cuando la cita quedó "Sin
+  // barbero" (staffUserId null, ej. tras desactivar al barbero asignado) y
+  // sigue activa (CONFIRMED/CHECKED_IN). La vista ofrece "Tomar" — el
+  // barbero logueado se auto-asigna vía reassignAppointment. IN_SERVICE sin
+  // barbero se deja fuera a propósito (caso raro, no complicar el flujo).
+  isUnassignedAppt?: boolean
 }
 
 export interface ContextualCTAData {
@@ -134,6 +140,11 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     const startAt = a.startAt
     const minutes = isInService ? minutesSince(startAt) : 0
     const timeLabel = isInService ? `EN SERVICIO · ${minutes} MIN` : formatTimeMx(startAt)
+    // "Sin barbero": staffUser null en un estado activo tomable. Se ve
+    // idéntico a una cita normal salvo el pill + la posibilidad de "Tomar" —
+    // no queremos gritar visualmente (no es un error), solo comunicar que
+    // está disponible.
+    const isUnassignedAppt = a.staffUser == null && isPending
 
     candidates.push({
       row: {
@@ -146,12 +157,13 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         customerInitials: getInitials(customerName),
         serviceLabel: a.items[0]?.label ?? 'Servicio',
         meta: isInService ? `cita ${formatTimeMx(startAt)}` : null,
-        pillLabel: 'Cita',
-        pillTone: isInService ? 'serving' : 'appt',
+        pillLabel: isUnassignedAppt ? 'Sin barbero' : 'Cita',
+        pillTone: isInService ? 'serving' : isUnassignedAppt ? 'walkin' : 'appt',
         sourceKind: 'appointment',
         sourceId: a.id,
         isMine: a.staffUser?.id === staffId,
         assignedToName: a.staffUser?.fullName ?? null,
+        isUnassignedAppt,
       },
       sortKey: startAt,
       isActive: isInService,

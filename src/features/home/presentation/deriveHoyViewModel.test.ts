@@ -73,6 +73,46 @@ describe('deriveHoyViewModel', () => {
     expect(vm.rows[0].pillLabel).toMatch(/cita/i)
   })
 
+  it('unassigned CONFIRMED appointment (Sin barbero) is marked isUnassignedAppt with a distinct pill', () => {
+    const vm = deriveHoyViewModel(
+      baseInput({
+        appointments: [
+          {
+            id: 'a1',
+            status: 'CONFIRMED',
+            staffUser: null,
+            customer: { id: 'c1', fullName: 'Ana Ruiz', email: null, phone: null },
+            items: [{ label: 'Corte', priceCents: 0, qty: 1 }],
+            startAt: '2026-05-04T13:00:00Z',
+          } as unknown as Appointment,
+        ],
+      }),
+    )
+    expect(vm.rows).toHaveLength(1)
+    expect(vm.rows[0].isUnassignedAppt).toBe(true)
+    expect(vm.rows[0].isMine).toBe(false)
+    expect(vm.rows[0].pillLabel).toMatch(/sin barbero/i)
+  })
+
+  it('unassigned IN_SERVICE appointment is NOT marked isUnassignedAppt (Tomar only offered pre-service)', () => {
+    const vm = deriveHoyViewModel(
+      baseInput({
+        appointments: [
+          {
+            id: 'a1',
+            status: 'IN_SERVICE',
+            staffUser: null,
+            customer: { id: 'c1', fullName: 'Ana Ruiz', email: null, phone: null },
+            items: [{ label: 'Corte', priceCents: 0, qty: 1 }],
+            startAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+          } as unknown as Appointment,
+        ],
+      }),
+    )
+    expect(vm.rows).toHaveLength(1)
+    expect(vm.rows[0].isUnassignedAppt).toBe(false)
+  })
+
   it('walk-in assigned to me is included', () => {
     const vm = deriveHoyViewModel(
       baseInput({

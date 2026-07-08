@@ -310,6 +310,7 @@ export function HoyPage() {
     setTakeTarget({
       id: row.sourceId,
       name: row.customerName,
+      kind: 'walk-in',
       isMyPreference,
       preferredOtherName,
       waitMinutes: row.queueWaitMinutes ?? 0,
@@ -317,21 +318,52 @@ export function HoyPage() {
     })
   }, [vm, viewer, addToast])
 
+  // Tap en una cita "Sin barbero" (isUnassignedAppt). Mismo guard de "ya
+  // estás atendiendo a alguien" que el walk-in — un barbero no puede tomar
+  // un turno nuevo a medio servicio. Confirma en el mismo TakeWalkInSheet;
+  // confirmTake rama por `kind` hacia reassignAppointment en vez de
+  // walkins.assign.
+  const handleTakeAppointment = useCallback((row: HoyRowData) => {
+    if (!vm || !viewer) return
+    const myActiveRow = vm.rows.find((r) => r.kind === 'active' && r.isMine)
+    if (myActiveRow) {
+      addToast(
+        `Termina con ${myActiveRow.customerName.split(' ')[0]} antes de tomar otro turno.`,
+        'error',
+      )
+      return
+    }
+    setTakeTarget({
+      id: row.sourceId,
+      name: row.customerName,
+      kind: 'appointment',
+      isMyPreference: false,
+      preferredOtherName: null,
+      waitMinutes: 0,
+      isJumpingQueue: false,
+      appointmentTimeLabel: row.timeLabel,
+    })
+  }, [vm, viewer, addToast])
+
   const confirmTake = useCallback(async () => {
     if (!takeTarget || taking || !viewer) return
     setTaking(true)
     try {
-      await walkins.assign(takeTarget.id, viewer.staff.id)
+      if (takeTarget.kind === 'appointment') {
+        await agenda.reassignAppointment(takeTarget.id, viewer.staff.id)
+      } else {
+        await walkins.assign(takeTarget.id, viewer.staff.id)
+      }
       addToast(`${takeTarget.name.split(' ')[0]} asignado a ti`, 'success')
       setTakeTarget(null)
       void refetch({ force: true })
     } catch (e) {
-      const msg = (e as { message?: string }).message ?? 'No se pudo tomar el walk-in.'
+      const msg = (e as { message?: string }).message ?? 'No se pudo tomar el turno.'
       addToast(msg, 'error')
     } finally {
       setTaking(false)
     }
-  }, [takeTarget, taking, viewer, walkins, addToast, refetch])
+  }, [takeTarget, taking, viewer, walkins, agenda, addToast, refetch])
 
   const confirmFinalize = useCallback(async () => {
     if (!finalizeTarget || finalizing) return
@@ -371,6 +403,7 @@ export function HoyPage() {
         onAddWalkIn={() => setAddWalkInOpen(true)}
         onFinalizeWalkIn={handleFinalizeWalkIn}
         onTakeQueueItem={handleTakeQueueItem}
+        onTakeAppointment={handleTakeAppointment}
         ctaBusy={ctaBusy}
       />
       {locationId && (

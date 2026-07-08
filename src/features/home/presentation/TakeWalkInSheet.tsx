@@ -3,19 +3,27 @@ import { TouchButton } from '@/shared/pos-ui/TouchButton'
 export interface TakeWalkInTarget {
   id: string
   name: string
+  // Discrimina qué mutation dispara el confirm: walkins.assign (walk-in) vs
+  // agenda.reassignAppointment (cita "Sin barbero"). El sheet reusa el mismo
+  // copy de confirmación para ambos; solo cambia el label de contexto y el
+  // meta line, que no aplican igual a una cita (no hay cola/espera/preferencia).
+  kind: 'walk-in' | 'appointment'
   // Si el cliente lo pidió específicamente al viewer. Cambia el copy y el
   // visual para reforzar "este venía por ti" — refleja el destaque que ya
-  // hace HoyRow con border-l bravo.
+  // hace HoyRow con border-l bravo. Solo aplica a walk-ins.
   isMyPreference: boolean
   // Si hay otro barbero como preferido, lo decimos explícitamente para que
   // el operador sepa que se lo está quitando de su cola (no es un error,
-  // pero merece visibilidad).
+  // pero merece visibilidad). Solo aplica a walk-ins.
   preferredOtherName: string | null
   waitMinutes: number
   // True si esta fila no es la primera de la cola — el operador está
   // "saltando" a alguien. No es bloqueante, solo merece nota para evitar
-  // taps accidentales en filas inesperadas.
+  // taps accidentales en filas inesperadas. Solo aplica a walk-ins.
   isJumpingQueue: boolean
+  // Solo para kind='appointment': hora de la cita, para el meta line
+  // ("Cita · 14:30" en vez del "Walk-in · esperando X min" que no aplica).
+  appointmentTimeLabel?: string | null
 }
 
 interface TakeWalkInSheetProps {
@@ -39,10 +47,11 @@ interface TakeWalkInSheetProps {
  */
 export function TakeWalkInSheet({ target, submitting, onConfirm, onClose }: TakeWalkInSheetProps) {
   if (!target) return null
+  const isAppointment = target.kind === 'appointment'
   return (
     <div
       role="dialog"
-      aria-label="Tomar walk-in"
+      aria-label={isAppointment ? 'Tomar cita' : 'Tomar walk-in'}
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/70"
       onClick={() => { if (!submitting) onClose() }}
     >
@@ -54,26 +63,33 @@ export function TakeWalkInSheet({ target, submitting, onConfirm, onClose }: Take
           className="font-mono text-[10px] font-bold uppercase tracking-[0.2em]"
           style={{ color: target.isMyPreference ? 'var(--color-bravo)' : 'var(--color-bone-muted)' }}
         >
-          {target.isMyPreference ? 'Te está esperando' : 'Tomar de la cola'}
+          {isAppointment ? 'Cita sin barbero' : target.isMyPreference ? 'Te está esperando' : 'Tomar de la cola'}
         </p>
         <p className="mt-2 font-[var(--font-pos-display)] text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[var(--color-bone)]">
           ¿Atender a {target.name} ahora?
         </p>
 
-        {/* Meta block: tiempo de espera + contexto de preferencia. Una sola
-            línea para no saturar; el operador necesita decidir rápido. */}
+        {/* Meta block: para citas es solo la hora (no hay cola/espera/preferencia
+            — esos conceptos son de walk-ins). Una sola línea para no saturar;
+            el operador necesita decidir rápido. */}
         <p className="mt-3 text-[13px] leading-snug text-[var(--color-bone-muted)]">
-          Walk-in · esperando <strong className="text-[var(--color-bone)] tabular-nums">{target.waitMinutes} min</strong>
-          {target.preferredOtherName && (
-            <> · pidió a <strong className="text-[var(--color-bone)]">{target.preferredOtherName}</strong></>
+          {isAppointment ? (
+            <>Cita · <strong className="text-[var(--color-bone)] tabular-nums">{target.appointmentTimeLabel}</strong></>
+          ) : (
+            <>
+              Walk-in · esperando <strong className="text-[var(--color-bone)] tabular-nums">{target.waitMinutes} min</strong>
+              {target.preferredOtherName && (
+                <> · pidió a <strong className="text-[var(--color-bone)]">{target.preferredOtherName}</strong></>
+              )}
+            </>
           )}
         </p>
 
         {/* Aviso de salto de cola: solo si aplica, en leather (informativo, no
             bloqueante). Si además es preferencia tuya, no tiene caso decir
             "estás saltando" — el cliente vino por ti, es lógico que vaya
-            primero. */}
-        {target.isJumpingQueue && !target.isMyPreference && (
+            primero. No aplica a citas — no hay cola FIFO. */}
+        {!isAppointment && target.isJumpingQueue && !target.isMyPreference && (
           <div className="mt-4 border-l-[2px] border-[var(--color-leather)] bg-[var(--color-cuero-viejo)]/30 px-3 py-2">
             <p className="text-[12px] leading-snug text-[var(--color-bone)]">
               Hay clientes adelante en la cola. Asegúrate de que es lo correcto.

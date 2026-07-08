@@ -21,6 +21,12 @@ interface HoyViewProps {
    * sheet de confirmación con los datos del row.
    */
   onTakeQueueItem?: (row: HoyRowData) => void
+  /**
+   * Tap en una cita "Sin barbero" (row.isUnassignedAppt): el operador se
+   * auto-asigna la cita. Mismo sheet de confirmación que onTakeQueueItem,
+   * pero HoyPage lo rama hacia reassignAppointment en vez de assignWalkIn.
+   */
+  onTakeAppointment?: (row: HoyRowData) => void
   /** True while the CTA action is in-flight — dims + spinner on the bar. */
   ctaBusy?: boolean
 }
@@ -36,7 +42,7 @@ function commissionCaption(amountCents: number, serviceCount: number): string {
   return pluralizeServicios(serviceCount)
 }
 
-export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn, onTakeQueueItem, ctaBusy = false }: HoyViewProps) {
+export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn, onTakeQueueItem, onTakeAppointment, ctaBusy = false }: HoyViewProps) {
   if (vm.gate) {
     return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
   }
@@ -96,11 +102,19 @@ export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeW
             // Mutex con onFinalize: la fila tappable y el botón Finalizar son
             // estados distintos (queue vs active), no chocan.
             const takeable = row.kind === 'queue' && row.sourceKind === 'walk-in' && onTakeQueueItem
+            // Cita "Sin barbero" (isUnassignedAppt): mismo patrón de tap →
+            // sheet de confirmación, pero ejecuta reassignAppointment.
+            const takeableAppt = row.sourceKind === 'appointment' && row.isUnassignedAppt && onTakeAppointment
+            const onRowClick = takeable
+              ? () => onTakeQueueItem(row)
+              : takeableAppt
+                ? () => onTakeAppointment(row)
+                : undefined
             return (
               <HoyRow
                 key={row.id}
                 {...row}
-                onClick={takeable ? () => onTakeQueueItem(row) : undefined}
+                onClick={onRowClick}
                 onFinalize={finalizable ? () => onFinalizeWalkIn(row.sourceId, row.customerName) : undefined}
               />
             )
