@@ -56,8 +56,8 @@ export interface ClockRepository {
   clockIn(locationId: string): Promise<boolean>
   clockOut(locationId: string): Promise<boolean>
   getEvents(staffUserId: string, locationId: string, fromDate: string, toDate: string): Promise<TimeClockEvent[]>
-  getShiftTemplates(staffUserId: string, locationId: string): Promise<ShiftTemplate[]>
-  getLatenessThresholdMin(locationId: string): Promise<number>
+  getShiftTemplates(staffUserId: string, locationId: string, opts?: { force?: boolean }): Promise<ShiftTemplate[]>
+  getLatenessThresholdMin(locationId: string, opts?: { force?: boolean }): Promise<number>
 }
 
 export class ApolloClockRepository implements ClockRepository {
@@ -114,27 +114,40 @@ export class ApolloClockRepository implements ClockRepository {
   async getShiftTemplates(
     staffUserId: string,
     locationId: string,
+    opts?: { force?: boolean },
   ): Promise<ShiftTemplate[]> {
+    // cache-first por default pinta rápido en el mount. Pero estos son
+    // datos configurados por el admin (plantilla de turno) — si cambian a
+    // mitad del día, este cliente Apollo nunca se entera (no hay mutación
+    // local que los evicte, a diferencia de registers/openSession). Sin un
+    // path force:true, el indicador de "tarde" del reloj se queda con la
+    // config vieja hasta un hard reload. ClockPage usa force:true en su
+    // refetch de window.focus / visibilitychange, mismo patrón que
+    // CajaPage con getRegisters.
     const { data } = await this.#client.query<{ shiftTemplates: ShiftTemplate[] }>({
       query: SHIFT_TEMPLATES,
       variables: { staffUserId, locationId },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     return data!.shiftTemplates
   }
 
-  async getLatenessThresholdMin(locationId: string): Promise<number> {
+  async getLatenessThresholdMin(locationId: string, opts?: { force?: boolean }): Promise<number> {
     // Default 10 min — alineado con el fallback de payroll.service.ts
     // (línea 260: `?? rule?.defaultMinutesLateThreshold ?? 10`).
     // Si la sucursal no tiene regla configurada, usamos esto.
     const DEFAULT_THRESHOLD = 10
     try {
+      // Mismo motivo que getShiftTemplates: la regla de tardanza la
+      // configura el admin y no hay eviction local — force:true (usado en
+      // el refetch de focus/visibilitychange de ClockPage) es lo único que
+      // hace que un cambio de tolerancia se refleje sin hard reload.
       const { data } = await this.#client.query<{
         latenessRule: { defaultMinutesLateThreshold: number } | null
       }>({
         query: LATENESS_RULE,
         variables: { locationId },
-        fetchPolicy: 'cache-first',
+        fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
       })
       return data?.latenessRule?.defaultMinutesLateThreshold ?? DEFAULT_THRESHOLD
     } catch {

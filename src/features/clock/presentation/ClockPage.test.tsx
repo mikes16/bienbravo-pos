@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ClockPage } from './ClockPage'
@@ -96,5 +96,43 @@ describe('ClockPage', () => {
     // sin valor — la lista cabe sin problema en la pantalla.
     expect(await screen.findByText('Entrada')).toBeInTheDocument()
     expect(screen.getByText('Salida')).toBeInTheDocument()
+  })
+
+  // FIX 8: shiftTemplates/latenessRule son config del admin (plantilla de
+  // turno, tolerancia de tardanza) sin eviction local — si cambian a mitad
+  // del día, el indicador de "tarde" se quedaba stale hasta un hard reload.
+  // ClockPage debe refetchear ambas con force:true (network-only) en focus
+  // y visibilitychange, mismo patrón dual que CajaPage/MyDayPage.
+  it('reloads shiftTemplates/latenessRule with force:true on window focus and visibilitychange', async () => {
+    const repos = makeRepos()
+    const getShiftTemplates = repos.clock.getShiftTemplates as ReturnType<typeof vi.fn>
+    const getLatenessThresholdMin = vi.fn().mockResolvedValue(10)
+    repos.clock.getLatenessThresholdMin = getLatenessThresholdMin
+    renderWithProviders(<ClockPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    await screen.findByText(/listo para empezar/i)
+
+    // Mount inicial es cache-first (force:false) — arranca en 0 llamadas forzadas.
+    const forcedTemplatesBefore = getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length
+    const forcedLatenessBefore = getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length
+    expect(forcedTemplatesBefore).toBe(0)
+    expect(forcedLatenessBefore).toBe(0)
+
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => {
+      expect(getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedTemplatesBefore)
+      expect(getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedLatenessBefore)
+    })
+    const forcedTemplatesAfterFocus = getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length
+    const forcedLatenessAfterFocus = getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() => {
+      expect(getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedTemplatesAfterFocus)
+      expect(getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedLatenessAfterFocus)
+    })
   })
 })

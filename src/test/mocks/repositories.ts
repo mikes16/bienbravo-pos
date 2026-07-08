@@ -286,11 +286,11 @@ export class InMemoryClockRepository implements ClockRepository {
     return []
   }
 
-  async getShiftTemplates(_staffUserId: string, _locationId: string): Promise<ShiftTemplate[]> {
+  async getShiftTemplates(_staffUserId: string, _locationId: string, _opts?: { force?: boolean }): Promise<ShiftTemplate[]> {
     return []
   }
 
-  async getLatenessThresholdMin(_locationId: string): Promise<number> {
+  async getLatenessThresholdMin(_locationId: string, _opts?: { force?: boolean }): Promise<number> {
     return 10
   }
 }

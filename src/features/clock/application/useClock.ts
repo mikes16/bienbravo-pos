@@ -70,10 +70,19 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   // calcular el retardo del barbero según la política real, no un hardcode.
   const [latenessThresholdMin, setLatenessThresholdMin] = useState(10)
 
-  const refresh = useCallback(() => {
+  // `showSpinner` = mount inicial muestra el skeleton; el refetch de
+  // focus/visibilitychange (ver ClockPage) hace revalidación en background
+  // sin parpadeo. `force` = network-only para shiftTemplates/latenessRule,
+  // que son config del admin sin eviction local (a diferencia de
+  // registers/openSession) — sin esto, un cambio de plantilla de turno o
+  // de tolerancia de tardanza a mitad del día se queda stale hasta un hard
+  // reload. Mismo patrón showSpinner/force que loadDay en MyDayPage.
+  const refresh = useCallback((opts?: { showSpinner?: boolean; force?: boolean }) => {
     if (!staffUserId || !locationId) return
     const d = todayISO()
-    setLoading(true)
+    const showSpinner = opts?.showSpinner ?? true
+    const force = opts?.force ?? false
+    if (showSpinner) setLoading(true)
     setError(null)
     setNotAssignedHere(false)
     // Independent fetches: events, shift templates, lateness rule — fallan o
@@ -81,8 +90,8 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     // caemos al default (10 min) en lugar de bloquear el reloj.
     void Promise.allSettled([
       clock.getEvents(staffUserId, locationId, d, d),
-      clock.getShiftTemplates(staffUserId, locationId),
-      clock.getLatenessThresholdMin(locationId),
+      clock.getShiftTemplates(staffUserId, locationId, { force }),
+      clock.getLatenessThresholdMin(locationId, { force }),
     ]).then(([evtsRes, templatesRes, latenessRes]) => {
       const eventsForbidden = evtsRes.status === 'rejected' && isForbidden(evtsRes.reason)
       const templatesForbidden = templatesRes.status === 'rejected' && isForbidden(templatesRes.reason)
