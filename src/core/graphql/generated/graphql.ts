@@ -1138,6 +1138,7 @@ export type Mutation = {
   openRegisterSession: RegisterSession;
   pauseWalkIn: WalkIn;
   publishBlogPost: BlogPost;
+  reassignAppointment: Appointment;
   recalcReportingMetrics: Scalars['Boolean']['output'];
   refundApprove: Scalars['Boolean']['output'];
   refundReject: Scalars['Boolean']['output'];
@@ -1665,6 +1666,12 @@ export type MutationPublishBlogPostArgs = {
 };
 
 
+export type MutationReassignAppointmentArgs = {
+  appointmentId: Scalars['ID']['input'];
+  staffUserId: Scalars['ID']['input'];
+};
+
+
 export type MutationRecalcReportingMetricsArgs = {
   dateFrom: Scalars['String']['input'];
   dateTo: Scalars['String']['input'];
@@ -2098,6 +2105,22 @@ export type PayrollPreviewRow = {
   staffUserId: Scalars['ID']['output'];
 };
 
+export type PendingWorkloadAppointment = {
+  __typename?: 'PendingWorkloadAppointment';
+  customerName: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  serviceLabel?: Maybe<Scalars['String']['output']>;
+  startAt: Scalars['DateTime']['output'];
+  status: Scalars['String']['output'];
+};
+
+export type PendingWorkloadWalkIn = {
+  __typename?: 'PendingWorkloadWalkIn';
+  customerName: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  status: Scalars['String']['output'];
+};
+
 export type PosAvailableBarber = {
   __typename?: 'PosAvailableBarber';
   fullName: Scalars['String']['output'];
@@ -2403,6 +2426,7 @@ export type Query = {
   staffList: Array<StaffUser>;
   staffLocationsWithSchedules: Array<StaffLocationScheduleSummary>;
   staffMemberships: Array<StaffMembership>;
+  staffPendingWorkload: StaffPendingWorkload;
   staffProductRevenueToday: Scalars['Int']['output'];
   staffRegisterSessions: Array<RegisterSession>;
   staffRevenueToday: Scalars['Int']['output'];
@@ -2945,6 +2969,11 @@ export type QueryStaffLocationsWithSchedulesArgs = {
 export type QueryStaffMembershipsArgs = {
   locationId?: InputMaybe<Scalars['ID']['input']>;
   staffUserId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryStaffPendingWorkloadArgs = {
+  staffUserId: Scalars['ID']['input'];
 };
 
 
@@ -3608,6 +3637,12 @@ export type StaffMembership = {
   startsAt: Scalars['DateTime']['output'];
 };
 
+export type StaffPendingWorkload = {
+  __typename?: 'StaffPendingWorkload';
+  appointments: Array<PendingWorkloadAppointment>;
+  walkIns: Array<PendingWorkloadWalkIn>;
+};
+
 export type StaffRoleAssignmentRow = {
   __typename?: 'StaffRoleAssignmentRow';
   id: Scalars['ID']['output'];
@@ -4172,6 +4207,14 @@ export type NoShowMutationVariables = Exact<{
 
 export type NoShowMutation = { __typename?: 'Mutation', noShow: { __typename?: 'Appointment', id: string, status: AppointmentStatus } };
 
+export type PosReassignAppointmentMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+  staffUserId: Scalars['ID']['input'];
+}>;
+
+
+export type PosReassignAppointmentMutation = { __typename?: 'Mutation', reassignAppointment: { __typename?: 'Appointment', id: string, status: AppointmentStatus, staffUser?: { __typename?: 'StaffUser', id: string, fullName: string } | null } };
+
 export type PosFindOrCreateMostradorCustomerMutationVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -4524,6 +4567,7 @@ export const CheckInDocument = {"kind":"Document","definitions":[{"kind":"Operat
 export const StartServiceDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StartService"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"startService"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"appointmentId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<StartServiceMutation, StartServiceMutationVariables>;
 export const CompleteDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"Complete"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"complete"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"appointmentId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<CompleteMutation, CompleteMutationVariables>;
 export const NoShowDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"NoShow"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"noShow"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"appointmentId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<NoShowMutation, NoShowMutationVariables>;
+export const PosReassignAppointmentDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PosReassignAppointment"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"reassignAppointment"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"appointmentId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"staffUser"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}}]}}]}}]}}]} as unknown as DocumentNode<PosReassignAppointmentMutation, PosReassignAppointmentMutationVariables>;
 export const PosFindOrCreateMostradorCustomerDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PosFindOrCreateMostradorCustomer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findOrCreateMostradorCustomer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}}]}}]}}]} as unknown as DocumentNode<PosFindOrCreateMostradorCustomerMutation, PosFindOrCreateMostradorCustomerMutationVariables>;
 export const PosCheckoutBarbersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosCheckoutBarbers"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"barbers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}}]}}]}}]} as unknown as DocumentNode<PosCheckoutBarbersQuery, PosCheckoutBarbersQueryVariables>;
 export const PosAvailableBarbersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosAvailableBarbers"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"posAvailableBarbers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"hasClockedIn"}},{"kind":"Field","name":{"kind":"Name","value":"isOccupied"}}]}}]}}]} as unknown as DocumentNode<PosAvailableBarbersQuery, PosAvailableBarbersQueryVariables>;

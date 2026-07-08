@@ -296,6 +296,7 @@ export class InMemoryAgendaRepository implements AgendaRepository {
   async startService(_id: string): Promise<void> {}
   async complete(_id: string): Promise<void> {}
   async noShow(_id: string): Promise<void> {}
+  async reassignAppointment(_appointmentId: string, _staffUserId: string): Promise<void> {}
 }
 
 export class InMemoryWalkInsRepository implements WalkInsRepository {

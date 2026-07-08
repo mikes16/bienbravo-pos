@@ -18,6 +18,7 @@ const CHECK_IN = graphql(`mutation CheckIn($id: ID!) { checkIn(appointmentId: $i
 const START_SERVICE = graphql(`mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }`)
 const COMPLETE = graphql(`mutation Complete($id: ID!) { complete(appointmentId: $id) { id status } }`)
 const NO_SHOW = graphql(`mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }`)
+const REASSIGN_APPOINTMENT = graphql(`mutation PosReassignAppointment($id: ID!, $staffUserId: ID!) { reassignAppointment(appointmentId: $id, staffUserId: $staffUserId) { id status staffUser { id fullName } } }`)
 
 export interface AgendaRepository {
   getAppointments(dateFrom: string, dateTo: string, locationId: string | null, status?: AppointmentStatus, opts?: { force?: boolean }): Promise<Appointment[]>
@@ -25,6 +26,11 @@ export interface AgendaRepository {
   startService(appointmentId: string): Promise<void>
   complete(appointmentId: string): Promise<void>
   noShow(appointmentId: string): Promise<void>
+  // Self-claim de una cita "Sin barbero" (staffUser == null): el barbero
+  // logueado se auto-asigna. Reusa la mutation anti-doble-booking del API
+  // (reassignAppointment) — el mismo endpoint que usará el admin para
+  // reasignar, pero aquí siempre con staffUserId = viewer.staff.id.
+  reassignAppointment(appointmentId: string, staffUserId: string): Promise<void>
 }
 
 export class ApolloAgendaRepository implements AgendaRepository {
@@ -64,5 +70,9 @@ export class ApolloAgendaRepository implements AgendaRepository {
 
   async noShow(appointmentId: string): Promise<void> {
     await this.#client.mutate({ mutation: NO_SHOW, variables: { id: appointmentId } })
+  }
+
+  async reassignAppointment(appointmentId: string, staffUserId: string): Promise<void> {
+    await this.#client.mutate({ mutation: REASSIGN_APPOINTMENT, variables: { id: appointmentId, staffUserId } })
   }
 }

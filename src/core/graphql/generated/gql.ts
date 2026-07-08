@@ -28,6 +28,7 @@ type Documents = {
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": typeof types.StartServiceDocument,
     "mutation Complete($id: ID!) { complete(appointmentId: $id) { id status } }": typeof types.CompleteDocument,
     "mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }": typeof types.NoShowDocument,
+    "mutation PosReassignAppointment($id: ID!, $staffUserId: ID!) { reassignAppointment(appointmentId: $id, staffUserId: $staffUserId) { id status staffUser { id fullName } } }": typeof types.PosReassignAppointmentDocument,
     "\n  mutation PosFindOrCreateMostradorCustomer {\n    findOrCreateMostradorCustomer {\n      id\n      fullName\n    }\n  }\n": typeof types.PosFindOrCreateMostradorCustomerDocument,
     "\n  query PosCheckoutBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n    }\n  }\n": typeof types.PosCheckoutBarbersDocument,
     "\n  query PosAvailableBarbers($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n      hasClockedIn\n      isOccupied\n    }\n  }\n": typeof types.PosAvailableBarbersDocument,
@@ -89,6 +90,7 @@ const documents: Documents = {
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": types.StartServiceDocument,
     "mutation Complete($id: ID!) { complete(appointmentId: $id) { id status } }": types.CompleteDocument,
     "mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }": types.NoShowDocument,
+    "mutation PosReassignAppointment($id: ID!, $staffUserId: ID!) { reassignAppointment(appointmentId: $id, staffUserId: $staffUserId) { id status staffUser { id fullName } } }": types.PosReassignAppointmentDocument,
     "\n  mutation PosFindOrCreateMostradorCustomer {\n    findOrCreateMostradorCustomer {\n      id\n      fullName\n    }\n  }\n": types.PosFindOrCreateMostradorCustomerDocument,
     "\n  query PosCheckoutBarbers($locationId: ID!) {\n    barbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n    }\n  }\n": types.PosCheckoutBarbersDocument,
     "\n  query PosAvailableBarbers($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      fullName\n      photoUrl\n      hasClockedIn\n      isOccupied\n    }\n  }\n": types.PosAvailableBarbersDocument,
@@ -206,6 +208,10 @@ export function graphql(source: "mutation Complete($id: ID!) { complete(appointm
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }"): (typeof documents)["mutation NoShow($id: ID!) { noShow(appointmentId: $id) { id status } }"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "mutation PosReassignAppointment($id: ID!, $staffUserId: ID!) { reassignAppointment(appointmentId: $id, staffUserId: $staffUserId) { id status staffUser { id fullName } } }"): (typeof documents)["mutation PosReassignAppointment($id: ID!, $staffUserId: ID!) { reassignAppointment(appointmentId: $id, staffUserId: $staffUserId) { id status staffUser { id fullName } } }"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

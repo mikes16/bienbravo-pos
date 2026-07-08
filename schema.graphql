@@ -1066,6 +1066,7 @@ type Mutation {
   openRegisterSession(openingCashCents: Int, registerId: ID!): RegisterSession!
   pauseWalkIn(walkInId: ID!): WalkIn!
   publishBlogPost(id: ID!): BlogPost!
+  reassignAppointment(appointmentId: ID!, staffUserId: ID!): Appointment!
   recalcReportingMetrics(dateFrom: String!, dateTo: String!): Boolean!
   refundApprove(refundId: ID!): Boolean!
   refundReject(reason: String, refundId: ID!): Boolean!
@@ -1232,6 +1233,20 @@ type PayrollPreviewRow {
   fullName: String!
   revenueCents: Int!
   staffUserId: ID!
+}
+
+type PendingWorkloadAppointment {
+  customerName: String!
+  id: ID!
+  serviceLabel: String
+  startAt: DateTime!
+  status: String!
+}
+
+type PendingWorkloadWalkIn {
+  customerName: String!
+  id: ID!
+  status: String!
 }
 
 type PosAvailableBarber {
@@ -1519,6 +1534,7 @@ type Query {
   staffList: [StaffUser!]!
   staffLocationsWithSchedules(staffUserId: ID!): [StaffLocationScheduleSummary!]!
   staffMemberships(locationId: ID, staffUserId: ID): [StaffMembership!]!
+  staffPendingWorkload(staffUserId: ID!): StaffPendingWorkload!
   staffProductRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffRegisterSessions(dateFrom: String, dateTo: String, first: Int! = 50, staffUserId: ID!): [RegisterSession!]!
   staffRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
@@ -2062,6 +2078,11 @@ type StaffMembership {
   staffUser: StaffUser!
   staffUserId: ID!
   startsAt: DateTime!
+}
+
+type StaffPendingWorkload {
+  appointments: [PendingWorkloadAppointment!]!
+  walkIns: [PendingWorkloadWalkIn!]!
 }
 
 type StaffRoleAssignmentRow {
