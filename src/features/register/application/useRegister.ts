@@ -11,9 +11,13 @@ export function useRegister(locationId: string | null) {
   const refresh = useCallback(() => {
     if (!locationId) return
     setLoading(true)
+    setError(null)
     register
       .getRegisters(locationId)
-      .then(setRegisters)
+      .then((data) => {
+        setRegisters(data)
+        setError(null)
+      })
       .catch(() => setError('No se pudo cargar las cajas'))
       .finally(() => setLoading(false))
   }, [register, locationId])

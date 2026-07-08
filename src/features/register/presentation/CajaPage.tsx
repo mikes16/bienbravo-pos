@@ -7,7 +7,7 @@ import { useRegister } from '../application/useRegister'
 import { CajaClosedView } from './CajaClosedView'
 import { CajaOpenView } from './CajaOpenView'
 import { ActiveServicesBlocker, type ActiveServiceItem } from './ActiveServicesBlocker'
-import { SkeletonRow } from '@/shared/pos-ui'
+import { SkeletonRow, TouchButton } from '@/shared/pos-ui'
 
 // TODO: derive fondoCents from session metadata (the API doesn't expose
 // opening fondo as a discrete field today). For Sub-#3 v1 we use a placeholder;
@@ -32,7 +32,7 @@ export function CajaPage() {
   const viewerLoaded = !!viewer
   const canOpen = !viewerLoaded || perms.includes('pos.register.open')
   const canClose = !viewerLoaded || perms.includes('pos.register.close')
-  const { registers, loading, refresh } = useRegister(locationId)
+  const { registers, loading, error, refresh } = useRegister(locationId)
   const [blocker, setBlocker] = useState<ActiveServiceItem[] | null>(null)
   const [checkingActive, setCheckingActive] = useState(false)
 
@@ -134,6 +134,28 @@ export function CajaPage() {
           <p className="text-sm text-[var(--color-bone-muted)]">
             Tu rol no incluye permisos de caja. Pide a un administrador que ajuste tu rol POS.
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error && registers.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+            Error
+          </p>
+          <h1
+            className="mb-2 text-2xl font-bold text-[var(--color-bone)]"
+            style={{ fontFamily: 'var(--font-pos-display)' }}
+          >
+            Caja
+          </h1>
+          <p className="mb-4 text-sm text-[var(--color-bone-muted)]">{error}</p>
+          <TouchButton variant="secondary" size="min" onClick={refresh}>
+            Reintentar
+          </TouchButton>
         </div>
       </div>
     )
