@@ -170,7 +170,7 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return []
   }
 
-  async getStockLevels(_locationId: string): Promise<StockLevel[]> {
+  async getStockLevels(_locationId: string, _opts?: { force?: boolean }): Promise<StockLevel[]> {
     return []
   }
 

@@ -134,7 +134,10 @@ export function useCheckout() {
       // A1: barberos CON estado de turno (hasClockedIn) — el checkout solo deja
       // asignar a los que ya iniciaron su día.
       checkout.getAvailableBarbers(locationId),
-      checkout.getStockLevels(locationId),
+      // force:true — stock es LIVE y correctness-critical (riesgo de
+      // sobreventa en el display). No confiamos en el cache-first de una
+      // venta anterior en este device u otro tablet de la sucursal.
+      checkout.getStockLevels(locationId, { force: true }),
       register.getRegisters(locationId),
     ])
       .then(([services, products, combos, cats, brbs, stock, registers]) => {

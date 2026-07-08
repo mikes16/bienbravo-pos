@@ -97,6 +97,16 @@ describe('CheckoutPage (integration)', () => {
     })
   })
 
+  it('loads stock with force:true so post-sale stock is never stale (overselling risk)', async () => {
+    const repos = makeRepos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    expect(repos.checkout.getStockLevels).toHaveBeenCalledWith('loc1', { force: true })
+  })
+
   it('walk-in completion: pre-fills customer + barber from WalkIn', async () => {
     const repos = makeRepos()
     repos.checkout.getWalkIn = vi.fn().mockResolvedValue({

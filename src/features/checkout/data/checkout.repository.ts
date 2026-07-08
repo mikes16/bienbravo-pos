@@ -490,7 +490,16 @@ export interface CheckoutRepository {
   getProducts(locationId: string): Promise<CatalogProduct[]>
   getCombos(): Promise<CatalogCombo[]>
   resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string): Promise<number>
-  getStockLevels(locationId: string): Promise<StockLevel[]>
+  /**
+   * Stock es dato LIVE y correctness-critical (riesgo de sobreventa si se
+   * muestra stale). `opts.force` fuerza `network-only`; el checkout lo usa
+   * siempre al entrar a la pantalla. `createSale` evict-ea `posInventoryLevels`
+   * del cache tras cada venta — ese evict + este force son las dos mitades
+   * del fix: sin el evict, otras pantallas seguirían viendo el snapshot
+   * viejo hasta su propio force; sin el force, el checkout que abre justo
+   * después de una venta ajena seguiría pintando cache-first.
+   */
+  getStockLevels(locationId: string, opts?: { force?: boolean }): Promise<StockLevel[]>
   createSale(input: CreateSaleInput): Promise<SaleResult>
   /**
    * Cierra una venta prepagada (Sale.paymentStatus=PAID) al completar el
@@ -677,15 +686,17 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     return svc.pricingFor?.priceCents ?? svc.basePriceCents
   }
 
-  async getStockLevels(locationId: string): Promise<StockLevel[]> {
-    // cache-first: el snapshot cached del checkout previo pinta el grid al
-    // instante. Stock se decrementa con cache.modify en createSale, y la
-    // próxima entrada al checkout fuerza network-only via Promise.all del
-    // useCheckout para garantizar freshness.
+  async getStockLevels(locationId: string, opts?: { force?: boolean }): Promise<StockLevel[]> {
+    // opts.force → network-only. useCheckout siempre pasa force:true al
+    // entrar al checkout: el stock es LIVE (riesgo de sobreventa si se
+    // muestra stale), así que no confiamos en el cache-first snapshot de una
+    // sesión/venta anterior. createSale evict-ea `posInventoryLevels` tras
+    // cada venta — este force es la otra mitad: garantiza que la lectura
+    // siguiente (en este dispositivo o cualquier otro) vaya por red.
     const { data } = await this.#client.query<{ posInventoryLevels: StockLevel[] }>({
       query: POS_INVENTORY_LEVELS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     return data!.posInventoryLevels
   }
@@ -775,10 +786,18 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     //     pantalla Caja (getRegisters es cache-first) mostraba el snapshot viejo
     //     — ej. TARJETA $0 tras cobrar con tarjeta. El dinero SÍ estaba en la DB;
     //     era solo el display. Evictar arregla el display al volver a Caja/Hoy.
+    //   - posInventoryLevels: una venta con productos decrementa stock
+    //     server-side, pero no hay `cache.modify` local que lo refleje (no
+    //     existe en este repo — no confundir con comentarios viejos). Sin
+    //     este evict, este device y cualquier otro tablet de la sucursal
+    //     seguían pintando el stock de ANTES de la venta toda la sesión —
+    //     riesgo real de sobreventa en el display (el API sí valida stock
+    //     server-side, pero el cajero necesita ver el número real).
     const cache = this.#client.cache
     cache.evict({ id: 'ROOT_QUERY', fieldName: 'staffDayEarnings' })
     cache.evict({ id: 'ROOT_QUERY', fieldName: 'registers' })
     cache.evict({ id: 'ROOT_QUERY', fieldName: 'posCajaStatusHome' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'posInventoryLevels' })
     cache.gc()
     return data!.createPOSSale
   }
