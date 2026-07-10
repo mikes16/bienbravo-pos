@@ -1,18 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
+import { useLocation } from '@/core/location/useLocation'
+import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
 import type { Appointment } from '../domain/agenda.types.ts'
-
-function todayRangeISO(): { from: string; to: string } {
-  const now = new Date()
-  const from = new Date(now)
-  from.setHours(0, 0, 0, 0)
-  const to = new Date(now)
-  to.setHours(23, 59, 59, 999)
-  return { from: from.toISOString(), to: to.toISOString() }
-}
 
 export function useAgenda(staffUserId: string | null, locationId: string | null) {
   const { agenda } = useRepositories()
+  const { locationTimezone } = useLocation()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -25,16 +19,19 @@ export function useAgenda(staffUserId: string | null, locationId: string | null)
   // desde otro device (admin, kiosko, otro POS).
   const refresh = useCallback((opts?: { force?: boolean }) => {
     if (!locationId) return
-    const { from, to } = todayRangeISO()
+    const { startUtc: from, endUtc: to } = localDayRangeInTz(
+      localDayInTz(new Date(), locationTimezone),
+      locationTimezone,
+    )
     setLoading(true)
     agenda
-      .getAppointments(from, to, locationId, undefined, opts)
+      .getAppointments(from.toISOString(), to.toISOString(), locationId, undefined, opts)
       .then((all: Appointment[]) => {
         setAppointments(all)
       })
       .catch(() => setError('No se pudo cargar la agenda'))
       .finally(() => setLoading(false))
-  }, [agenda, staffUserId, locationId])
+  }, [agenda, staffUserId, locationId, locationTimezone])
 
   useEffect(() => { refresh() }, [refresh])
 

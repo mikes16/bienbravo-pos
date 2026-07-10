@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { usePosAuth } from '@/core/auth/usePosAuth'
+import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
 import { useRegister } from '../application/useRegister'
 import { CajaClosedView } from './CajaClosedView'
 import { CajaOpenView } from './CajaOpenView'
@@ -14,16 +15,15 @@ import { SkeletonRow, TouchButton } from '@/shared/pos-ui'
 // post-merge follow-up: compute as session.expectedCashCents - sum(cash sales).
 const FONDO_PLACEHOLDER_CENTS = 50000
 
-function todayRangeISO(): { from: string; to: string } {
+function todayRangeISO(tz: string): { from: string; to: string } {
   const now = new Date()
-  const from = new Date(now); from.setHours(0, 0, 0, 0)
-  const to = new Date(now); to.setHours(23, 59, 59, 999)
+  const { startUtc: from, endUtc: to } = localDayRangeInTz(localDayInTz(now, tz), tz)
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
 export function CajaPage() {
   const navigate = useNavigate()
-  const { locationId } = useLocation()
+  const { locationId, locationTimezone } = useLocation()
   const { agenda, walkins } = useRepositories()
   const { viewer } = usePosAuth()
   // Durante loading (viewer === null) asumimos permisos; los gates fuertes
@@ -69,7 +69,7 @@ export function CajaPage() {
     if (!locationId || checkingActive) return
     setCheckingActive(true)
     try {
-      const { from, to } = todayRangeISO()
+      const { from, to } = todayRangeISO(locationTimezone)
       // network-only: este es un gate de correctness (¿hay un servicio
       // corriendo ahora mismo?), no una lista pintada rápido. IN_SERVICE solo
       // se consulta aquí, así que nada más refresca ese cache — sin force el
@@ -114,7 +114,7 @@ export function CajaPage() {
     } finally {
       setCheckingActive(false)
     }
-  }, [locationId, agenda, walkins, navigate, checkingActive])
+  }, [locationId, locationTimezone, agenda, walkins, navigate, checkingActive])
 
   if (loading && registers.length === 0) {
     return (

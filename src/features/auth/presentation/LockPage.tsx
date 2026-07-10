@@ -5,6 +5,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { PinLoginException } from '@/core/auth/auth.types'
+import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
 import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS } from '@/features/home/data/home.queries'
 import { LockShell } from './LockShell'
 import { PairingView } from './PairingView'
@@ -25,7 +26,7 @@ function todayISO(): string {
 export function LockPage() {
   const navigate = useNavigate()
   const { auth, agenda, clock, walkins } = useRepositories()
-  const { setLocationId, locationName } = useLocation()
+  const { setLocationId, locationName, locationTimezone } = useLocation()
   const { pinLogin, isAuthenticated, isLocked } = usePosAuth()
   const { state, setState, actions } = useLockState()
   const apollo = useApolloClient()
@@ -146,8 +147,10 @@ export function LockPage() {
   useEffect(() => {
     if (!pinEntryStaffId || !pinEntryLocationId) return
     const date = todayISO()
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
+    const { startUtc: todayStart, endUtc: todayEnd } = localDayRangeInTz(
+      localDayInTz(new Date(), locationTimezone),
+      locationTimezone,
+    )
     void Promise.allSettled([
       walkins.getWalkIns(pinEntryLocationId),
       agenda.getAppointments(date, date, pinEntryLocationId),
@@ -167,7 +170,7 @@ export function LockPage() {
       // baratos y los dos pantallas se sienten igual de instant.
       walkins.getWalkIns(pinEntryLocationId, todayStart.toISOString(), todayEnd.toISOString()),
     ])
-  }, [pinEntryStaffId, pinEntryLocationId, walkins, agenda, clock, apollo])
+  }, [pinEntryStaffId, pinEntryLocationId, locationTimezone, walkins, agenda, clock, apollo])
 
   // 4) PIN submit handler
   const handlePinSubmit = useCallback(

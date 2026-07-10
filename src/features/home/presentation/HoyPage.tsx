@@ -5,6 +5,7 @@ import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
+import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
 import {
   POS_MY_DAY_EARNINGS,
   POS_HOME_CAJA_STATUS,
@@ -30,17 +31,16 @@ function todayISO(): string {
   return `${y}-${m}-${d}`
 }
 
-function todayRangeISO(): { from: string; to: string } {
+function todayRangeISO(tz: string): { from: string; to: string } {
   const now = new Date()
-  const from = new Date(now); from.setHours(0, 0, 0, 0)
-  const to = new Date(now); to.setHours(23, 59, 59, 999)
+  const { startUtc: from, endUtc: to } = localDayRangeInTz(localDayInTz(now, tz), tz)
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
 export function HoyPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
-  const { locationId, locationSlug } = useLocation()
+  const { locationId, locationSlug, locationTimezone } = useLocation()
   const { agenda, clock, walkins } = useRepositories()
   const navigate = useNavigate()
 
@@ -59,7 +59,7 @@ export function HoyPage() {
   const refetch = useCallback(async (opts?: { force?: boolean }) => {
     if (!viewer || !locationId) return
     const date = todayISO()
-    const { from, to } = todayRangeISO()
+    const { from, to } = todayRangeISO(locationTimezone)
     // force=true → network-only (focus refetch, post-mutación). force=false
     // → cache-first (mount inicial — pinta del cache persistido al instante
     // si existe). `client.query()` no admite cache-and-network.
@@ -111,7 +111,7 @@ export function HoyPage() {
     // Service count: completed appts + done walk-ins + direct POS sales
     // (sales without walk-in/appt link). Antes contábamos solo appts/walk-ins
     // y las ventas directas quedaban invisibles a este contador.
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    const todayStart = localDayRangeInTz(localDayInTz(new Date(), locationTimezone), locationTimezone).startUtc
     const directSaleCount = (earningsRes?.perSale ?? []).filter(
       (e) => !e.linkedWalkInId && !e.linkedAppointmentId,
     ).length
@@ -139,7 +139,7 @@ export function HoyPage() {
         },
       }),
     )
-  }, [agenda, apollo, clock, walkins, viewer, locationId])
+  }, [agenda, apollo, clock, walkins, viewer, locationId, locationTimezone])
 
   useEffect(() => {
     if (!viewer || !locationId) return

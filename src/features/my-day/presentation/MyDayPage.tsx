@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useApolloClient } from '@apollo/client/react'
 import { formatMoney } from '@/shared/lib/money.ts'
+import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
@@ -284,7 +285,7 @@ function KPICard({ label, value, loading = false }: KPICardProps) {
 export function MyDayPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
-  const { locationId, locationSlug } = useLocation()
+  const { locationId, locationSlug, locationTimezone } = useLocation()
   const { agenda, clock, walkins } = useRepositories()
   const [summary, setSummary] = useState<DaySummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -307,10 +308,10 @@ export function MyDayPage() {
   const loadDay = useCallback((opts: { showSpinner: boolean; force: boolean }) => {
     if (!viewer || !locationId) return
     const d = todayISO()
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todayEnd = new Date()
-    todayEnd.setHours(23, 59, 59, 999)
+    const { startUtc: todayStart, endUtc: todayEnd } = localDayRangeInTz(
+      localDayInTz(new Date(), locationTimezone),
+      locationTimezone,
+    )
     if (opts.showSpinner) setLoading(true)
 
     setLoadError(null)
@@ -406,7 +407,7 @@ export function MyDayPage() {
         }
       })
       .finally(() => setLoading(false))
-  }, [agenda, clock, walkins, viewer, locationId, apollo])
+  }, [agenda, clock, walkins, viewer, locationId, locationTimezone, apollo])
 
   // Single load en mount. Antes hacíamos dos pases (cache-first → network-only)
   // para revalidar al instante, pero eso causaba flash de números viejos
