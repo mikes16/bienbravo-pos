@@ -49,7 +49,7 @@
 **Files:**
 - Modify: `bienbravo-api/src/modules/locations/types/pos-public-location.type.ts`
 - Modify: `bienbravo-api/src/modules/locations/locations.resolver.ts:33-42` (método `posPublicLocations`)
-- Regenerate: `bienbravo-api/schema.generated.graphql`
+- Regenerate/edit: `bienbravo-api/src/graphql/schema.generated.graphql` (bloque `type PosPublicLocation`, ~líneas 1274-1278)
 
 **Interfaces:**
 - Produces: el query GraphQL `posPublicLocations` ahora devuelve `timezone: String!` en cada `PosPublicLocation`. El POS (Task 2) lo consume.
@@ -89,11 +89,21 @@ En `locations.resolver.ts`, método `posPublicLocations`, cambiar el key y el `s
 
 - [ ] **Step 3: Regenerar el schema y confirmar el campo**
 
-Regenerar `schema.generated.graphql` con el mecanismo estándar del API (boot local que emite el schema). Luego:
+El API emite `src/graphql/schema.generated.graphql` en boot vía `autoSchemaFile` (orden de campos = orden de `@Field` en la clase). **No hay script standalone de emisión y el boot necesita DB** — para evitar atascarse booteando, el camino confiable es la **edición aditiva** del schema emitido (produce exactamente lo que emitiría el boot, ya que `timezone` se declaró después de `slug`):
 
+En `src/graphql/schema.generated.graphql`, en el bloque `type PosPublicLocation` (~líneas 1274-1278), insertar `timezone: String!` después de `slug: String!`:
+```graphql
+type PosPublicLocation {
+  id: ID!
+  name: String!
+  slug: String!
+  timezone: String!
+}
+```
+(Si hay DB local disponible, alternativamente bootear con `npm run start:dev` para que el schema se regenere solo y confirmar que el diff coincide con esta edición.) Luego:
 ```bash
 cd bienbravo-api
-grep -A6 "type PosPublicLocation" schema.generated.graphql
+grep -A6 "type PosPublicLocation" src/graphql/schema.generated.graphql
 ```
 Expected: el bloque incluye `timezone: String!`.
 
@@ -110,7 +120,7 @@ Expected: build sin errores; si existe un spec de locations, pasa (el cambio es 
 
 ```bash
 cd bienbravo-api
-git add src/modules/locations/types/pos-public-location.type.ts src/modules/locations/locations.resolver.ts schema.generated.graphql
+git add src/modules/locations/types/pos-public-location.type.ts src/modules/locations/locations.resolver.ts src/graphql/schema.generated.graphql
 git commit -m "feat(locations): expone timezone en posPublicLocations (para tz del POS)
 
 Aditivo — Location.timezone ya existe como columna. Bump del cache key
@@ -740,6 +750,81 @@ git commit -m "fix(tz): gate de puntualidad del POS compara wall-clock en la tz 
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 git push origin main
+```
+
+---
+
+## Task 6: POS `todayISO()` → día local en tz de sucursal
+
+(Agregada tras el review de Task 4: `todayISO()` arma un `YYYY-MM-DD` **device-local** — `getFullYear/getMonth/getDate`, no `toISOString` así que no es bug live — que alimenta variables `date` de queries. Mismo bug family que Task 4; quedó fuera de la lista original de sitios.)
+
+**Files (todos *modify*):**
+- `src/features/home/presentation/HoyPage.tsx` (`todayISO` def ~26-32, uso ~61)
+- `src/features/my-day/presentation/MyDayPage.tsx` (`todayISO` def ~26-34, uso ~310)
+- `src/features/auth/presentation/LockPage.tsx` (`todayISO` def ~18-24, uso ~149)
+- `src/features/clock/application/useClock.ts` (`todayISO` def ~5, uso ~82)
+
+**Interfaces:**
+- Consumes: `localDayInTz(instant: Date | number, tz): string` (Task 2) + `useLocation().locationTimezone`.
+
+**Recipe:** borrar cada `todayISO()` module-level y reemplazar su uso por `localDayInTz(new Date(), locationTimezone)`, con `const { locationTimezone } = useLocation()` en el componente/hook (agregarlo al destructuring existente donde ya se usa `useLocation()`). Byte-identical hoy (device en Monterrey → `localDayInTz(...,'America/Monterrey')` == el `YYYY-MM-DD` local que arma `todayISO`).
+
+- [ ] **Step 1: HoyPage**
+
+`HoyPage` ya usa `useLocation()` (Task 4 agregó `locationTimezone`). Borrar la función `todayISO` (líneas ~26-32) y en el uso (~61) cambiar `const date = todayISO()` por:
+```ts
+const date = localDayInTz(new Date(), locationTimezone)
+```
+Asegurar el import: `import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'` (localDayRangeInTz ya se importó en Task 4). Si el `date` se consume en un `useMemo`/`useCallback`, agregar `locationTimezone` a sus deps.
+
+- [ ] **Step 2: MyDayPage**
+
+Borrar la función `todayISO` (líneas ~26-34, incluido el comentario de UTC) y en el uso (~310) cambiar `const d = todayISO()` por:
+```ts
+const d = localDayInTz(new Date(), locationTimezone)
+```
+`MyDayPage` ya destructura `locationTimezone` de `useLocation()` (Task 4). Actualizar deps del callback/effect que consume `d` si aplica.
+
+- [ ] **Step 3: LockPage**
+
+Borrar la función `todayISO` (líneas ~18-24) y en el uso (~149) cambiar `const date = todayISO()` por:
+```ts
+const date = localDayInTz(new Date(), locationTimezone)
+```
+`LockPage` ya destructura `locationTimezone` (Task 4). Actualizar deps si aplica.
+
+- [ ] **Step 4: useClock**
+
+Borrar la función `todayISO` (línea ~5) y en el uso (~82) cambiar `const d = todayISO()` por:
+```ts
+const d = localDayInTz(new Date(), locationTimezone)
+```
+`useClock` obtiene `locationTimezone` de `useLocation()` (Task 5 ya lo agregó al hook; si Task 5 aún no lo agregó por orden de ejecución, agregarlo aquí: `const { locationTimezone } = useLocation()`). Import: `import { minutesOfDayInTz, dayOfWeekInTz, localDayInTz } from '@/shared/lib/date'`. Actualizar deps del `useMemo`/`useCallback` que consume `d`.
+
+- [ ] **Step 5: Verificación byte-identical + tsc + test + build**
+
+```bash
+cd bienbravo-pos
+TZ=America/Monterrey node -e "
+function localDayInTz(inst,tz){return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(inst))}
+const now=new Date('2026-07-06T18:00:00Z');
+const y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,'0'),d=String(now.getDate()).padStart(2,'0');
+const old=\`\${y}-\${m}-\${d}\`;
+const neu=localDayInTz(now,'America/Monterrey');
+console.log('todayISO', old, neu, old===neu);
+"
+npx tsc -b && npm test && npm run build
+```
+Expected: `todayISO ... true`; tsc/vitest/build en verde. Confirmar `grep -rn "todayISO" src/ --include='*.ts' --include='*.tsx'` sin definiciones ni usos restantes (solo, si acaso, en tests).
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd bienbravo-pos
+git add src/features/home/presentation/HoyPage.tsx src/features/my-day/presentation/MyDayPage.tsx src/features/auth/presentation/LockPage.tsx src/features/clock/application/useClock.ts
+git commit -m "fix(tz): todayISO del POS usa el día local de la sucursal (no device-local)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
