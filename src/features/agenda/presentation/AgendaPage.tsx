@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatMoney } from '@/shared/lib/money.ts'
+import { formatTimeInTz, minutesOfDayInTz } from '@/shared/lib/date'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
@@ -11,34 +12,12 @@ import type { Appointment, AppointmentStatus } from '../domain/agenda.types.ts'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function formatTimeMx(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Monterrey',
-  })
+function hourKeyInTz(iso: string, tz: string): string {
+  return String(Math.floor(minutesOfDayInTz(iso, tz) / 60)).padStart(2, '0') // "10"
 }
 
-function hourKeyMx(iso: string): string {
-  return new Date(iso).toLocaleString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Monterrey',
-  }).slice(0, 2) // "10" from "10:00"
-}
-
-function hourLabelMx(iso: string): string {
-  // Returns "10:00" label for the hour group header
-  const hour = new Date(iso).toLocaleString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Monterrey',
-  })
-  const [h] = hour.split(':')
-  return `${h.padStart(2, '0')}:00`
+function hourLabelInTz(iso: string, tz: string): string {
+  return `${hourKeyInTz(iso, tz)}:00` // "10:00"
 }
 
 // ── status pill ──────────────────────────────────────────────────────────────
@@ -261,6 +240,7 @@ function ConfirmNoShowModal({
 
 function AppointmentRow({
   appt,
+  tz,
   canCheckIn,
   canStartService,
   canComplete,
@@ -272,6 +252,7 @@ function AppointmentRow({
   onPay,
 }: {
   appt: Appointment
+  tz: string
   canCheckIn: boolean
   canStartService: boolean
   canComplete: boolean
@@ -292,7 +273,7 @@ function AppointmentRow({
         <span
           className="font-mono text-sm font-bold tabular-nums text-[var(--color-bone)]"
         >
-          {formatTimeMx(appt.startAt)}
+          {formatTimeInTz(appt.startAt, tz)}
         </span>
       </div>
 
@@ -382,7 +363,7 @@ function AgendaSkeletonRow() {
 export function AgendaPage() {
   const navigate = useNavigate()
   const { viewer } = usePosAuth()
-  const { locationId } = useLocation()
+  const { locationId, locationTimezone } = useLocation()
   // Mientras el viewer carga (null), tratamos canRead como permisivo para
   // no flashear "Sin acceso". Los gates de cada acción siguen siendo
   // estrictos: si el viewer no tiene el perm, la acción no se ofrece.
@@ -427,14 +408,14 @@ export function AgendaPage() {
     (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
   )
 
-  // group by hour in America/Monterrey
+  // group by hour en la tz de la sucursal
   const groups: { hourLabel: string; appts: Appointment[] }[] = []
   const seen = new Map<string, number>()
   for (const appt of sorted) {
-    const key = hourKeyMx(appt.startAt)
+    const key = hourKeyInTz(appt.startAt, locationTimezone)
     if (!seen.has(key)) {
       seen.set(key, groups.length)
-      groups.push({ hourLabel: hourLabelMx(appt.startAt), appts: [] })
+      groups.push({ hourLabel: hourLabelInTz(appt.startAt, locationTimezone), appts: [] })
     }
     groups[seen.get(key)!].appts.push(appt)
   }
@@ -528,6 +509,7 @@ export function AgendaPage() {
                   <AppointmentRow
                     key={appt.id}
                     appt={appt}
+                    tz={locationTimezone}
                     canCheckIn={canCheckIn}
                     canStartService={canStartService}
                     canComplete={canComplete}

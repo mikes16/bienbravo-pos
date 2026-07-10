@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { EmptyStateV2, StatusBadge, type StatusTone } from '@/shared/pos-ui'
 import { cn } from '@/shared/lib/cn'
 import { cldThumb } from '@/shared/lib/cloudinary'
+import { formatTimeInTz } from '@/shared/lib/date'
+import { useLocation } from '@/core/location/useLocation'
 import type { PosStaffUser } from '@/core/auth/auth.types'
 import type { PosBarberStatus } from '@/core/auth/auth.repository'
 
@@ -38,13 +40,12 @@ const MONTH_ABBR_ES: Record<string, string> = {
   '6': 'JUL', '7': 'AGO', '8': 'SEP', '9': 'OCT', '10': 'NOV', '11': 'DIC',
 }
 
-function formatHeader(d: Date): string {
+function formatHeader(d: Date, tz: string): string {
   const weekday = d.toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '').toUpperCase()
   const day = String(d.getDate()).padStart(2, '0')
   const month = MONTH_ABBR_ES[String(d.getMonth())]
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${weekday} ${day} ${month} · ${hh}:${mm}`
+  const time = formatTimeInTz(d.toISOString(), tz)
+  return `${weekday} ${day} ${month} · ${time}`
 }
 
 /**
@@ -64,6 +65,7 @@ export function BarberSelectorView({
   onChangeLocation,
   locationName,
 }: BarberSelectorViewProps) {
+  const { locationTimezone } = useLocation()
   // Hora editorial en vivo. Refresca cada 30s — el barbero ve la hora real
   // sin tener que cambiar de pestaña.
   const [now, setNow] = useState<Date>(() => new Date())
@@ -90,7 +92,7 @@ export function BarberSelectorView({
     )
   }
 
-  const headerLabel = formatHeader(now)
+  const headerLabel = formatHeader(now, locationTimezone)
   const locationLabel = locationName?.trim() ? locationName.toUpperCase() : null
 
   return (

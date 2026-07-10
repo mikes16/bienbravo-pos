@@ -1,11 +1,12 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { PinEntryView } from './PinEntryView'
+import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 
 describe('PinEntryView', () => {
   it('renders barber name', () => {
-    render(
+    renderWithProviders(
       <PinEntryView
         staffName="Juan Pérez"
         photoUrl={null}
@@ -18,7 +19,7 @@ describe('PinEntryView', () => {
   })
 
   it('renders error message when provided', () => {
-    render(
+    renderWithProviders(
       <PinEntryView
         staffName="Juan"
         photoUrl={null}
@@ -34,7 +35,7 @@ describe('PinEntryView', () => {
   it('calls onSubmit with the 4-digit PIN once entered', async () => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()
-    render(
+    renderWithProviders(
       <PinEntryView
         staffName="Juan"
         photoUrl={null}
@@ -52,7 +53,7 @@ describe('PinEntryView', () => {
   it('calls onBack when "Otro barbero" link is tapped', async () => {
     const onBack = vi.fn()
     const user = userEvent.setup()
-    render(
+    renderWithProviders(
       <PinEntryView
         staffName="Juan"
         photoUrl={null}
@@ -66,7 +67,7 @@ describe('PinEntryView', () => {
   })
 
   it('renders photo when photoUrl provided', () => {
-    render(
+    renderWithProviders(
       <PinEntryView
         staffName="Juan"
         photoUrl="https://example.com/j.jpg"
@@ -81,7 +82,7 @@ describe('PinEntryView', () => {
 
   it('shows "Validando…" and disables back after PIN is complete', async () => {
     const user = userEvent.setup()
-    render(
+    renderWithProviders(
       <PinEntryView
         staffName="Juan"
         photoUrl={null}

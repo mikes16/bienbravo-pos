@@ -1,5 +1,7 @@
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { formatMoney } from '@/shared/lib/money'
+import { formatTimeInTz } from '@/shared/lib/date'
+import { useLocation } from '@/core/location/useLocation'
 import type { RegisterSession, SaleLedgerEntry } from '../domain/register.types'
 
 interface CajaOpenViewProps {
@@ -10,16 +12,8 @@ interface CajaOpenViewProps {
   onCerrar: (() => void) | null
 }
 
-function formatTimeMx(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Monterrey',
-  })
-}
-
 export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar }: CajaOpenViewProps) {
+  const { locationTimezone } = useLocation()
   // Session running total — API increments these as sales attribute to the session.
   // Not summed from todayTransactions to ensure consistency with backend totals.
   const sessionExpectedTotalCents =
@@ -37,7 +31,7 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
             </span>
           </div>
           <span className="text-[11px] text-[var(--color-bone-muted)]">
-            Desde {formatTimeMx(session.openedAt)} · fondo {formatMoney(fondoCents)}
+            Desde {formatTimeInTz(session.openedAt, locationTimezone)} · fondo {formatMoney(fondoCents)}
           </span>
         </div>
 
@@ -97,7 +91,7 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
                 className="grid grid-cols-[60px_1fr_80px_80px] items-center gap-3 border-b border-[var(--color-leather-muted)]/30 px-5 py-2.5 text-[12px]"
               >
                 <span className="font-mono text-[11px] tabular-nums text-[var(--color-bone-muted)]">
-                  {formatTimeMx(tx.createdAt)}
+                  {formatTimeInTz(tx.createdAt, locationTimezone)}
                 </span>
                 <span className="text-[var(--color-bone)]">{tx.customer?.fullName ?? 'Mostrador'}</span>
                 <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">

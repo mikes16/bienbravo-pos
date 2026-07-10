@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { ReceiptScreen } from './ReceiptScreen'
+import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 
 const SALE = {
   id: 'sale-1',
@@ -17,7 +18,7 @@ const SALE = {
 
 describe('ReceiptScreen', () => {
   it('renders sale items + totals + customer', () => {
-    render(<ReceiptScreen sale={SALE} onListo={() => {}} />)
+    renderWithProviders(<ReceiptScreen sale={SALE} onListo={() => {}} />)
     // El ReceiptScreen ahora renderiza dos copias del contenido del sale:
     // la preview en pantalla (visible) y el PrintableTicket (display: none
     // por default, visible solo en @media print). Por eso usamos
@@ -32,7 +33,7 @@ describe('ReceiptScreen', () => {
   it('Imprimir CTA calls window.print', async () => {
     const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
     const user = userEvent.setup()
-    render(<ReceiptScreen sale={SALE} onListo={() => {}} />)
+    renderWithProviders(<ReceiptScreen sale={SALE} onListo={() => {}} />)
     await user.click(screen.getByRole('button', { name: /imprimir/i }))
     expect(printSpy).toHaveBeenCalled()
     printSpy.mockRestore()
@@ -41,13 +42,13 @@ describe('ReceiptScreen', () => {
   it('Listo CTA fires onListo', async () => {
     const onListo = vi.fn()
     const user = userEvent.setup()
-    render(<ReceiptScreen sale={SALE} onListo={onListo} />)
+    renderWithProviders(<ReceiptScreen sale={SALE} onListo={onListo} />)
     await user.click(screen.getByRole('button', { name: /listo/i }))
     expect(onListo).toHaveBeenCalled()
   })
 
   it('Enviar por correo button is disabled (deferred to sub-#4c)', () => {
-    render(<ReceiptScreen sale={SALE} onListo={() => {}} />)
+    renderWithProviders(<ReceiptScreen sale={SALE} onListo={() => {}} />)
     const emailBtn = screen.getByRole('button', { name: /correo/i })
     expect(emailBtn).toBeDisabled()
   })

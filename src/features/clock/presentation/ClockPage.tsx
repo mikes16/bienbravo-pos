@@ -1,20 +1,12 @@
 import { useEffect, useState } from 'react'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { cn } from '@/shared/lib/cn'
+import { formatTimeInTz, minutesOfDayInTz } from '@/shared/lib/date'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useToast } from '@/core/toast/useToast'
 import { useClock } from '../application/useClock'
 import type { TimeClockEvent } from '../data/clock.repository'
-
-function formatTimeMx(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Monterrey',
-  })
-}
 
 /**
  * "1:36 PM" — el formato natural del horario en 12h. Construye manual en
@@ -30,15 +22,14 @@ function format12h(hours24: number, minutes: number): string {
   return `${h12}:${String(minutes).padStart(2, '0')} ${period}`
 }
 
-function formatTimeMx12(iso: string): string {
-  const d = new Date(iso)
-  return format12h(d.getHours(), d.getMinutes())
+function formatTimeInTz12(iso: string, tz: string): string {
+  const min = minutesOfDayInTz(iso, tz)
+  return format12h(Math.floor(min / 60), min % 60)
 }
 
 /** Hora actual en formato natural — para frases como "Son las 1:36 PM". */
-function formatNowMx(nowMs: number): string {
-  const d = new Date(nowMs)
-  return format12h(d.getHours(), d.getMinutes())
+function formatNowInTz12(nowMs: number, tz: string): string {
+  return formatTimeInTz12(new Date(nowMs).toISOString(), tz)
 }
 
 /** Frase en castellano natural: "3 horas 31 minutos" / "45 minutos" / "2 minutos". */
@@ -100,7 +91,7 @@ function nowMinutesFromMidnight(nowMs: number): number {
 
 export function ClockPage() {
   const { viewer } = usePosAuth()
-  const { locationId } = useLocation()
+  const { locationId, locationTimezone } = useLocation()
   const {
     events,
     isClockedIn,
@@ -218,6 +209,7 @@ export function ClockPage() {
         isClockedIn={isClockedIn}
         shiftStatus={shiftStatus}
         nowMs={nowMs}
+        tz={locationTimezone}
         latestClockInIso={latestClockIn?.at ?? null}
         latestClockOutIso={latestClockOut?.at ?? null}
         firstClockInIso={firstClockInToday?.at ?? null}
@@ -237,7 +229,7 @@ export function ClockPage() {
           : isClockedIn ? 'Salir →' : 'Entrar →'}
       </TouchButton>
 
-      <HistoryList events={events} />
+      <HistoryList events={events} tz={locationTimezone} />
     </div>
   )
 }
@@ -252,6 +244,7 @@ function StatusCard({
   isClockedIn,
   shiftStatus,
   nowMs,
+  tz,
   latestClockInIso,
   latestClockOutIso,
   firstClockInIso,
@@ -261,6 +254,7 @@ function StatusCard({
   isClockedIn: boolean
   shiftStatus: ReturnType<typeof useClock>['shiftStatus']
   nowMs: number
+  tz: string
   latestClockInIso: string | null
   latestClockOutIso: string | null
   firstClockInIso: string | null
@@ -274,7 +268,7 @@ function StatusCard({
   // es contexto histórico.
   const latenessLine = (firstArrivalLatenessMin !== null && firstClockInIso) ? (
     <p className="mt-2 text-[14px] leading-snug text-[var(--color-bravo)]">
-      Llegaste a las <strong className="font-bold">{formatTimeMx12(firstClockInIso)}</strong>,{' '}
+      Llegaste a las <strong className="font-bold">{formatTimeInTz12(firstClockInIso, tz)}</strong>,{' '}
       con retardo de <strong className="font-bold">{formatDurationWords(firstArrivalLatenessMin)}</strong>.
     </p>
   ) : null
@@ -287,7 +281,7 @@ function StatusCard({
         <Headline>Estás trabajando.</Headline>
         <Body>
           Entraste a las{' '}
-          <DataInline>{formatTimeMx12(latestClockInIso)}</DataInline>. Llevas{' '}
+          <DataInline>{formatTimeInTz12(latestClockInIso, tz)}</DataInline>. Llevas{' '}
           <DataInline>{formatDurationWords(totalMin)}</DataInline>.
         </Body>
         {latenessLine}
@@ -317,7 +311,7 @@ function StatusCard({
       <StatusBox tone="neutral">
         <Headline>
           {latestClockOutIso
-            ? <>Saliste a las <DataInline>{formatTimeMx12(latestClockOutIso)}</DataInline>.</>
+            ? <>Saliste a las <DataInline>{formatTimeInTz12(latestClockOutIso, tz)}</DataInline>.</>
             : <>Estás fuera.</>}
         </Headline>
         <Body>
@@ -347,7 +341,7 @@ function StatusCard({
         <Body>
           Debías llegar a las{' '}
           <DataInline>{formatMinTime12(shiftStatus.scheduledStartMin)}</DataInline>.
-          Son las <DataInline>{formatNowMx(nowMs)}</DataInline>.
+          Son las <DataInline>{formatNowInTz12(nowMs, tz)}</DataInline>.
         </Body>
       </StatusBox>
     )
@@ -434,7 +428,7 @@ function DataInline({ children }: { children: React.ReactNode }) {
 
 /* ────────────────────────────────────────────────────────────────────────
  * Historial — siempre visible, simple, sin pills semaforo. */
-function HistoryList({ events }: { events: TimeClockEvent[] }) {
+function HistoryList({ events, tz }: { events: TimeClockEvent[]; tz: string }) {
   return (
     <div className="flex flex-col gap-3">
       <h2 className="font-[var(--font-pos-display)] text-[20px] font-bold tracking-[-0.01em] text-[var(--color-bone)]">
@@ -452,7 +446,7 @@ function HistoryList({ events }: { events: TimeClockEvent[] }) {
               className="grid grid-cols-[80px_1fr] items-baseline gap-4 border-b border-[var(--color-leather-muted)]/30 py-3 last:border-b-0"
             >
               <span className="font-mono text-[15px] font-bold tabular-nums text-[var(--color-bone)]">
-                {formatTimeMx(e.at)}
+                {formatTimeInTz(e.at, tz)}
               </span>
               <span className="text-[15px] text-[var(--color-bone)]">
                 {e.type === 'CLOCK_IN' ? 'Entrada' : 'Salida'}

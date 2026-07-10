@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PinKeypad } from '@/shared/pos-ui'
 import { cn } from '@/shared/lib/cn'
+import { formatTimeInTz } from '@/shared/lib/date'
+import { useLocation } from '@/core/location/useLocation'
 
 interface PinEntryViewProps {
   staffName: string
@@ -22,10 +24,8 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
-function formatHeader(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${hh}:${mm}`
+function formatHeader(d: Date, tz: string): string {
+  return formatTimeInTz(d.toISOString(), tz)
 }
 
 /**
@@ -50,6 +50,7 @@ export function PinEntryView({
   onBack,
   locationName,
 }: PinEntryViewProps) {
+  const { locationTimezone } = useLocation()
   const initials = useMemo(() => getInitials(staffName), [staffName])
   const [submitting, setSubmitting] = useState(false)
   const [now, setNow] = useState<Date>(() => new Date())
@@ -75,7 +76,7 @@ export function PinEntryView({
         <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
           Acceso
           {locationLabel && <span> · {locationLabel}</span>}
-          <span> · {formatHeader(now)}</span>
+          <span> · {formatHeader(now, locationTimezone)}</span>
         </p>
         <p className="font-[var(--font-pos-display)] text-[14px] font-extrabold uppercase tracking-[0.18em] text-[var(--color-bone)]">
           BIENBRAVO

@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { BarberSelectorView } from './BarberSelectorView'
+import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import type { PosStaffUser } from '@/core/auth/auth.types'
 
 const SAMPLE_BARBERS: PosStaffUser[] = [
@@ -21,7 +22,7 @@ const SAMPLE_BARBERS: PosStaffUser[] = [
 
 describe('BarberSelectorView', () => {
   it('renders all barbers as tiles with names', () => {
-    render(
+    renderWithProviders(
       <BarberSelectorView
         barbers={SAMPLE_BARBERS}
         loading={false}
@@ -36,7 +37,7 @@ describe('BarberSelectorView', () => {
   it('calls onSelect when a barber is tapped', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(
+    renderWithProviders(
       <BarberSelectorView
         barbers={SAMPLE_BARBERS}
         loading={false}
@@ -49,7 +50,7 @@ describe('BarberSelectorView', () => {
   })
 
   it('renders empty state when no barbers', () => {
-    render(
+    renderWithProviders(
       <BarberSelectorView
         barbers={[]}
         loading={false}
@@ -63,7 +64,7 @@ describe('BarberSelectorView', () => {
   it('calls onChangeLocation when "Cambiar sucursal" is tapped', async () => {
     const onChangeLocation = vi.fn()
     const user = userEvent.setup()
-    render(
+    renderWithProviders(
       <BarberSelectorView
         barbers={SAMPLE_BARBERS}
         loading={false}
@@ -76,7 +77,7 @@ describe('BarberSelectorView', () => {
   })
 
   it('renders loading state', () => {
-    render(
+    renderWithProviders(
       <BarberSelectorView
         barbers={[]}
         loading={true}

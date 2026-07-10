@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
+import { formatDateTimeInTz } from '@/shared/lib/date'
+import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
 import { SaleTicketBody } from '@/features/checkout/presentation/SaleTicketBody'
 import type { SaleDetail } from '@/features/checkout/data/checkout.repository.ts'
@@ -20,18 +22,6 @@ interface SaleDetailSheetProps {
 }
 
 const EXIT_MS = 240
-
-function formatDateTimeMx(iso: string): string {
-  return new Date(iso).toLocaleString('es-MX', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Monterrey',
-  })
-}
 
 /**
  * Bottom sheet con el desglose completo de una venta del día — items,
@@ -54,6 +44,7 @@ function formatDateTimeMx(iso: string): string {
  */
 export function SaleDetailSheet({ open, saleId, tuParteCents, onClose }: SaleDetailSheetProps) {
   const { checkout } = useRepositories()
+  const { locationTimezone } = useLocation()
   const [mounted, setMounted] = useState(open)
   const [closing, setClosing] = useState(false)
   const [detail, setDetail] = useState<SaleDetail | null>(null)
@@ -160,7 +151,7 @@ export function SaleDetailSheet({ open, saleId, tuParteCents, onClose }: SaleDet
             </p>
             {detail && (
               <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-                {formatDateTimeMx(detail.createdAt)}
+                {formatDateTimeInTz(detail.createdAt, locationTimezone)}
               </p>
             )}
           </div>

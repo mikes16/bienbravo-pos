@@ -1,4 +1,5 @@
 import { formatMoney } from '@/shared/lib/money'
+import { formatDateTimeInTz } from '@/shared/lib/date'
 
 interface SaleItem {
   id: string
@@ -35,24 +36,19 @@ interface Props {
   sale: SaleData
   locationName?: string | null
   operatorName?: string | null
+  /**
+   * Tz de la sucursal — este componente se renderiza siempre montado (para
+   * @media print) dentro del árbol de ReceiptScreen, así que técnicamente
+   * podría leer useLocation() directo. Se pasa como prop en vez de hook para
+   * mantenerlo puro/testeable sin necesitar LocationProvider en sus tests.
+   */
+  timezone: string
 }
 
 const PROVIDER_LABEL: Record<ApiProvider, string> = {
   CASH: 'Efectivo',
   CARD_TERMINAL: 'Tarjeta',
   TRANSFER: 'Transferencia',
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('es-MX', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Monterrey',
-  })
 }
 
 /** Corto el id largo del sale a algo legible en el ticket: BB-XXXXXX. */
@@ -74,7 +70,7 @@ function shortSaleCode(id: string): string {
  * Si se imprime en hoja Letter/A4, el @page de index.css lo escala
  * razonablemente — el ticket queda al inicio de la página, no estirado.
  */
-export function PrintableTicket({ sale, locationName, operatorName }: Props) {
+export function PrintableTicket({ sale, locationName, operatorName, timezone }: Props) {
   const code = shortSaleCode(sale.id)
 
   return (
@@ -95,7 +91,7 @@ export function PrintableTicket({ sale, locationName, operatorName }: Props) {
       </div>
       <div className="bb-print-meta-row">
         <span>Fecha</span>
-        <span>{formatDateTime(sale.createdAt)}</span>
+        <span>{formatDateTimeInTz(sale.createdAt, timezone)}</span>
       </div>
       {operatorName && (
         <div className="bb-print-meta-row">

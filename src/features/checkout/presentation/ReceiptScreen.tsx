@@ -1,4 +1,6 @@
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
+import { formatDateTimeInTz } from '@/shared/lib/date'
+import { useLocation } from '@/core/location/useLocation'
 import { PrintableTicket } from './PrintableTicket'
 import { SaleTicketBody } from './SaleTicketBody'
 
@@ -42,20 +44,14 @@ interface ReceiptScreenProps {
   operatorName?: string | null
 }
 
-function formatDateTimeMx(iso: string): string {
-  return new Date(iso).toLocaleString('es-MX', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-    timeZone: 'America/Monterrey',
-  })
-}
-
 export function ReceiptScreen({
   sale,
   onListo,
   locationName = null,
   operatorName = null,
 }: ReceiptScreenProps) {
+  const { locationTimezone } = useLocation()
+
   return (
     <div className="flex h-full flex-col bg-[var(--color-carbon-elevated)]">
       {/* Action bar — hidden on print */}
@@ -80,7 +76,7 @@ export function ReceiptScreen({
             BienBravo
           </p>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-            {formatDateTimeMx(sale.createdAt)}
+            {formatDateTimeInTz(sale.createdAt, locationTimezone)}
           </p>
         </div>
 
@@ -93,7 +89,12 @@ export function ReceiptScreen({
 
       {/* Ticket de impresión térmica — display: none en pantalla, visible
           solo cuando window.print() activa @media print. */}
-      <PrintableTicket sale={sale} locationName={locationName} operatorName={operatorName} />
+      <PrintableTicket
+        sale={sale}
+        locationName={locationName}
+        operatorName={operatorName}
+        timezone={locationTimezone}
+      />
     </div>
   )
 }

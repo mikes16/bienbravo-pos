@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { CajaOpenView } from './CajaOpenView'
+import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import type { RegisterSession } from '../domain/register.types'
 
 const SESSION: RegisterSession = {
@@ -20,21 +21,21 @@ const SESSION: RegisterSession = {
 
 describe('CajaOpenView', () => {
   it('renders the open status banner', () => {
-    render(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={() => {}} />)
+    renderWithProviders(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={() => {}} />)
     expect(screen.getByText(/caja abierta/i)).toBeInTheDocument()
     // openedAt = '2026-05-04T09:15:00.000Z'; America/Monterrey is UTC-6 year-round → 03:15
     expect(screen.getByText(/Desde 03:15/)).toBeInTheDocument()
   })
 
   it('shows the three totals cards with formatted amounts', () => {
-    render(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={() => {}} />)
+    renderWithProviders(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={() => {}} />)
     expect(screen.getByText('$1,840')).toBeInTheDocument()
     expect(screen.getByText('$2,540')).toBeInTheDocument()
     expect(screen.getByText('$1,260')).toBeInTheDocument()
   })
 
   it('renders empty transactions state when no sales', () => {
-    render(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={() => {}} />)
+    renderWithProviders(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={() => {}} />)
     expect(screen.getByText(/sin ventas|0 ventas/i)).toBeInTheDocument()
   })
 
@@ -50,7 +51,7 @@ describe('CajaOpenView', () => {
         walkInId: 'w1',
       } as any,
     ]
-    render(<CajaOpenView session={SESSION} todayTransactions={txs} fondoCents={50000} onCerrar={() => {}} />)
+    renderWithProviders(<CajaOpenView session={SESSION} todayTransactions={txs} fondoCents={50000} onCerrar={() => {}} />)
     expect(screen.getByText(/carlos méndez/i)).toBeInTheDocument()
     expect(screen.getByText('$280')).toBeInTheDocument()
   })
@@ -58,7 +59,7 @@ describe('CajaOpenView', () => {
   it('calls onCerrar when CERRAR CAJA button tapped', async () => {
     const onCerrar = vi.fn()
     const user = userEvent.setup()
-    render(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={onCerrar} />)
+    renderWithProviders(<CajaOpenView session={SESSION} todayTransactions={[]} fondoCents={50000} onCerrar={onCerrar} />)
     await user.click(screen.getByRole('button', { name: /cerrar caja/i }))
     expect(onCerrar).toHaveBeenCalledTimes(1)
   })
