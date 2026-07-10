@@ -23,16 +23,6 @@ interface SaleDetailTarget {
   tuParteCents: number | null
 }
 
-function todayISO(): string {
-  // Local date so it matches HoyPage and the API's "today" interpretation —
-  // UTC was masking morning activity once local time crossed UTC midnight.
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 interface CompletedItem {
   id: string
   /** Origen: cita (appointment), walk-in, o venta directa de POS sin link.
@@ -307,7 +297,7 @@ export function MyDayPage() {
   // para pintar instant desde el cache persistido (boot subsecuente del POS).
   const loadDay = useCallback((opts: { showSpinner: boolean; force: boolean }) => {
     if (!viewer || !locationId) return
-    const d = todayISO()
+    const d = localDayInTz(new Date(), locationTimezone)
     const { startUtc: todayStart, endUtc: todayEnd } = localDayRangeInTz(
       localDayInTz(new Date(), locationTimezone),
       locationTimezone,

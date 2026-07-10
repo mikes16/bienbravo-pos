@@ -1,19 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
 import { useLocation } from '@/core/location/useLocation'
-import { minutesOfDayInTz, dayOfWeekInTz } from '@/shared/lib/date'
+import { minutesOfDayInTz, dayOfWeekInTz, localDayInTz } from '@/shared/lib/date'
 import type { TimeClockEvent, ShiftTemplate } from '../data/clock.repository.ts'
-
-function todayISO(): string {
-  // Local date — must match how the API and HoyPage interpret "today" so a
-  // clock-in registered at 10am local doesn't disappear from the filter once
-  // local time crosses 18:00 (UTC midnight) into the next UTC day.
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 function formatMinToTime(min: number): string {
   const h = Math.floor(min / 60)
@@ -73,7 +62,7 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   // reload. Mismo patrón showSpinner/force que loadDay en MyDayPage.
   const refresh = useCallback((opts?: { showSpinner?: boolean; force?: boolean }) => {
     if (!staffUserId || !locationId) return
-    const d = todayISO()
+    const d = localDayInTz(new Date(), locationTimezone)
     const showSpinner = opts?.showSpinner ?? true
     const force = opts?.force ?? false
     if (showSpinner) setLoading(true)
@@ -121,7 +110,7 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
       }
       setLoading(false)
     })
-  }, [clock, staffUserId, locationId])
+  }, [clock, staffUserId, locationId, locationTimezone])
 
   useEffect(() => { refresh() }, [refresh])
 

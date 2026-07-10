@@ -15,14 +15,6 @@ import { LockoutView } from './LockoutView'
 import { NoPinMessageView } from './NoPinMessageView'
 import { useLockState } from './useLockState'
 
-function todayISO(): string {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 export function LockPage() {
   const navigate = useNavigate()
   const { auth, agenda, clock, walkins } = useRepositories()
@@ -146,7 +138,7 @@ export function LockPage() {
   const pinEntryLocationId = state.kind === 'PIN_ENTRY' ? state.locationId : null
   useEffect(() => {
     if (!pinEntryStaffId || !pinEntryLocationId) return
-    const date = todayISO()
+    const date = localDayInTz(new Date(), locationTimezone)
     const { startUtc: todayStart, endUtc: todayEnd } = localDayRangeInTz(
       localDayInTz(new Date(), locationTimezone),
       locationTimezone,

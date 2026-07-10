@@ -23,14 +23,6 @@ import type { Appointment } from '@/features/agenda/domain/agenda.types'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types'
 
-function todayISO(): string {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 function todayRangeISO(tz: string): { from: string; to: string } {
   const now = new Date()
   const { startUtc: from, endUtc: to } = localDayRangeInTz(localDayInTz(now, tz), tz)
@@ -58,7 +50,7 @@ export function HoyPage() {
 
   const refetch = useCallback(async (opts?: { force?: boolean }) => {
     if (!viewer || !locationId) return
-    const date = todayISO()
+    const date = localDayInTz(new Date(), locationTimezone)
     const { from, to } = todayRangeISO(locationTimezone)
     // force=true → network-only (focus refetch, post-mutación). force=false
     // → cache-first (mount inicial — pinta del cache persistido al instante
