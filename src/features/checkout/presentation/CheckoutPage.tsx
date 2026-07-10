@@ -29,7 +29,7 @@ export function CheckoutPage() {
   const ck = useCheckout()
   const { addToast } = useToast()
   const { viewer } = usePosAuth()
-  const { locationName } = useLocation()
+  const { locationName, locationTimezone } = useLocation()
   const { checkout } = useRepositories()
   // Permiso server-side dual: el API también valida pos.discount.apply en
   // applyCouponToDraftSale. Esconder el bloque en el cliente es solo UX —
@@ -172,7 +172,7 @@ export function CheckoutPage() {
       0,
     )
     const prepaidDate = ck.prepaidAt
-      ? new Date(ck.prepaidAt).toLocaleDateString('es-MX')
+      ? new Intl.DateTimeFormat('es-MX', { timeZone: locationTimezone }).format(new Date(ck.prepaidAt))
       : null
     const methodLabel = prepayMethodLabel(ck.prepaidMethod)
     return (

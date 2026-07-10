@@ -10,6 +10,7 @@ const baseProps = {
   staffName: 'Eli Cruz',
   staffPhotoUrl: null as string | null,
   onLock: () => {},
+  timezone: 'America/Monterrey',
 }
 
 describe('IdentityStripV2', () => {

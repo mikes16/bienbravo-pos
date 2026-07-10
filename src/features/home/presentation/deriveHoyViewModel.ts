@@ -1,6 +1,7 @@
 import type { Appointment } from '@/features/agenda/domain/agenda.types'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types'
+import { formatTimeInTz } from '@/shared/lib/date'
 
 export interface HoyViewModelInput {
   staffId: string
@@ -10,6 +11,9 @@ export interface HoyViewModelInput {
   clockEvents: TimeClockEvent[]
   commission: { amountCents: number; serviceCount: number; loading: boolean }
   caja: { isOpen: boolean; accumulatedCents: number | null; openedAt: Date | null }
+  /** Tz de la sucursal — todas las horas mostradas en Hoy (citas, walk-ins)
+   *  se leen en esta tz, no en la del device. */
+  tz: string
 }
 
 export interface HoyRowData {
@@ -82,8 +86,12 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
-function formatTimeMx(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+// Nota: el original (`new Date(iso).toLocaleTimeString('es-MX', {hour, minute})`)
+// NO pasaba hour12 — en es-MX eso renderiza 12h con AM/PM (ej. "10:05 a.m."),
+// no 24h. `formatTimeInTz` por default fuerza hour12:false, así que hay que
+// pasar { hour12: true } explícito para preservar byte-identical el output.
+function formatTimeMx(iso: string, tz: string): string {
+  return formatTimeInTz(iso, tz, { hour12: true })
 }
 
 function minutesSince(iso: string): number {
@@ -91,7 +99,7 @@ function minutesSince(iso: string): number {
 }
 
 export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
-  const { staffId, staffName, appointments, walkIns, clockEvents, commission, caja } = input
+  const { staffId, staffName, appointments, walkIns, clockEvents, commission, caja, tz } = input
 
   // Clock-in detection: latest event today, sorted ascending.
   // Clocked-in iff the last event is CLOCK_IN. No events ⇒ not clocked in.
@@ -139,7 +147,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     const isPending = a.status === 'CONFIRMED' || a.status === 'CHECKED_IN'
     const startAt = a.startAt
     const minutes = isInService ? minutesSince(startAt) : 0
-    const timeLabel = isInService ? `EN SERVICIO · ${minutes} MIN` : formatTimeMx(startAt)
+    const timeLabel = isInService ? `EN SERVICIO · ${minutes} MIN` : formatTimeMx(startAt, tz)
     // "Sin barbero": staffUser null en un estado activo tomable. Se ve
     // idéntico a una cita normal salvo el pill + la posibilidad de "Tomar" —
     // no queremos gritar visualmente (no es un error), solo comunicar que
@@ -156,7 +164,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         customerPhotoUrl: photo,
         customerInitials: getInitials(customerName),
         serviceLabel: a.items[0]?.label ?? 'Servicio',
-        meta: isInService ? `cita ${formatTimeMx(startAt)}` : null,
+        meta: isInService ? `cita ${formatTimeMx(startAt, tz)}` : null,
         pillLabel: isUnassignedAppt ? 'Sin barbero' : 'Cita',
         pillTone: isInService ? 'serving' : isUnassignedAppt ? 'walkin' : 'appt',
         sourceKind: 'appointment',
@@ -189,7 +197,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     const waitMinutes = w.assignedAt
       ? Math.max(0, Math.round((new Date(w.assignedAt).getTime() - new Date(w.createdAt).getTime()) / 60_000))
       : 0
-    const timeLabel = isAssigned ? `EN SERVICIO · ${serviceMinutes} MIN` : formatTimeMx(w.createdAt)
+    const timeLabel = isAssigned ? `EN SERVICIO · ${serviceMinutes} MIN` : formatTimeMx(w.createdAt, tz)
     const assignedToViewer = w.assignedStaffUser?.id === staffId
     // Pill contextual: comunica el ESTADO + dueño en una sola palabra. Antes
     // todos decían "Walk-in" genérico — perdíamos la oportunidad de marcar la
@@ -326,7 +334,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
       const isAppt = nextMine.row.sourceKind === 'appointment'
       cta = {
         variant: 'atender',
-        metaLabel: isAppt ? `CITA ${formatTimeMx(nextMine.sortKey)}` : 'WALK-IN ASIGNADO',
+        metaLabel: isAppt ? `CITA ${formatTimeMx(nextMine.sortKey, tz)}` : 'WALK-IN ASIGNADO',
         actionLabel: `Atender a ${nextMine.row.customerName}`,
         targetId: nextMine.row.sourceId,
         targetKind: nextMine.row.sourceKind,

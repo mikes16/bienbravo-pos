@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useApolloClient } from '@apollo/client/react'
 import { formatMoney } from '@/shared/lib/money.ts'
-import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
+import { localDayInTz, localDayRangeInTz, formatTimeInTz } from '@/shared/lib/date'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
@@ -514,7 +514,7 @@ export function MyDayPage() {
           <ul className="flex flex-col border border-[var(--color-leather-muted)]/40">
             {summary.upcomingAppts.map((a) => (
               <li key={a.id}>
-                <UpcomingRow {...a} />
+                <UpcomingRow {...a} tz={locationTimezone} />
               </li>
             ))}
           </ul>
@@ -557,6 +557,7 @@ export function MyDayPage() {
               <li key={item.id}>
                 <CompletedRow
                   item={item}
+                  tz={locationTimezone}
                   onOpenDetail={
                     canViewSaleDetail && item.saleId
                       ? () =>
@@ -611,20 +612,20 @@ function SectionEyebrow({ label, tone }: { label: string; tone: 'bone' | 'leathe
 
 function CompletedRow({
   item,
+  tz,
   onOpenDetail,
 }: {
   item: CompletedItem
+  /** Tz de la sucursal — la hora de la row se lee en esta tz, no en la del
+   *  device. */
+  tz: string
   /** Definido SOLO cuando la row es tappable: el viewer tiene `pos.sale.read`
    *  y la row tiene saleId. Si es undefined, la row se renderiza como un div
    *  no interactivo (sin cursor, sin onClick) — el gate duro. */
   onOpenDetail?: () => void
 }) {
   const { timeAt, customerName, serviceLabel, totalCents, earningsCents, tipCents, kind } = item
-  const time = new Date(timeAt).toLocaleTimeString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
+  const time = formatTimeInTz(timeAt, tz)
 
   // El permiso decide si la row es interactiva. Con `pos.sale.read` + saleId la
   // row es un <button> (cursor-pointer + onClick que abre el sheet). Sin el
@@ -816,12 +817,8 @@ function BreakdownCard({
   )
 }
 
-function UpcomingRow({ startAt, customerName, serviceLabel }: UpcomingAppt) {
-  const time = new Date(startAt).toLocaleTimeString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
+function UpcomingRow({ startAt, customerName, serviceLabel, tz }: UpcomingAppt & { tz: string }) {
+  const time = formatTimeInTz(startAt, tz)
   return (
     <div className="grid grid-cols-[64px_1fr] items-baseline gap-4 border-b border-[var(--color-leather-muted)]/20 px-4 py-3 last:border-b-0">
       <span className="font-mono text-[14px] font-bold tabular-nums text-[var(--color-bone)]">

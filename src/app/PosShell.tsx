@@ -25,7 +25,7 @@ function useLiveClock() {
 
 export function PosShell() {
   const { viewer, lock, isLocked, loading } = usePosAuth()
-  const { locationName, locationId } = useLocation()
+  const { locationName, locationId, locationTimezone } = useLocation()
   const now = useLiveClock()
   const routerLoc = useRouterLocation()
   // Hook llamado siempre (Rules of Hooks). Devuelve null cuando viewer aún
@@ -62,6 +62,7 @@ export function PosShell() {
         staffName={viewer.staff.fullName}
         staffPhotoUrl={viewer.staff.photoUrl ?? null}
         onLock={lock}
+        timezone={locationTimezone}
       />
       <main className="flex-1 overflow-hidden">
         <Outlet />

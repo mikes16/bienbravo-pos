@@ -1,6 +1,7 @@
 import { StatusBadge, type StatusTone } from '@/shared/pos-ui'
 import type { PosBarberStatus } from '@/core/auth/auth.repository'
 import { cldThumb } from '@/shared/lib/cloudinary'
+import { formatTimeInTz } from '@/shared/lib/date'
 
 // Inline padlock — Material Symbols was being loaded just for this one icon.
 function LockIcon({ className }: { className?: string }) {
@@ -30,6 +31,10 @@ interface IdentityStripV2Props {
   staffName: string
   staffPhotoUrl: string | null
   onLock: () => void
+  /** Tz de la sucursal — el reloj del top-bar debe leer la hora en la tz de
+   *  la sucursal, no la del device. Presentational: no puede llamar
+   *  useLocation(), así que el padre (PosShell) la pasa como prop. */
+  timezone: string
 }
 
 /**
@@ -65,14 +70,16 @@ export function IdentityStripV2({
   staffName,
   staffPhotoUrl,
   onLock,
+  timezone,
 }: IdentityStripV2Props) {
-  const timeStr = now.toLocaleTimeString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
+  const timeStr = formatTimeInTz(now.toISOString(), timezone)
+  const dateStr = new Intl.DateTimeFormat('es-MX', {
+    timeZone: timezone,
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
   })
-  const dateStr = now
-    .toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })
+    .format(now)
     .toUpperCase()
   const initials = getInitials(staffName)
 

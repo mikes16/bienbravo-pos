@@ -16,6 +16,7 @@ function baseInput(overrides: Partial<Parameters<typeof deriveHoyViewModel>[0]> 
     clockEvents: [] as TimeClockEvent[],
     commission: { amountCents: 0, serviceCount: 0, loading: false },
     caja: { isOpen: true, accumulatedCents: 0, openedAt: new Date() },
+    tz: 'America/Monterrey',
     ...overrides,
   }
 }

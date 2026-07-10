@@ -129,6 +129,7 @@ export function HoyPage() {
           accumulatedCents: cajaRes?.accumulatedCents ?? null,
           openedAt: cajaRes?.openedAt ? new Date(cajaRes.openedAt) : null,
         },
+        tz: locationTimezone,
       }),
     )
   }, [agenda, apollo, clock, walkins, viewer, locationId, locationTimezone])
