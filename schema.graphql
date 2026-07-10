@@ -1275,6 +1275,7 @@ type PosPublicLocation {
   id: ID!
   name: String!
   slug: String!
+  timezone: String!
 }
 
 type PosRevenueSummary {
@@ -1548,7 +1549,7 @@ type Query {
   stockLocations: [StockLocation!]!
   suggestedNextWalkIn(input: SuggestedNextWalkInInput!): WalkIn
   timeClockEvents(fromDate: String!, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
-  upcomingAppointmentsPublic(slug: String!): [PublicAppointmentEntry!]!
+  upcomingAppointmentsPublic(kioskToken: String!): [PublicAppointmentEntry!]!
   verifyKioskToken(token: String!): VerifiedKioskToken!
   viewer: Viewer!
   walkIns(fromDate: String, locationId: ID!, toDate: String): [WalkIn!]!
@@ -1713,6 +1714,7 @@ type ReportHeatmapCell {
   hour: Int!
   locationId: ID!
   revenueCents: Int!
+  walkInCount: Int!
 }
 
 type ReportMonthOverMonth {

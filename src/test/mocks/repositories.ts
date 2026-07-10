@@ -134,8 +134,8 @@ export class InMemoryAuthRepository implements AuthRepository {
 
   async getLocations(): Promise<PosLocation[]> {
     return [
-      { id: 'loc-1', name: 'Sucursal Centro', slug: 'centro' },
-      { id: 'loc-2', name: 'Sucursal Norte', slug: 'norte' },
+      { id: 'loc-1', name: 'Sucursal Centro', slug: 'centro', timezone: 'America/Monterrey' },
+      { id: 'loc-2', name: 'Sucursal Norte', slug: 'norte', timezone: 'America/Monterrey' },
     ]
   }
 

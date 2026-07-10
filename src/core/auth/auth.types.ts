@@ -36,6 +36,7 @@ export interface PosLocation {
   id: string
   name: string
   slug: string
+  timezone: string
 }
 
 export interface LocationScope {

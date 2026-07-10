@@ -48,6 +48,7 @@ const LOCATIONS_QUERY = graphql(`
       id
       name
       slug
+      timezone
     }
   }
 `)

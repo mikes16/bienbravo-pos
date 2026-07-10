@@ -1,5 +1,6 @@
 import { createContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
+import { BRANCH_TZ_DEFAULT } from '@/shared/lib/date'
 
 const POS_LOCATION_STORAGE_KEY = 'bb-pos-location-id'
 
@@ -13,6 +14,7 @@ export interface LocationContextValue {
    * resolución vía auth.getLocations() en el mount del LocationProvider.
    */
   locationSlug: string | null
+  locationTimezone: string
   setLocationId: (id: string | null) => void
 }
 
@@ -26,6 +28,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   })
   const [locationName, setLocationName] = useState<string | null>(null)
   const [locationSlug, setLocationSlug] = useState<string | null>(null)
+  const [locationTimezone, setLocationTimezone] = useState<string>(BRANCH_TZ_DEFAULT)
 
   const setLocationId = useCallback((id: string | null) => {
     setLocationIdState(id)
@@ -44,7 +47,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     const resolvePromise = locationId
       ? auth.getLocations().then((locations) => {
           const match = locations.find((l) => l.id === locationId)
-          return match ? { name: match.name, slug: match.slug } : null
+          return match ? { name: match.name, slug: match.slug, timezone: match.timezone } : null
         })
       : Promise.resolve(null)
 
@@ -53,11 +56,13 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
         setLocationName(data?.name ?? null)
         setLocationSlug(data?.slug ?? null)
+        setLocationTimezone(data?.timezone ?? BRANCH_TZ_DEFAULT)
       })
       .catch(() => {
         if (cancelled) return
         setLocationName(null)
         setLocationSlug(null)
+        setLocationTimezone(BRANCH_TZ_DEFAULT)
       })
 
     return () => {
@@ -66,7 +71,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, [locationId, auth])
 
   return (
-    <LocationContext.Provider value={{ locationId, locationName, locationSlug, setLocationId }}>
+    <LocationContext.Provider
+      value={{ locationId, locationName, locationSlug, locationTimezone, setLocationId }}
+    >
       {children}
     </LocationContext.Provider>
   )
