@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
+import { useLocation } from '@/core/location/useLocation'
+import { minutesOfDayInTz, dayOfWeekInTz } from '@/shared/lib/date'
 import type { TimeClockEvent, ShiftTemplate } from '../data/clock.repository.ts'
 
 function todayISO(): string {
@@ -11,15 +13,6 @@ function todayISO(): string {
   const m = String(now.getMonth() + 1).padStart(2, '0')
   const d = String(now.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
-}
-
-function todayDayOfWeek(): number {
-  return new Date().getDay()
-}
-
-function minutesFromMidnight(iso: string): number {
-  const d = new Date(iso)
-  return d.getHours() * 60 + d.getMinutes()
 }
 
 function formatMinToTime(min: number): string {
@@ -54,6 +47,7 @@ function isForbidden(err: unknown): boolean {
 
 export function useClock(staffUserId: string | null, locationId: string | null) {
   const { clock } = useRepositories()
+  const { locationTimezone } = useLocation()
   const [events, setEvents] = useState<TimeClockEvent[]>([])
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,20 +128,20 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   const isClockedIn = events.length > 0 && events[events.length - 1].type === 'CLOCK_IN'
 
   const shiftStatus: ShiftStatus = useMemo(() => {
-    const dow = todayDayOfWeek()
+    const dow = dayOfWeekInTz(new Date().toISOString(), locationTimezone)
     const todayShift = shiftTemplates.find((t) => t.dayOfWeek === dow)
 
     // Use the LATEST CLOCK_IN, not the first. With double shifts (IN→OUT→IN),
     // the first CLOCK_IN belongs to the morning shift; for the afternoon shift
     // the operator expects to see the 3pm entry, not the 8am one.
     const latestClockIn = events.filter((e) => e.type === 'CLOCK_IN').at(-1)
-    const arrivalMin = latestClockIn ? minutesFromMidnight(latestClockIn.at) : null
+    const arrivalMin = latestClockIn ? minutesOfDayInTz(latestClockIn.at, locationTimezone) : null
 
     // Surface the latest CLOCK_OUT once the barber has clocked out — without
     // this, there's no way to see "when did I leave?" on the reloj screen.
     const latestClockOut = events.filter((e) => e.type === 'CLOCK_OUT').at(-1)
     const departureMin =
-      !isClockedIn && latestClockOut ? minutesFromMidnight(latestClockOut.at) : null
+      !isClockedIn && latestClockOut ? minutesOfDayInTz(latestClockOut.at, locationTimezone) : null
     const departureLabel = departureMin !== null ? formatMinToTime(departureMin) : null
 
     if (!todayShift) {
@@ -191,7 +185,7 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
       statusLabel,
       latenessThresholdMin,
     }
-  }, [events, shiftTemplates, isClockedIn, latenessThresholdMin])
+  }, [events, shiftTemplates, isClockedIn, latenessThresholdMin, locationTimezone])
 
   const doClockIn = useCallback(async (): Promise<boolean> => {
     if (!locationId || submitting) return false

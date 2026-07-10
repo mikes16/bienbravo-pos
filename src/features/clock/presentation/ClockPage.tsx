@@ -84,11 +84,6 @@ function computeWorkedMs(events: TimeClockEvent[], nowMs: number): number {
   return Math.max(0, total)
 }
 
-function nowMinutesFromMidnight(nowMs: number): number {
-  const d = new Date(nowMs)
-  return d.getHours() * 60 + d.getMinutes()
-}
-
 export function ClockPage() {
   const { viewer } = usePosAuth()
   const { locationId, locationTimezone } = useLocation()
@@ -145,7 +140,7 @@ export function ClockPage() {
   // o si no hay horario asignado, o si no ha llegado todavía.
   const firstArrivalLatenessMin = (() => {
     if (!firstClockInToday || shiftStatus.scheduledStartMin === null) return null
-    const arrivalMin = nowMinutesFromMidnight(new Date(firstClockInToday.at).getTime())
+    const arrivalMin = minutesOfDayInTz(firstClockInToday.at, locationTimezone)
     const late = arrivalMin - shiftStatus.scheduledStartMin - shiftStatus.latenessThresholdMin
     return late > 0 ? Math.floor(late) : null
   })()
@@ -161,7 +156,7 @@ export function ClockPage() {
     if (!ok || !isFirstToday) return
     const sched = shiftStatus.scheduledStartMin
     if (sched === null) return
-    const arrivalMin = nowMinutesFromMidnight(Date.now())
+    const arrivalMin = minutesOfDayInTz(new Date().toISOString(), locationTimezone)
     const lateBy = arrivalMin - sched - shiftStatus.latenessThresholdMin
     if (lateBy > 0) {
       addToast('Llegaste tarde. Mañana llega antes — tu puntualidad cuenta 💪', 'info')
@@ -323,7 +318,7 @@ function StatusCard({
     )
   }
 
-  const nowMin = nowMinutesFromMidnight(nowMs)
+  const nowMin = minutesOfDayInTz(new Date(nowMs).toISOString(), tz)
   // Usa el umbral configurado por la sucursal (mismo que el del retardo
   // del día) en vez de hardcode 5 min.
   const minsLate = Math.max(0, nowMin - shiftStatus.scheduledStartMin - shiftStatus.latenessThresholdMin)
