@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { EmptyStateV2, StatusBadge, type StatusTone } from '@/shared/pos-ui'
 import { cn } from '@/shared/lib/cn'
 import { cldThumb } from '@/shared/lib/cloudinary'
-import { formatTimeInTz } from '@/shared/lib/date'
+import { formatTimeInTz, localDayInTz } from '@/shared/lib/date'
 import { useLocation } from '@/core/location/useLocation'
 import type { PosStaffUser } from '@/core/auth/auth.types'
 import type { PosBarberStatus } from '@/core/auth/auth.repository'
@@ -41,9 +41,16 @@ const MONTH_ABBR_ES: Record<string, string> = {
 }
 
 function formatHeader(d: Date, tz: string): string {
-  const weekday = d.toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '').toUpperCase()
-  const day = String(d.getDate()).padStart(2, '0')
-  const month = MONTH_ABBR_ES[String(d.getMonth())]
+  // Todo el header (weekday/día/mes/hora) se lee en la tz de la sucursal, no
+  // en la del navegador — así el "MAR 07 JUL · 23:50" nunca se auto-contradice
+  // cerca de medianoche si el device/manager está en otra tz.
+  const weekday = new Intl.DateTimeFormat('es-MX', { timeZone: tz, weekday: 'short' })
+    .format(d)
+    .replace('.', '')
+    .toUpperCase()
+  const ymd = localDayInTz(d, tz) // 'YYYY-MM-DD' en la tz
+  const day = ymd.slice(8, 10)
+  const month = MONTH_ABBR_ES[String(Number(ymd.slice(5, 7)) - 1)]
   const time = formatTimeInTz(d.toISOString(), tz)
   return `${weekday} ${day} ${month} · ${time}`
 }
