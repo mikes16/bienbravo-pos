@@ -1,5 +1,6 @@
 import { type ApolloClient } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
+import { toCustomerNameTakenException } from '@/shared/lib/customer-errors'
 import type { WalkIn } from '../domain/walkins.types.ts'
 
 const WALKINS_QUERY = graphql(`
@@ -204,22 +205,33 @@ export class ApolloWalkInsRepository implements WalkInsRepository {
   }
 
   async create(input: CreateWalkInInput): Promise<WalkIn> {
-    const { data } = await this.#client.mutate<{ createWalkIn: WalkIn }>({
-      mutation: CREATE_WALKIN as never,
-      variables: {
-        locationId: input.locationId,
-        customerId: input.customerId ?? null,
-        customerName: input.customerName,
-        customerPhone: input.customerPhone ?? null,
-        customerEmail: input.customerEmail ?? null,
-        requestedServiceId: input.requestedServiceId ?? null,
-        requestedServiceIds: input.requestedServiceIds ?? null,
-        requestedCatalogComboId: input.requestedCatalogComboId ?? null,
-        preferredStaffUserId: input.preferredStaffUserId ?? null,
-      },
-    })
-    this.#evictWalkIns()
-    return data!.createWalkIn
+    try {
+      const { data } = await this.#client.mutate<{ createWalkIn: WalkIn }>({
+        mutation: CREATE_WALKIN as never,
+        variables: {
+          locationId: input.locationId,
+          customerId: input.customerId ?? null,
+          customerName: input.customerName,
+          customerPhone: input.customerPhone ?? null,
+          customerEmail: input.customerEmail ?? null,
+          requestedServiceId: input.requestedServiceId ?? null,
+          requestedServiceIds: input.requestedServiceIds ?? null,
+          requestedCatalogComboId: input.requestedCatalogComboId ?? null,
+          preferredStaffUserId: input.preferredStaffUserId ?? null,
+        },
+      })
+      this.#evictWalkIns()
+      return data!.createWalkIn
+    } catch (err) {
+      // Carrera pura de nombre (dos POS crean "Juan Pérez" casi al mismo
+      // tiempo) — el API responde con un error de dominio con mensaje en
+      // español + el id del cliente que ganó la carrera. Lo traducimos a
+      // una excepción tipada para que la UI pueda ofrecer "usar existente"
+      // sin tener que conocer la forma de CombinedGraphQLErrors.
+      const domainErr = toCustomerNameTakenException(err)
+      if (domainErr) throw domainErr
+      throw err
+    }
   }
 
   async assign(walkInId: string, staffUserId: string): Promise<{ walkIn: WalkIn; warning: string | null }> {

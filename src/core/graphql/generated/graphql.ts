@@ -415,8 +415,9 @@ export type CreateBlogPostInput = {
 
 export type CreateBookingDraftInput = {
   channel?: InputMaybe<BookingChannel>;
-  customerEmail: Scalars['String']['input'];
-  customerFullName: Scalars['String']['input'];
+  customerEmail?: InputMaybe<Scalars['String']['input']>;
+  customerFullName?: InputMaybe<Scalars['String']['input']>;
+  customerId?: InputMaybe<Scalars['ID']['input']>;
   customerPhone?: InputMaybe<Scalars['String']['input']>;
   items: Array<BookingItemInput>;
   locationId: Scalars['ID']['input'];
@@ -646,8 +647,9 @@ export type CreateStockLocationInput = {
 
 export type CreateWalkInPublicInput = {
   customerFirstName: Scalars['String']['input'];
+  customerId?: InputMaybe<Scalars['ID']['input']>;
   customerLastName: Scalars['String']['input'];
-  customerPhone: Scalars['String']['input'];
+  customerPhone?: InputMaybe<Scalars['String']['input']>;
   locationSlug: Scalars['String']['input'];
   preferredStaffUserId?: InputMaybe<Scalars['ID']['input']>;
   requestedServiceId?: InputMaybe<Scalars['ID']['input']>;
@@ -883,6 +885,12 @@ export type IssuedKioskToken = {
   token: KioskToken;
 };
 
+export type KioskCustomerSuggestion = {
+  __typename?: 'KioskCustomerSuggestion';
+  customerId: Scalars['ID']['output'];
+  fullName: Scalars['String']['output'];
+};
+
 export type KioskToken = {
   __typename?: 'KioskToken';
   createdAt: Scalars['DateTime']['output'];
@@ -1063,6 +1071,7 @@ export type Mutation = {
   cancelAppointmentPrepayLink: Scalars['Boolean']['output'];
   cancelOrder: Order;
   checkIn: Appointment;
+  checkInAppointmentByCustomerIdPublic: CheckInAppointmentResult;
   checkInAppointmentPublic: CheckInAppointmentResult;
   clearStaffPin: Scalars['Boolean']['output'];
   clockIn: Scalars['Boolean']['output'];
@@ -1121,7 +1130,7 @@ export type Mutation = {
   deleteStaffVacation: Scalars['Boolean']['output'];
   dropWalkIn: Scalars['Boolean']['output'];
   extendServiceTokenPrevious: ServiceTokenInfo;
-  findOrCreateCustomer?: Maybe<Customer>;
+  findOrCreateCustomer: Customer;
   findOrCreateMostradorCustomer: Customer;
   fulfillOrder: Order;
   inventoryAdjust: InventoryLevel;
@@ -1274,6 +1283,13 @@ export type MutationCancelOrderArgs = {
 
 export type MutationCheckInArgs = {
   appointmentId: Scalars['ID']['input'];
+};
+
+
+export type MutationCheckInAppointmentByCustomerIdPublicArgs = {
+  customerId: Scalars['ID']['input'];
+  locationSlug: Scalars['String']['input'];
+  token: Scalars['String']['input'];
 };
 
 
@@ -2293,6 +2309,7 @@ export type PublicLocation = {
   isOpen: Scalars['Boolean']['output'];
   mode: LocationMode;
   slug: Scalars['String']['output'];
+  timezone: Scalars['String']['output'];
 };
 
 export type PublicNowServingEntry = {
@@ -2361,6 +2378,7 @@ export type Query = {
   inventoryLevels: Array<InventoryLevel>;
   inventoryMatrix: InventoryMatrixConnection;
   inventoryMovements: Array<InventoryMovement>;
+  kioskCustomerNameSuggestions: Array<KioskCustomerSuggestion>;
   latenessExcuses: Array<LatenessExcuse>;
   latenessOverrides: Array<LatenessOverride>;
   latenessRule?: Maybe<LatenessRule>;
@@ -2403,12 +2421,22 @@ export type Query = {
   reportByDayOfWeek: Array<ReportDayOfWeekRow>;
   reportCompareLocations: Array<ReportCompareLocationRow>;
   reportCompareTwoDays: ReportCompareTwoDays;
+  reportCustomerMix: ReportCustomerMix;
   reportHeatmapByHour: Array<ReportHeatmapCell>;
+  reportInventoryMovements: ReportInventoryMovements;
+  reportInventoryValue: Array<ReportInventoryValueRow>;
+  reportLaborCost: Array<ReportLaborCostRow>;
+  reportLowStock: ReportLowStock;
   reportMonthOverMonth: ReportMonthOverMonth;
   reportNoShowRate: ReportNoShowRate;
+  reportOccupancy: Array<ReportOccupancyRow>;
+  reportPaymentMethodMix: Array<ReportPaymentMethodMixRow>;
   reportRefunds: ReportRefunds;
+  reportRegisterDiffs: ReportRegisterDiffs;
   reportRevenueMix: Array<ReportRevenueMixRow>;
   reportStaffPerformance: Array<ReportStaffPerformanceRow>;
+  reportTopProducts: Array<ReportTopProductRow>;
+  reportTrafficMix: Array<ReportTrafficMixRow>;
   reportWeekOverWeek: ReportWeekOverWeek;
   reportsExportCsv: Scalars['String']['output'];
   role?: Maybe<Role>;
@@ -2596,6 +2624,12 @@ export type QueryInventoryMovementsArgs = {
   first?: InputMaybe<Scalars['Int']['input']>;
   productId: Scalars['ID']['input'];
   productVariantId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryKioskCustomerNameSuggestionsArgs = {
+  prefix: Scalars['String']['input'];
+  token: Scalars['String']['input'];
 };
 
 
@@ -2829,9 +2863,40 @@ export type QueryReportCompareTwoDaysArgs = {
 };
 
 
+export type QueryReportCustomerMixArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type QueryReportHeatmapByHourArgs = {
   dateFrom: Scalars['String']['input'];
   dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryReportInventoryMovementsArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryReportInventoryValueArgs = {
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryReportLaborCostArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryReportLowStockArgs = {
   locationId?: InputMaybe<Scalars['ID']['input']>;
 };
 
@@ -2850,8 +2915,29 @@ export type QueryReportNoShowRateArgs = {
 };
 
 
+export type QueryReportOccupancyArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryReportPaymentMethodMixArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type QueryReportRefundsArgs = {
   byDay?: InputMaybe<Scalars['Boolean']['input']>;
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryReportRegisterDiffsArgs = {
   dateFrom: Scalars['String']['input'];
   dateTo: Scalars['String']['input'];
   locationId?: InputMaybe<Scalars['ID']['input']>;
@@ -2872,6 +2958,20 @@ export type QueryReportStaffPerformanceArgs = {
 };
 
 
+export type QueryReportTopProductsArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
+export type QueryReportTrafficMixArgs = {
+  dateFrom: Scalars['String']['input'];
+  dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type QueryReportWeekOverWeekArgs = {
   dateFrom: Scalars['String']['input'];
   locationId?: InputMaybe<Scalars['ID']['input']>;
@@ -2881,6 +2981,7 @@ export type QueryReportWeekOverWeekArgs = {
 export type QueryReportsExportCsvArgs = {
   dateFrom: Scalars['String']['input'];
   dateTo: Scalars['String']['input'];
+  locationId?: InputMaybe<Scalars['ID']['input']>;
   type: Scalars['String']['input'];
 };
 
@@ -3135,6 +3236,7 @@ export type RegisterSession = {
   countedCardCents?: Maybe<Scalars['Int']['output']>;
   countedCashCents?: Maybe<Scalars['Int']['output']>;
   countedTransferCents?: Maybe<Scalars['Int']['output']>;
+  differenceCents?: Maybe<Scalars['Int']['output']>;
   expectedCardCents: Scalars['Int']['output'];
   expectedCashCents: Scalars['Int']['output'];
   expectedTransferCents: Scalars['Int']['output'];
@@ -3220,6 +3322,28 @@ export type ReportCompareTwoDays = {
   delta: ReportPeriodTotals;
 };
 
+export type ReportCustomerMix = {
+  __typename?: 'ReportCustomerMix';
+  byDay: Array<ReportCustomerMixDay>;
+  totals: ReportCustomerMixTotals;
+};
+
+export type ReportCustomerMixDay = {
+  __typename?: 'ReportCustomerMixDay';
+  date: Scalars['String']['output'];
+  newCustomers: Scalars['Int']['output'];
+  returningCustomers: Scalars['Int']['output'];
+};
+
+export type ReportCustomerMixTotals = {
+  __typename?: 'ReportCustomerMixTotals';
+  avgVisitsPerCustomer: Scalars['Float']['output'];
+  distinctCustomers: Scalars['Int']['output'];
+  newCustomers: Scalars['Int']['output'];
+  returningCustomers: Scalars['Int']['output'];
+  returningPercent: Scalars['Float']['output'];
+};
+
 export type ReportDayOfWeekRow = {
   __typename?: 'ReportDayOfWeekRow';
   appointmentCount: Scalars['Int']['output'];
@@ -3239,6 +3363,64 @@ export type ReportHeatmapCell = {
   walkInCount: Scalars['Int']['output'];
 };
 
+export type ReportInventoryMovementDay = {
+  __typename?: 'ReportInventoryMovementDay';
+  date: Scalars['String']['output'];
+  inUnits: Scalars['Int']['output'];
+  outUnits: Scalars['Int']['output'];
+};
+
+export type ReportInventoryMovementEntry = {
+  __typename?: 'ReportInventoryMovementEntry';
+  actorName?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  delta: Scalars['Int']['output'];
+  id: Scalars['ID']['output'];
+  productName: Scalars['String']['output'];
+  reason?: Maybe<Scalars['String']['output']>;
+  stockLocationName: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+};
+
+export type ReportInventoryMovements = {
+  __typename?: 'ReportInventoryMovements';
+  byDay: Array<ReportInventoryMovementDay>;
+  recent: Array<ReportInventoryMovementEntry>;
+};
+
+export type ReportInventoryValueRow = {
+  __typename?: 'ReportInventoryValueRow';
+  productsWithoutCost: Scalars['Int']['output'];
+  stockLocationId: Scalars['ID']['output'];
+  stockLocationName: Scalars['String']['output'];
+  totalUnits: Scalars['Int']['output'];
+  valueCents: Scalars['Int']['output'];
+};
+
+export type ReportLaborCostRow = {
+  __typename?: 'ReportLaborCostRow';
+  commissionCents: Scalars['Int']['output'];
+  date: Scalars['String']['output'];
+  revenueCents: Scalars['Int']['output'];
+};
+
+export type ReportLowStock = {
+  __typename?: 'ReportLowStock';
+  lowStockCount: Scalars['Int']['output'];
+  outOfStockCount: Scalars['Int']['output'];
+  rows: Array<ReportLowStockRow>;
+};
+
+export type ReportLowStockRow = {
+  __typename?: 'ReportLowStockRow';
+  lowStockThreshold: Scalars['Int']['output'];
+  productId: Scalars['ID']['output'];
+  productName: Scalars['String']['output'];
+  quantity: Scalars['Int']['output'];
+  stockLocationName: Scalars['String']['output'];
+  variantName?: Maybe<Scalars['String']['output']>;
+};
+
 export type ReportMonthOverMonth = {
   __typename?: 'ReportMonthOverMonth';
   currentMonth: ReportPeriodTotals;
@@ -3252,6 +3434,22 @@ export type ReportNoShowRate = {
   noShowCount: Scalars['Int']['output'];
   ratePercent: Scalars['Float']['output'];
   totalAppointments: Scalars['Int']['output'];
+};
+
+export type ReportOccupancyRow = {
+  __typename?: 'ReportOccupancyRow';
+  availableMinutes: Scalars['Int']['output'];
+  date: Scalars['String']['output'];
+  occupancyMinutes: Scalars['Int']['output'];
+  occupancyPercent?: Maybe<Scalars['Float']['output']>;
+};
+
+export type ReportPaymentMethodMixRow = {
+  __typename?: 'ReportPaymentMethodMixRow';
+  cardCents: Scalars['Int']['output'];
+  cashCents: Scalars['Int']['output'];
+  date: Scalars['String']['output'];
+  transferCents: Scalars['Int']['output'];
 };
 
 export type ReportPeriodTotals = {
@@ -3274,6 +3472,30 @@ export type ReportRefundsByDay = {
   date: Scalars['String']['output'];
   refundCents: Scalars['Int']['output'];
   refundCount: Scalars['Int']['output'];
+};
+
+export type ReportRegisterDiffDay = {
+  __typename?: 'ReportRegisterDiffDay';
+  date: Scalars['String']['output'];
+  diffCents: Scalars['Int']['output'];
+  sessionCount: Scalars['Int']['output'];
+};
+
+export type ReportRegisterDiffSession = {
+  __typename?: 'ReportRegisterDiffSession';
+  closedAt: Scalars['DateTime']['output'];
+  closedByName: Scalars['String']['output'];
+  countedTotalCents: Scalars['Int']['output'];
+  differenceCents: Scalars['Int']['output'];
+  expectedTotalCents: Scalars['Int']['output'];
+  locationName: Scalars['String']['output'];
+  sessionId: Scalars['ID']['output'];
+};
+
+export type ReportRegisterDiffs = {
+  __typename?: 'ReportRegisterDiffs';
+  byDay: Array<ReportRegisterDiffDay>;
+  worstSessions: Array<ReportRegisterDiffSession>;
 };
 
 export type ReportRevenueMixRow = {
@@ -3302,6 +3524,22 @@ export type ReportStaffPerformanceRow = {
   revenueCents: Scalars['Int']['output'];
   staffName?: Maybe<Scalars['String']['output']>;
   staffUserId: Scalars['ID']['output'];
+};
+
+export type ReportTopProductRow = {
+  __typename?: 'ReportTopProductRow';
+  productId: Scalars['ID']['output'];
+  productName: Scalars['String']['output'];
+  rank: Scalars['Int']['output'];
+  revenueCents: Scalars['Int']['output'];
+  unitsSold: Scalars['Int']['output'];
+};
+
+export type ReportTrafficMixRow = {
+  __typename?: 'ReportTrafficMixRow';
+  appointmentCount: Scalars['Int']['output'];
+  date: Scalars['String']['output'];
+  walkInCount: Scalars['Int']['output'];
 };
 
 export type ReportWeekOverWeek = {
@@ -3579,6 +3817,7 @@ export type ShiftOverrideBlock = {
 };
 
 export enum ShiftOverrideType {
+  Absence = 'ABSENCE',
   CustomHours = 'CUSTOM_HOURS',
   DayOff = 'DAY_OFF'
 }
@@ -4321,7 +4560,7 @@ export type FindOrCreateCustomerMutationVariables = Exact<{
 }>;
 
 
-export type FindOrCreateCustomerMutation = { __typename?: 'Mutation', findOrCreateCustomer?: { __typename?: 'Customer', id: string, fullName: string, email?: string | null, phone?: string | null } | null };
+export type FindOrCreateCustomerMutation = { __typename?: 'Mutation', findOrCreateCustomer: { __typename?: 'Customer', id: string, fullName: string, email?: string | null, phone?: string | null } };
 
 export type CreatePosSaleMutationVariables = Exact<{
   input: CreatePosSaleInput;

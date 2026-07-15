@@ -3,6 +3,7 @@ import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
 import { cn } from '@/shared/lib/cn'
+import { CustomerNameTakenException } from '@/shared/lib/customer-errors'
 import type { CustomerResult, BarberResult } from '@/features/checkout/data/checkout.repository'
 import type { CatalogService, CatalogCombo, CatalogCategory } from '@/features/checkout/domain/checkout.types'
 
@@ -238,7 +239,22 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       if (import.meta.env.DEV) {
         console.error('[AddWalkInSheet] create failed', err)
       }
-      setError('No se pudo crear el walk-in. Reintenta.')
+      if (err instanceof CustomerNameTakenException) {
+        // Carrera de nombre: el API ya devuelve un mensaje en español listo
+        // para mostrar tal cual — no lo pisamos con un genérico.
+        setError(err.message)
+        if (err.existingCustomerId) {
+          // Vincula automáticamente al cliente que ganó la carrera. El
+          // operador solo necesita reintentar el submit — esta vez viaja
+          // customerId (no el nombre), así que el mismo choque no puede
+          // repetirse.
+          checkout.getCustomer(err.existingCustomerId).then((c) => {
+            if (c) linkExisting(c)
+          }).catch(() => {})
+        }
+      } else {
+        setError('No se pudo crear el walk-in. Reintenta.')
+      }
       setSubmitting(false)
     }
   }

@@ -367,8 +367,9 @@ input CreateBlogPostInput {
 
 input CreateBookingDraftInput {
   channel: BookingChannel = ONLINE
-  customerEmail: String!
-  customerFullName: String!
+  customerEmail: String
+  customerFullName: String
+  customerId: ID
   customerPhone: String
   items: [BookingItemInput!]!
   locationId: ID!
@@ -597,8 +598,9 @@ input CreateStockLocationInput {
 
 input CreateWalkInPublicInput {
   customerFirstName: String!
+  customerId: ID
   customerLastName: String!
-  customerPhone: String!
+  customerPhone: String
   locationSlug: String!
   preferredStaffUserId: ID
   requestedServiceId: ID
@@ -825,6 +827,11 @@ type IssuedKioskToken {
 """Arbitrary JSON value"""
 scalar JSON
 
+type KioskCustomerSuggestion {
+  customerId: ID!
+  fullName: String!
+}
+
 type KioskToken {
   createdAt: DateTime!
   createdBy: String
@@ -991,6 +998,7 @@ type Mutation {
   cancelAppointmentPrepayLink(saleId: ID!): Boolean!
   cancelOrder(orderId: ID!): Order!
   checkIn(appointmentId: ID!): Appointment!
+  checkInAppointmentByCustomerIdPublic(customerId: ID!, locationSlug: String!, token: String!): CheckInAppointmentResult!
   checkInAppointmentPublic(kioskToken: String!, phone: String!): CheckInAppointmentResult!
   clearStaffPin(staffUserId: ID!): Boolean!
   clockIn(locationId: ID!): Boolean!
@@ -1049,7 +1057,7 @@ type Mutation {
   deleteStaffVacation(id: ID!): Boolean!
   dropWalkIn(reason: String, walkInId: ID!): Boolean!
   extendServiceTokenPrevious(additionalHours: Int!): ServiceTokenInfo!
-  findOrCreateCustomer(email: String, name: String!, phone: String): Customer
+  findOrCreateCustomer(email: String, name: String!, phone: String): Customer!
   findOrCreateMostradorCustomer: Customer!
   fulfillOrder(orderId: ID!, stockLocationId: ID!): Order!
   inventoryAdjust(delta: Int!, productId: ID!, reason: String, stockLocationId: ID!): InventoryLevel!
@@ -1406,6 +1414,7 @@ type PublicLocation {
   isOpen: Boolean!
   mode: LocationMode!
   slug: String!
+  timezone: String!
 }
 
 type PublicNowServingEntry {
@@ -1469,6 +1478,7 @@ type Query {
   inventoryLevels(limit: Int, offset: Int, stockLocationId: ID!): [InventoryLevel!]!
   inventoryMatrix(after: String, first: Int = 50, search: String, stockLocationIds: [ID!]): InventoryMatrixConnection!
   inventoryMovements(first: Int = 10, productId: ID!, productVariantId: ID): [InventoryMovement!]!
+  kioskCustomerNameSuggestions(prefix: String!, token: String!): [KioskCustomerSuggestion!]!
   latenessExcuses(fromDate: String!, locationId: ID, staffUserId: ID, toDate: String!): [LatenessExcuse!]!
   latenessOverrides(locationId: ID, staffUserId: ID): [LatenessOverride!]!
   latenessRule(locationId: ID!): LatenessRule
@@ -1511,14 +1521,24 @@ type Query {
   reportByDayOfWeek(dateFrom: String!, dateTo: String!, locationId: ID): [ReportDayOfWeekRow!]!
   reportCompareLocations(dateFrom: String!, dateTo: String!, locationId: ID): [ReportCompareLocationRow!]!
   reportCompareTwoDays(dateA: String!, dateB: String!, locationId: ID): ReportCompareTwoDays!
+  reportCustomerMix(dateFrom: String!, dateTo: String!, locationId: ID): ReportCustomerMix!
   reportHeatmapByHour(dateFrom: String!, dateTo: String!, locationId: ID): [ReportHeatmapCell!]!
+  reportInventoryMovements(dateFrom: String!, dateTo: String!, locationId: ID): ReportInventoryMovements!
+  reportInventoryValue(locationId: ID): [ReportInventoryValueRow!]!
+  reportLaborCost(dateFrom: String!, dateTo: String!, locationId: ID): [ReportLaborCostRow!]!
+  reportLowStock(locationId: ID): ReportLowStock!
   reportMonthOverMonth(locationId: ID, month: Int!, year: Int!): ReportMonthOverMonth!
   reportNoShowRate(dateFrom: String!, dateTo: String!, locationId: ID): ReportNoShowRate!
+  reportOccupancy(dateFrom: String!, dateTo: String!, locationId: ID): [ReportOccupancyRow!]!
+  reportPaymentMethodMix(dateFrom: String!, dateTo: String!, locationId: ID): [ReportPaymentMethodMixRow!]!
   reportRefunds(byDay: Boolean, dateFrom: String!, dateTo: String!, locationId: ID): ReportRefunds!
+  reportRegisterDiffs(dateFrom: String!, dateTo: String!, locationId: ID): ReportRegisterDiffs!
   reportRevenueMix(dateFrom: String!, dateTo: String!, locationId: ID): [ReportRevenueMixRow!]!
   reportStaffPerformance(dateFrom: String!, dateTo: String!, locationId: ID): [ReportStaffPerformanceRow!]!
+  reportTopProducts(dateFrom: String!, dateTo: String!, locationId: ID): [ReportTopProductRow!]!
+  reportTrafficMix(dateFrom: String!, dateTo: String!, locationId: ID): [ReportTrafficMixRow!]!
   reportWeekOverWeek(dateFrom: String!, locationId: ID): ReportWeekOverWeek!
-  reportsExportCsv(dateFrom: String!, dateTo: String!, type: String!): String!
+  reportsExportCsv(dateFrom: String!, dateTo: String!, locationId: ID, type: String!): String!
   role(id: ID!): Role
   roles(kind: RoleKind): [Role!]!
   sale(id: ID!): Sale
@@ -1619,6 +1639,7 @@ type RegisterSession {
   countedCardCents: Int
   countedCashCents: Int
   countedTransferCents: Int
+  differenceCents: Int
   expectedCardCents: Int!
   expectedCashCents: Int!
   expectedTransferCents: Int!
@@ -1700,6 +1721,25 @@ type ReportCompareTwoDays {
   delta: ReportPeriodTotals!
 }
 
+type ReportCustomerMix {
+  byDay: [ReportCustomerMixDay!]!
+  totals: ReportCustomerMixTotals!
+}
+
+type ReportCustomerMixDay {
+  date: String!
+  newCustomers: Int!
+  returningCustomers: Int!
+}
+
+type ReportCustomerMixTotals {
+  avgVisitsPerCustomer: Float!
+  distinctCustomers: Int!
+  newCustomers: Int!
+  returningCustomers: Int!
+  returningPercent: Float!
+}
+
 type ReportDayOfWeekRow {
   appointmentCount: Int!
   dayOfWeek: Int!
@@ -1717,6 +1757,57 @@ type ReportHeatmapCell {
   walkInCount: Int!
 }
 
+type ReportInventoryMovementDay {
+  date: String!
+  inUnits: Int!
+  outUnits: Int!
+}
+
+type ReportInventoryMovementEntry {
+  actorName: String
+  createdAt: DateTime!
+  delta: Int!
+  id: ID!
+  productName: String!
+  reason: String
+  stockLocationName: String!
+  type: String!
+}
+
+type ReportInventoryMovements {
+  byDay: [ReportInventoryMovementDay!]!
+  recent: [ReportInventoryMovementEntry!]!
+}
+
+type ReportInventoryValueRow {
+  productsWithoutCost: Int!
+  stockLocationId: ID!
+  stockLocationName: String!
+  totalUnits: Int!
+  valueCents: Int!
+}
+
+type ReportLaborCostRow {
+  commissionCents: Int!
+  date: String!
+  revenueCents: Int!
+}
+
+type ReportLowStock {
+  lowStockCount: Int!
+  outOfStockCount: Int!
+  rows: [ReportLowStockRow!]!
+}
+
+type ReportLowStockRow {
+  lowStockThreshold: Int!
+  productId: ID!
+  productName: String!
+  quantity: Int!
+  stockLocationName: String!
+  variantName: String
+}
+
 type ReportMonthOverMonth {
   currentMonth: ReportPeriodTotals!
   delta: ReportPeriodTotals!
@@ -1728,6 +1819,20 @@ type ReportNoShowRate {
   noShowCount: Int!
   ratePercent: Float!
   totalAppointments: Int!
+}
+
+type ReportOccupancyRow {
+  availableMinutes: Int!
+  date: String!
+  occupancyMinutes: Int!
+  occupancyPercent: Float
+}
+
+type ReportPaymentMethodMixRow {
+  cardCents: Int!
+  cashCents: Int!
+  date: String!
+  transferCents: Int!
 }
 
 type ReportPeriodTotals {
@@ -1747,6 +1852,27 @@ type ReportRefundsByDay {
   date: String!
   refundCents: Int!
   refundCount: Int!
+}
+
+type ReportRegisterDiffDay {
+  date: String!
+  diffCents: Int!
+  sessionCount: Int!
+}
+
+type ReportRegisterDiffSession {
+  closedAt: DateTime!
+  closedByName: String!
+  countedTotalCents: Int!
+  differenceCents: Int!
+  expectedTotalCents: Int!
+  locationName: String!
+  sessionId: ID!
+}
+
+type ReportRegisterDiffs {
+  byDay: [ReportRegisterDiffDay!]!
+  worstSessions: [ReportRegisterDiffSession!]!
 }
 
 type ReportRevenueMixRow {
@@ -1772,6 +1898,20 @@ type ReportStaffPerformanceRow {
   revenueCents: Int!
   staffName: String
   staffUserId: ID!
+}
+
+type ReportTopProductRow {
+  productId: ID!
+  productName: String!
+  rank: Int!
+  revenueCents: Int!
+  unitsSold: Int!
+}
+
+type ReportTrafficMixRow {
+  appointmentCount: Int!
+  date: String!
+  walkInCount: Int!
 }
 
 type ReportWeekOverWeek {
@@ -2026,6 +2166,7 @@ type ShiftOverrideBlock {
 }
 
 enum ShiftOverrideType {
+  ABSENCE
   CUSTOM_HOURS
   DAY_OFF
 }

@@ -6,6 +6,7 @@ import { computeTotals } from '../lib/cart'
 import { prepayMethodLabel } from '../lib/prepayMethodLabel'
 import { CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION } from '../data/checkout.repository'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
+import { CustomerNameTakenException } from '@/shared/lib/customer-errors'
 import { CatalogChips } from './CatalogChips'
 import { CatalogGrid } from './CatalogGrid'
 import { AtendiendoHeader } from './AtendiendoHeader'
@@ -438,11 +439,30 @@ export function CheckoutPage() {
           setCustomerSheetOpen(false)
         }}
         onCreate={async (input) => {
-          const created = await ck.createCustomer(input)
-          if (created) {
+          // findOrCreateCustomer ahora es Customer! (nunca null) — el único
+          // camino de "no se creó" es una excepción (nombre inválido, o
+          // CUSTOMER_NAME_TAKEN si dos POS crean el mismo nombre a la vez).
+          // Sin este catch la promesa rechazada quedaba sin manejar: el
+          // sheet ni cerraba ni avisaba al operador.
+          try {
+            const created = await ck.createCustomer(input)
             ck.dispatch({ type: 'setCustomer', customer: { id: created.id, fullName: created.fullName } })
+            setCustomerSheetOpen(false)
+          } catch (e) {
+            if (e instanceof CustomerNameTakenException && e.existingCustomerId) {
+              // Carrera de nombre: alguien más ya creó ese cliente hace un
+              // instante. Vincula al carrito directo con el que ganó —
+              // equivalente a que el cajero lo hubiera encontrado en la
+              // búsqueda — en vez de dejar al cajero reintentar a ciegas.
+              const existing = await checkout.getCustomer(e.existingCustomerId)
+              if (existing) {
+                ck.dispatch({ type: 'setCustomer', customer: { id: existing.id, fullName: existing.fullName } })
+                setCustomerSheetOpen(false)
+                return
+              }
+            }
+            addToast((e as { message?: string })?.message ?? 'No se pudo crear el cliente.', 'error')
           }
-          setCustomerSheetOpen(false)
         }}
         onClose={() => setCustomerSheetOpen(false)}
       />

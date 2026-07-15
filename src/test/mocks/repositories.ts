@@ -191,8 +191,13 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return []
   }
 
-  async findOrCreateCustomer(_name: string, _email?: string | null, _phone?: string | null): Promise<CustomerResult | null> {
-    return null
+  async findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult> {
+    // API real: Customer! no-null (spec identidad-clientes) — el mock
+    // devuelve un cliente sintético en vez de null para no re-introducir el
+    // bug que este mismo esfuerzo corrigió (name-only create fallando en
+    // silencio). Tests que necesitan simular CUSTOMER_NAME_TAKEN sobre-escriben
+    // con vi.fn(() => Promise.reject(new CustomerNameTakenException(...))).
+    return { id: 'cust-new', fullName: name, email: email ?? null, phone: phone ?? null }
   }
 
   async findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }> {

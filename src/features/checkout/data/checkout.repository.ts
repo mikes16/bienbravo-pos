@@ -2,6 +2,7 @@ import { type ApolloClient, gql } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
 import { PaymentProvider } from '@/core/graphql/generated/graphql'
 import type { PosSaleDetailQuery } from '@/core/graphql/generated/graphql'
+import { toCustomerNameTakenException } from '@/shared/lib/customer-errors'
 import type {
   CatalogCategory,
   CatalogService,
@@ -511,7 +512,16 @@ export interface CheckoutRepository {
    */
   closeAppointmentSale(saleId: string): Promise<void>
   searchCustomers(query: string, limit?: number): Promise<CustomerResult[]>
-  findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult | null>
+  /**
+   * Find-or-create real (spec identidad-clientes): el API ya no requiere
+   * email/phone — un nombre válido (2+ chars) basta para crear un cliente
+   * LOCAL. `email`/`phone` siguen siendo opcionales para desambiguar/matchear
+   * contra un cliente existente. La mutation es `Customer!` no-null en el
+   * schema — puede rechazar (BAD_USER_INPUT si el nombre es inválido,
+   * CUSTOMER_NAME_TAKEN si dos POS crean el mismo nombre a la vez vía
+   * `CustomerNameTakenException`), pero nunca devuelve null.
+   */
+  findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult>
   findOrCreateMostradorCustomer(): Promise<{ id: string; fullName: string }>
   getBarbers(locationId: string): Promise<BarberResult[]>
   getAvailableBarbers(locationId: string): Promise<BarberResult[]>
@@ -732,13 +742,23 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       }))
   }
 
-  async findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult | null> {
-    if (!email && !phone) return null
-    const { data } = await this.#client.mutate<{ findOrCreateCustomer: CustomerResult | null }>({
-      mutation: FIND_OR_CREATE_CUSTOMER,
-      variables: { name, email: email ?? null, phone: phone ?? null },
-    })
-    return data!.findOrCreateCustomer ?? null
+  async findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult> {
+    // Sin guard de "necesita email o phone": el API ya matchea/crea por
+    // nombre normalizado solo (spec identidad-clientes). Bloquear aquí un
+    // alta name-only dejaba el "Crear cliente" del checkout fallando en
+    // silencio — el operador tecleaba solo el nombre (el form lo permite,
+    // email/phone son opcionales) y `onCreate` nunca vinculaba al carrito.
+    try {
+      const { data } = await this.#client.mutate<{ findOrCreateCustomer: CustomerResult }>({
+        mutation: FIND_OR_CREATE_CUSTOMER,
+        variables: { name, email: email ?? null, phone: phone ?? null },
+      })
+      return data!.findOrCreateCustomer
+    } catch (err) {
+      const domainErr = toCustomerNameTakenException(err)
+      if (domainErr) throw domainErr
+      throw err
+    }
   }
 
   async searchCustomers(query: string, limit = 10): Promise<CustomerResult[]> {
