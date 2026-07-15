@@ -259,13 +259,23 @@ function StatusCard({
   // Línea contextual del retardo del día — se muestra cuando aplica,
   // independiente del estado actual (clocked-in o out). Si el barbero llegó
   // tarde HOY, eso queda visible toda la jornada para que el sistema sea
-  // honesto. Se atenúa visualmente porque ya pasó — no es la acción ahora,
-  // es contexto histórico.
+  // honesto. Dos líneas: (1) el dato factual del retardo en tono bravo —
+  // ya pasó, es contexto histórico; (2) un recordatorio en tono muted que
+  // motiva a llegar a tiempo la próxima vez y reusa el concepto ya
+  // establecido de que la puntualidad "protege" la comisión (mismo lenguaje
+  // que el toast de entrada tarde y la card "sin checar"). La segunda línea
+  // se lee como aliento, no como doble castigo, y funciona a cualquier hora
+  // porque apunta a "mañana", no al momento de marcar.
   const latenessLine = (firstArrivalLatenessMin !== null && firstClockInIso) ? (
-    <p className="mt-2 text-[14px] leading-snug text-[var(--color-bravo)]">
-      Llegaste a las <strong className="font-bold">{formatTimeInTz12(firstClockInIso, tz)}</strong>,{' '}
-      con retardo de <strong className="font-bold">{formatDurationWords(firstArrivalLatenessMin)}</strong>.
-    </p>
+    <>
+      <p className="mt-2 text-[14px] leading-snug text-[var(--color-bravo)]">
+        Llegaste a las <strong className="font-bold">{formatTimeInTz12(firstClockInIso, tz)}</strong>,{' '}
+        con retardo de <strong className="font-bold">{formatDurationWords(firstArrivalLatenessMin)}</strong>.
+      </p>
+      <p className="mt-1 text-[14px] leading-snug text-[var(--color-bone-muted)]">
+        Mañana llega a tiempo — así proteges tu comisión 💪
+      </p>
+    </>
   ) : null
 
   // 1. CLOCKED-IN — está trabajando, mostrar cuánto lleva y desde cuándo
