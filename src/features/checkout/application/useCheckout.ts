@@ -5,7 +5,7 @@ import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cartReducer, initialCart, findUnavailableCreditedBarberId } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
-import { sortCatalogItems } from '../lib/sort-catalog'
+import { sortCatalogItems, onlyCategorized } from '../lib/sort-catalog'
 import type { CheckoutPayment } from '../domain/checkout.types'
 import type { AppointmentPrepayState, AppliedCouponPreview, DraftSaleItemArg } from '../data/checkout.repository'
 
@@ -173,7 +173,7 @@ export function useCheckout() {
             sortOrder: c.sortOrder,
           })),
         ]
-        setCatalogItems(sortCatalogItems(items, cats))
+        setCatalogItems(sortCatalogItems(onlyCategorized(items), cats))
         setCategories(cats)
         setBarbers(brbs)
         const openSessionRegister = registers.find((r) => r.openSession)

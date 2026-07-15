@@ -22,3 +22,9 @@ export function sortCatalogItems<T extends SortableItem>(
     return a.name.localeCompare(b.name)
   })
 }
+
+// Regla de catálogo: sin categoría = no existe en el POS (decisión del dueño;
+// el admin detecta el caso accidente con su banner). Filtrar UNA vez al cargar.
+export function onlyCategorized<T extends { categoryId: string | null }>(items: T[]): T[] {
+  return items.filter((i) => i.categoryId != null)
+}

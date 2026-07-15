@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sortCatalogItems } from './sort-catalog'
+import { sortCatalogItems, onlyCategorized } from './sort-catalog'
 
 const cats = [
   { id: 'cat-cortes', sortOrder: 0 },
@@ -31,5 +31,16 @@ describe('sortCatalogItems', () => {
       { name: 'A', sortOrder: 0, categoryId: 'cat-cortes' },
     ]
     expect(sortCatalogItems(items, cats).map((i) => i.name)).toEqual(['A', 'B'])
+  })
+})
+
+describe('onlyCategorized', () => {
+  it('excluye items sin categoría (regla: sin categoría = fuera del POS)', () => {
+    const items = [
+      { name: 'Corte', sortOrder: 1, categoryId: 'c1' },
+      { name: 'Huerfano', sortOrder: 2, categoryId: null },
+      { name: 'Pomada', sortOrder: 3, categoryId: 'c2' },
+    ]
+    expect(onlyCategorized(items).map((i) => i.name)).toEqual(['Corte', 'Pomada'])
   })
 })
