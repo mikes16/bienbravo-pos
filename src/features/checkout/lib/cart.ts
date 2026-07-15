@@ -38,6 +38,11 @@ export type CartAction =
   | { type: 'decQty'; lineId: string }
   | { type: 'removeLine'; lineId: string }
   | { type: 'setLineBarber'; lineId: string; staffUserId: string }
+  // Deja la línea "sin asignar" (staffUserId=null). Se usa cuando el barbero
+  // resuelto para la línea resulta excluido del servicio: no queremos comitear
+  // un barbero que dejaría la línea en $0, así que la línea queda sin barbero y
+  // el cajero elige otro en el picker (que ya oculta a los excluidos).
+  | { type: 'clearLineBarber'; lineId: string }
   | { type: 'setLineBarberAndPrice'; lineId: string; staffUserId: string; unitPriceCents: number }
   | { type: 'setDefaultBarber'; staffUserId: string }
   | { type: 'setCustomer'; customer: CustomerLite | null }
@@ -88,6 +93,13 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         ...state,
         lines: state.lines.map((l) =>
           l.id === action.lineId ? { ...l, staffUserId: action.staffUserId } : l,
+        ),
+      }
+    case 'clearLineBarber':
+      return {
+        ...state,
+        lines: state.lines.map((l) =>
+          l.id === action.lineId ? { ...l, staffUserId: null } : l,
         ),
       }
     case 'setLineBarberAndPrice':

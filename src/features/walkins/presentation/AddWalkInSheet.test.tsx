@@ -146,6 +146,7 @@ describe('AddWalkInSheet', () => {
         categoryId: null,
         sortOrder: 0,
         extras: [],
+        excludedStaffIds: [],
       },
     ])
     renderWithProviders(<AddWalkInSheet open locationId="loc-1" onClose={vi.fn()} onCreated={vi.fn()} />, { repos })

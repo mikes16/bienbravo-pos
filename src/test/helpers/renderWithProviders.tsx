@@ -6,6 +6,7 @@ import { RepositoryProvider } from '@/core/repositories/RepositoryProvider.tsx'
 import { PosAuthProvider } from '@/core/auth/PosAuthProvider.tsx'
 import { LocationProvider } from '@/core/location/LocationProvider.tsx'
 import { ToastProvider } from '@/core/toast/ToastProvider.tsx'
+import { ToastViewport } from '@/core/toast/ToastViewport.tsx'
 import { createMockRepositories } from '@/test/mocks/repositories.ts'
 import type { Repositories } from '@/core/repositories/registry.ts'
 
@@ -28,6 +29,9 @@ export function renderWithProviders(
               <PosAuthProvider>
                 <ToastProvider>
                   {children}
+                  {/* Igual que el shell real (PosShell): el viewport acompaña
+                      al provider para que los toasts se rendericen en tests. */}
+                  <ToastViewport />
                 </ToastProvider>
               </PosAuthProvider>
             </LocationProvider>

@@ -30,4 +30,9 @@ describe('BarberPickerInline', () => {
     await user.click(screen.getByLabelText('Beto'))
     expect(onSelect).toHaveBeenCalledWith('b2')
   })
+
+  it('muestra estado vacío cuando no hay barberos (todos excluidos del servicio)', () => {
+    render(<BarberPickerInline barbers={[]} currentBarberId={null} onSelect={() => {}} />)
+    expect(screen.getByText(/ningún barbero disponible para este servicio/i)).toBeInTheDocument()
+  })
 })

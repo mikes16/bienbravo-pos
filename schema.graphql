@@ -1945,6 +1945,7 @@ type ResolvedServicePricing {
   durationMin: Int!
   extras: [ResolvedExtra!]!
   isActive: Boolean!
+  isExcluded: Boolean!
   locationId: ID!
   priceCents: Int!
   priceFromLocationOverride: Boolean!

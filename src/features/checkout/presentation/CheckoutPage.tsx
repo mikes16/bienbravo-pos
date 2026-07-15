@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { useCheckout } from '../application/useCheckout'
@@ -113,6 +113,19 @@ export function CheckoutPage() {
       setSplashShown(true)
     }
   }, [ck.successSale, splashShown])
+
+  // Mapa serviceId → barberos excluidos, derivado del catálogo STATIC. Alimenta
+  // el filtrado del picker por línea (CartList → CartLineRow → BarberPickerInline).
+  // Solo servicios con exclusiones entran al mapa; el resto no filtra nada.
+  const excludedByService = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const it of ck.catalogItems) {
+      if (it.kind === 'service' && it.excludedStaffIds && it.excludedStaffIds.length > 0) {
+        m.set(it.id, it.excludedStaffIds)
+      }
+    }
+    return m
+  }, [ck.catalogItems])
 
   const totals = computeTotals(ck.cartState.lines)
   const defaultBarber = ck.barbers.find((b) => b.id === ck.cartState.defaultBarberId) ?? ck.barbers[0]
@@ -300,6 +313,7 @@ export function CheckoutPage() {
       <CartList
         lines={ck.cartState.lines}
         barbers={ck.barbers}
+        excludedByService={excludedByService}
         onIncQty={(lineId) => ck.dispatch({ type: 'incQty', lineId })}
         onDecQty={(lineId) => ck.dispatch({ type: 'decQty', lineId })}
         onSetBarber={(lineId, barberId) => void ck.changeLineBarber(lineId, barberId)}

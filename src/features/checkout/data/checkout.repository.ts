@@ -134,6 +134,15 @@ const SERVICES_QUERY = graphql(`
           durationMin
         }
       }
+      # Overrides por barbero — solo nos importa la exclusión (isExcluded=true =
+      # "este barbero NO realiza este servicio", su override se guarda con
+      # priceCents=0). Viaja con el catálogo STATIC (gated por catalogVersion)
+      # para poder OCULTAR proactivamente del picker de una línea de servicio a
+      # los barberos excluidos de ESE servicio — sin queries por render.
+      staffOverrides {
+        staffUserId
+        isExcluded
+      }
     }
   }
 `)
@@ -148,6 +157,7 @@ const RESOLVE_SERVICE_PRICE_QUERY = gql`
       basePriceCents
       pricingFor(locationId: $locationId, staffUserId: $staffUserId) {
         priceCents
+        isExcluded
       }
     }
   }
@@ -485,12 +495,27 @@ export interface RemoveCouponArgs {
   remainingAppliedCouponCodes: string[]
 }
 
+/**
+ * Precio de una línea de servicio resuelto para un barbero concreto
+ * (staff > sucursal > base), más la bandera de exclusión.
+ *
+ * `isExcluded=true` significa que ese barbero NO realiza ese servicio: el API
+ * guarda su override con `priceCents=0`. El caller NUNCA debe comitear ese $0
+ * — es la señal para bloquear la asignación y avisar al cajero. Empaquetamos
+ * ambos datos en un objeto (en vez de devolver solo el número) para que la
+ * ruta única de precio por barbero no pueda ignorar la exclusión por accidente.
+ */
+export interface ResolvedLinePrice {
+  priceCents: number
+  isExcluded: boolean
+}
+
 export interface CheckoutRepository {
   getCategories(): Promise<CatalogCategory[]>
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
   getProducts(locationId: string): Promise<CatalogProduct[]>
   getCombos(): Promise<CatalogCombo[]>
-  resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<number>
+  resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<ResolvedLinePrice>
   /**
    * Stock es dato LIVE y correctness-critical (riesgo de sobreventa si se
    * muestra stale). `opts.force` fuerza `network-only`; el checkout lo usa
@@ -622,6 +647,11 @@ interface RawPricing {
   extras: RawPricingExtra[]
 }
 
+interface RawStaffOverride {
+  staffUserId: string
+  isExcluded: boolean
+}
+
 interface RawService {
   id: string
   name: string
@@ -633,6 +663,7 @@ interface RawService {
   categoryId: string | null
   sortOrder: number
   pricingFor: RawPricing | null
+  staffOverrides?: RawStaffOverride[] | null
 }
 
 interface RawProduct {
@@ -680,12 +711,18 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         categoryId: s.categoryId ?? null,
         sortOrder: s.sortOrder,
         extras: s.pricingFor?.extras ?? [],
+        // IDs de barberos que NO realizan este servicio (override con
+        // isExcluded=true). El picker de barbero por línea los oculta para que
+        // el cajero nunca asigne un barbero que dejaría la línea en $0.
+        excludedStaffIds: (s.staffOverrides ?? [])
+          .filter((o) => o.isExcluded)
+          .map((o) => o.staffUserId),
       }))
   }
 
-  async resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<number> {
+  async resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<ResolvedLinePrice> {
     const { data } = await this.#client.query<{
-      service: { id: string; basePriceCents: number; pricingFor: { priceCents: number } | null } | null
+      service: { id: string; basePriceCents: number; pricingFor: { priceCents: number; isExcluded: boolean } | null } | null
     }>({
       query: RESOLVE_SERVICE_PRICE_QUERY,
       variables: { id: serviceId, locationId, staffUserId },
@@ -693,7 +730,10 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     })
     const svc = data?.service
     if (!svc) throw new Error(`Service ${serviceId} not found`)
-    return svc.pricingFor?.priceCents ?? svc.basePriceCents
+    return {
+      priceCents: svc.pricingFor?.priceCents ?? svc.basePriceCents,
+      isExcluded: svc.pricingFor?.isExcluded ?? false,
+    }
   }
 
   async getStockLevels(locationId: string, opts?: { force?: boolean }): Promise<StockLevel[]> {

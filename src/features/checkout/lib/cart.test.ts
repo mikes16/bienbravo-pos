@@ -67,6 +67,14 @@ describe('cart reducer', () => {
     expect(s.lines[1].staffUserId).toBe('barber-2')
   })
 
+  it('clearLineBarber deja la línea sin asignar (null) sin tocar otras', () => {
+    let s = cartReducer(initialCart('barber-1'), { type: 'add', item: SERVICE_ITEM })
+    s = cartReducer(s, { type: 'add', item: SERVICE_ITEM })
+    s = cartReducer(s, { type: 'clearLineBarber', lineId: s.lines[1].id })
+    expect(s.lines[0].staffUserId).toBe('barber-1')
+    expect(s.lines[1].staffUserId).toBeNull()
+  })
+
   it('setDefaultBarber changes default for future adds, not existing lines', () => {
     let s = cartReducer(initialCart('barber-1'), { type: 'add', item: SERVICE_ITEM })
     s = cartReducer(s, { type: 'setDefaultBarber', staffUserId: 'barber-2' })

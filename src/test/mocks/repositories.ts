@@ -155,8 +155,8 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
 
   async getServices(_locationId: string, _staffUserId?: string | null): Promise<CatalogService[]> {
     return [
-      { id: 'svc-1', name: 'Corte Clásico', priceCents: 35000, durationMin: 30, isAddOn: false, imageUrl: null, categoryId: null, sortOrder: 0, extras: [] },
-      { id: 'svc-2', name: 'Barba', priceCents: 15000, durationMin: 15, isAddOn: true, imageUrl: null, categoryId: null, sortOrder: 1, extras: [] },
+      { id: 'svc-1', name: 'Corte Clásico', priceCents: 35000, durationMin: 30, isAddOn: false, imageUrl: null, categoryId: null, sortOrder: 0, extras: [], excludedStaffIds: [] },
+      { id: 'svc-2', name: 'Barba', priceCents: 15000, durationMin: 15, isAddOn: true, imageUrl: null, categoryId: null, sortOrder: 1, extras: [], excludedStaffIds: [] },
     ]
   }
 
@@ -174,8 +174,8 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return []
   }
 
-  async resolveServicePriceForBarber(_serviceId: string, _locationId: string, _staffUserId: string): Promise<number> {
-    return 0
+  async resolveServicePriceForBarber(_serviceId: string, _locationId: string, _staffUserId: string | null): Promise<{ priceCents: number; isExcluded: boolean }> {
+    return { priceCents: 0, isExcluded: false }
   }
 
   async createSale(_input: CreateSaleInput): Promise<SaleResult> {

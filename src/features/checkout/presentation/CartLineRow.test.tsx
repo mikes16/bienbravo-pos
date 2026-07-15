@@ -58,4 +58,24 @@ describe('CartLineRow', () => {
     await user.click(screen.getByRole('button', { name: /cambiar barbero/i }))
     expect(screen.getByLabelText('Beto')).toBeInTheDocument()
   })
+
+  it('oculta del picker a los barberos excluidos del servicio de la línea', async () => {
+    const user = userEvent.setup()
+    render(
+      <CartLineRow
+        line={LINE}
+        barbers={BARBERS}
+        excludedBarberIds={['b2']}
+        onIncQty={() => {}}
+        onDecQty={() => {}}
+        onSetBarber={() => {}}
+        onRemove={() => {}}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /toca para modificar/i }))
+    await user.click(screen.getByRole('button', { name: /cambiar barbero/i }))
+    // Antonio (b1) sigue disponible; Beto (b2) está excluido y no aparece.
+    expect(screen.getByLabelText('Antonio')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Beto')).not.toBeInTheDocument()
+  })
 })

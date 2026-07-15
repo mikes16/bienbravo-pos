@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
+import { useToast } from '@/core/toast/useToast'
 import { cartReducer, initialCart, findUnavailableCreditedBarberId } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
 import { sortCatalogItems, onlyCategorized } from '../lib/sort-catalog'
@@ -33,6 +34,9 @@ interface CatalogItem {
   imageUrl?: string | null
   categoryId: string | null
   sortOrder: number
+  // Solo servicios: IDs de barberos que NO realizan este servicio. El picker
+  // de la línea los oculta. Vacío/undefined para productos y combos.
+  excludedStaffIds?: string[]
 }
 
 type CheckoutContext =
@@ -61,6 +65,7 @@ export function useCheckout() {
   const { checkout, register } = useRepositories()
   const { locationId } = useLocation()
   const { viewer } = usePosAuth()
+  const { addToast } = useToast()
 
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
   const [categories, setCategories] = useState<Array<{ id: string; name: string; sortOrder: number }>>([])
@@ -152,6 +157,7 @@ export function useCheckout() {
             imageUrl: s.imageUrl,
             categoryId: s.categoryId,
             sortOrder: s.sortOrder,
+            excludedStaffIds: s.excludedStaffIds ?? [],
           })),
           ...products.map((p) => ({
             id: p.id,
@@ -234,10 +240,26 @@ export function useCheckout() {
             assignedId && barbers.some((b) => b.id === assignedId && b.hasClockedIn !== false)
               ? assignedId
               : null
+          const assignedBarberName =
+            barbers.find((b) => b.id === priceStaffId)?.fullName ?? 'El barbero asignado'
           for (const svc of w.requestedServices) {
+            const lineId = crypto.randomUUID()
             let unitPriceCents = svc.basePriceCents ?? 0
+            let excludedForAssigned = false
             try {
-              unitPriceCents = await checkout.resolveServicePriceForBarber(svc.id, locationId, priceStaffId)
+              const resolved = await checkout.resolveServicePriceForBarber(svc.id, locationId, priceStaffId)
+              if (resolved.isExcluded && priceStaffId) {
+                // El barbero asignado NO realiza este servicio (override con
+                // isExcluded=true → priceCents=0). En vez de prellenar la línea
+                // en $0 acreditando a ese barbero, la agregamos SIN barbero y
+                // con el precio de sucursal (re-resuelto con staff=null, que no
+                // puede estar excluido), y avisamos al cajero.
+                excludedForAssigned = true
+                const locPrice = await checkout.resolveServicePriceForBarber(svc.id, locationId, null)
+                unitPriceCents = locPrice.priceCents
+              } else {
+                unitPriceCents = resolved.priceCents
+              }
             } catch (err) {
               // Fallback a base solo si la resolución truena (raro). El API
               // rechazará ese precio si difiere del resuelto, y el cajero
@@ -247,6 +269,7 @@ export function useCheckout() {
             }
             dispatch({
               type: 'add',
+              lineId,
               item: {
                 kind: 'service',
                 itemId: svc.id,
@@ -255,6 +278,13 @@ export function useCheckout() {
                 categoryId: svc.categoryId ?? null,
               },
             })
+            if (excludedForAssigned) {
+              // La línea entró con el barbero default (assignedId) vía el
+              // reducer; lo limpiamos para no dejar acreditado a un barbero que
+              // no ofrece el servicio. El cajero elige otro en el picker.
+              dispatch({ type: 'clearLineBarber', lineId })
+              addToast(`${assignedBarberName} no ofrece ${svc.name}. Elige otro barbero.`, 'error')
+            }
           }
         }
       })
@@ -263,7 +293,7 @@ export function useCheckout() {
         if (c) dispatch({ type: 'setCustomer', customer: { id: c.id, fullName: c.fullName } })
       })
     }
-  }, [context, checkout, locationId, loaded, barbers])
+  }, [context, checkout, locationId, loaded, barbers, addToast])
 
   // Load prepay state for the appointment-completion entry. When there's no
   // appointment id (free sale / walk-in / preselected-customer), reset to the
@@ -537,11 +567,30 @@ export function useCheckout() {
   // default). Ambas DEBEN aterrizar el precio del barbero de la línea, no el
   // del viewer logueado. El API valida y rechaza desajustes, así que esta
   // corrección no es cosmética — sin ella la venta se bloquea.
-  const resolveAndCommitLinePrice = async (lineId: string, serviceItemId: string, staffUserId: string) => {
-    if (!locationId) return
+  //
+  // Red de seguridad contra el bug de dinero $0: si el barbero está EXCLUIDO
+  // del servicio (StaffServicePrice.isExcluded=true → priceCents=0), NO
+  // comiteamos el cambio. La línea conserva su barbero/precio anterior y
+  // avisamos al cajero con un toast. El picker ya oculta a los excluidos
+  // proactivamente; esto cubre el caso de catálogo stale o barbero default
+  // (prefill) excluido. El API además empezará a rechazar estas líneas con
+  // code BARBER_EXCLUDED — aquí las prevenimos de origen.
+  const resolveAndCommitLinePrice = async (
+    lineId: string,
+    serviceItemId: string,
+    staffUserId: string,
+  ): Promise<'committed' | 'excluded' | 'error'> => {
+    if (!locationId) return 'error'
     try {
-      const newPriceCents = await checkout.resolveServicePriceForBarber(serviceItemId, locationId, staffUserId)
-      dispatch({ type: 'setLineBarberAndPrice', lineId, staffUserId, unitPriceCents: newPriceCents })
+      const resolved = await checkout.resolveServicePriceForBarber(serviceItemId, locationId, staffUserId)
+      if (resolved.isExcluded) {
+        const barberName = barbers.find((b) => b.id === staffUserId)?.fullName ?? 'Ese barbero'
+        const serviceName = catalogItems.find((i) => i.id === serviceItemId)?.name ?? 'este servicio'
+        addToast(`${barberName} no ofrece ${serviceName}. Elige otro barbero.`, 'error')
+        return 'excluded'
+      }
+      dispatch({ type: 'setLineBarberAndPrice', lineId, staffUserId, unitPriceCents: resolved.priceCents })
+      return 'committed'
     } catch (err) {
       // Surface the error in dev so we can see why the price didn't update; in prod this
       // becomes a no-op (price stays at its previous value, barber change persists).
@@ -549,6 +598,7 @@ export function useCheckout() {
         // eslint-disable-next-line no-console
         console.error('[resolveLinePrice] failed to resolve price', { lineId, staffUserId, err })
       }
+      return 'error'
     }
   }
 
@@ -564,8 +614,15 @@ export function useCheckout() {
     }
     // Optimistic: update barber chip immediately so the UI feels responsive,
     // then patch in the resolved price via la ruta compartida.
+    const prevStaffUserId = line.staffUserId
     dispatch({ type: 'setLineBarber', lineId, staffUserId })
-    await resolveAndCommitLinePrice(lineId, line.itemId, staffUserId)
+    const outcome = await resolveAndCommitLinePrice(lineId, line.itemId, staffUserId)
+    if (outcome === 'excluded') {
+      // El barbero elegido no ofrece el servicio: revertimos el chip optimista
+      // al barbero anterior (o "sin asignar" si no había). El toast ya avisó.
+      if (prevStaffUserId) dispatch({ type: 'setLineBarber', lineId, staffUserId: prevStaffUserId })
+      else dispatch({ type: 'clearLineBarber', lineId })
+    }
   }
 
   // Add optimista desde el catálogo: la línea entra YA con el precio del
@@ -596,7 +653,14 @@ export function useCheckout() {
       },
     })
     if (item.kind === 'service' && cartState.defaultBarberId) {
-      void resolveAndCommitLinePrice(lineId, item.id, cartState.defaultBarberId)
+      void resolveAndCommitLinePrice(lineId, item.id, cartState.defaultBarberId).then((outcome) => {
+        // Si el barbero default está excluido de este servicio, la línea entró
+        // con ese barbero vía el reducer; lo limpiamos para que quede "sin
+        // asignar" (nunca $0, nunca acreditado a quien no ofrece el servicio).
+        // La línea conserva el precio optimista del catálogo (no $0). El toast
+        // ya avisó desde resolveAndCommitLinePrice.
+        if (outcome === 'excluded') dispatch({ type: 'clearLineBarber', lineId })
+      })
     }
   }
 

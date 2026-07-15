@@ -13,6 +13,10 @@ interface Barber {
 interface CartLineRowProps {
   line: CartLine
   barbers: Barber[]
+  // IDs de barberos que NO realizan el servicio de esta línea — se ocultan del
+  // picker para que el cajero nunca los asigne (dejaría la línea en $0). Vacío
+  // para productos/combos (no hay exclusión) o servicios sin exclusiones.
+  excludedBarberIds?: string[]
   onIncQty: (lineId: string) => void
   onDecQty: (lineId: string) => void
   onSetBarber: (lineId: string, barberId: string) => void
@@ -31,11 +35,16 @@ interface CartLineRowProps {
  * ruido visual cuando hay 3-5 servicios en el cart. Patrón inspirado en
  * Shopify POS 2026 — controles aparecen solo cuando se necesitan.
  */
-export function CartLineRow({ line, barbers, onIncQty, onDecQty, onSetBarber, onRemove }: CartLineRowProps) {
+export function CartLineRow({ line, barbers, excludedBarberIds, onIncQty, onDecQty, onSetBarber, onRemove }: CartLineRowProps) {
   const [expanded, setExpanded] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement | null>(null)
+  // currentBarber se busca sobre la lista completa (no la filtrada) para que el
+  // chip siga mostrando el barbero actual aun si quedara excluido por un cambio
+  // de catálogo. El picker sí usa la lista filtrada.
   const currentBarber = barbers.find((b) => b.id === line.staffUserId)
+  const excluded = excludedBarberIds ?? []
+  const selectableBarbers = excluded.length > 0 ? barbers.filter((b) => !excluded.includes(b.id)) : barbers
   const lineTotalCents = line.unitPriceCents * line.qty
 
   useEffect(() => {
@@ -147,7 +156,7 @@ export function CartLineRow({ line, barbers, onIncQty, onDecQty, onSetBarber, on
       {expanded && pickerOpen && (
         <div ref={pickerRef} className="border-t border-[var(--color-leather-muted)]/20">
           <BarberPickerInline
-            barbers={barbers}
+            barbers={selectableBarbers}
             currentBarberId={line.staffUserId}
             onSelect={(id) => {
               onSetBarber(line.id, id)

@@ -9,7 +9,7 @@ class TestAuthRepo extends InMemoryAuthRepository {
   override async getViewer() { return MOCK_VIEWER }
 }
 
-const SVC_CORTE = { id: 'svc-corte', name: 'Corte', priceCents: 28000, durationMin: 30, isAddOn: false, imageUrl: null, categoryId: 'cat-cortes', extras: [] }
+const SVC_CORTE = { id: 'svc-corte', name: 'Corte', priceCents: 28000, durationMin: 30, isAddOn: false, imageUrl: null, categoryId: 'cat-cortes', sortOrder: 0, extras: [], excludedStaffIds: [] }
 const PROD_SHAMPOO = { id: 'prod-shampoo', name: 'Shampoo', priceCents: 25000, sku: null, imageUrl: null, categoryId: 'cat-prod' }
 const BARBERS = [
   { id: 'b1', fullName: 'Antonio', photoUrl: null },
@@ -50,7 +50,7 @@ function makeRepos() {
   // servicio re-resuelve vía esta ruta; sin un default los tests que agregan
   // "Corte" caerían al 0 del InMemoryCheckoutRepository y romperían los checks
   // de $280 / $840. Tests que prueban overrides lo sobre-escriben (p.ej. 35000).
-  repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue(28000)
+  repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue({ priceCents: 28000, isExcluded: false })
   repos.checkout.createSale = vi.fn().mockResolvedValue({
     id: 'sale-1', status: 'PAID', paymentStatus: 'PAID', totalCents: 28000, paidTotalCents: 28000,
   })
@@ -166,7 +166,7 @@ describe('CheckoutPage (integration)', () => {
       assignedStaffUser: { id: 'b1' },
       requestedServices: [{ id: 'svc-corte', name: 'Corte', basePriceCents: 20000, categoryId: 'cat-cortes' }],
     })
-    repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue(35000)
+    repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue({ priceCents: 35000, isExcluded: false })
     renderWithProviders(<CheckoutPage />, {
       initialRoute: '/checkout?completeWalkInId=w1',
       repos: { ...repos, auth: new TestAuthRepo() },
@@ -182,7 +182,7 @@ describe('CheckoutPage (integration)', () => {
   it('add manual con barbero default re-resuelve el precio para ese barbero', async () => {
     const user = userEvent.setup()
     const repos = makeRepos()
-    repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue(35000)
+    repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue({ priceCents: 35000, isExcluded: false })
     // Walk-in sin servicios: solo fija el barbero default (b2 = Beto, distinto
     // del fallback de display barbers[0]=Antonio, para poder esperar de forma
     // determinista a que el prefill del barbero se aplique antes del tap).
@@ -340,5 +340,78 @@ describe('CheckoutPage (integration)', () => {
     })
     await screen.findByText(/Catálogo sin categorías/i, {}, { timeout: 3000 })
     expect(screen.queryByText('Corte')).not.toBeInTheDocument()
+  })
+
+  // Bug de dinero $0: elegir un barbero excluido de un servicio resolvía $0 en
+  // silencio. Red de seguridad en resolveAndCommitLinePrice: si el precio
+  // resuelto viene con isExcluded=true NO se comitea — la línea conserva su
+  // precio anterior y sale un toast. (El catálogo no marca la exclusión aquí,
+  // simulando catálogo stale: la única barrera es la del helper.)
+  it('barbero excluido: NO comitea $0, conserva el precio y avisa con toast', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Carlos (b3) está excluido del corte → el resolve devuelve {0, excluded}.
+    // El resto de barberos resuelve normal ($280).
+    repos.checkout.resolveServicePriceForBarber = vi.fn().mockImplementation(
+      (_svc: string, _loc: string, staff: string | null) =>
+        Promise.resolve(staff === 'b3' ? { priceCents: 0, isExcluded: true } : { priceCents: 28000, isExcluded: false }),
+    )
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    // Expandir la fila → abrir picker → elegir a Carlos (excluido).
+    const lineRows = screen.getAllByRole('button', { name: /toca para modificar/i })
+    await user.click(lineRows[lineRows.length - 1])
+    const changeBarberBtns = screen.getAllByRole('button', { name: /cambiar barbero/i })
+    await user.click(changeBarberBtns[changeBarberBtns.length - 1])
+    await user.click(await screen.findByLabelText('Carlos'))
+    // Toast claro + precio intacto ($280); nunca $0.
+    expect(await screen.findByText(/carlos no ofrece corte/i)).toBeInTheDocument()
+    expect(screen.getAllByText('$280').length).toBeGreaterThan(0)
+    expect(screen.queryByText('$0')).not.toBeInTheDocument()
+  })
+
+  // UX proactiva: los barberos excluidos de un servicio se OCULTAN del picker
+  // de esa línea (dato de exclusión traído en el catálogo STATIC, sin queries
+  // por render).
+  it('picker de línea oculta a los barberos excluidos del servicio', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Beto (b2) excluido del corte según el catálogo.
+    repos.checkout.getServices = vi.fn().mockResolvedValue([{ ...SVC_CORTE, excludedStaffIds: ['b2'] }])
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    const lineRows = screen.getAllByRole('button', { name: /toca para modificar/i })
+    await user.click(lineRows[lineRows.length - 1])
+    const changeBarberBtns = screen.getAllByRole('button', { name: /cambiar barbero/i })
+    await user.click(changeBarberBtns[changeBarberBtns.length - 1])
+    expect(await screen.findByLabelText('Antonio')).toBeInTheDocument()
+    expect(screen.getByLabelText('Carlos')).toBeInTheDocument()
+    // Beto queda fuera del picker.
+    expect(screen.queryByLabelText('Beto')).not.toBeInTheDocument()
+  })
+
+  it('picker de línea muestra estado vacío cuando todos los barberos están excluidos', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    repos.checkout.getServices = vi.fn().mockResolvedValue([{ ...SVC_CORTE, excludedStaffIds: ['b1', 'b2', 'b3'] }])
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    const lineRows = screen.getAllByRole('button', { name: /toca para modificar/i })
+    await user.click(lineRows[lineRows.length - 1])
+    const changeBarberBtns = screen.getAllByRole('button', { name: /cambiar barbero/i })
+    await user.click(changeBarberBtns[changeBarberBtns.length - 1])
+    expect(await screen.findByText(/ningún barbero disponible para este servicio/i)).toBeInTheDocument()
   })
 })

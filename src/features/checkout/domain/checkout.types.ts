@@ -28,6 +28,10 @@ export interface CatalogService {
   categoryId: string | null
   sortOrder: number
   extras: ResolvedExtra[]
+  // IDs de barberos que NO realizan este servicio (StaffServicePrice.isExcluded).
+  // Se lee del catálogo STATIC para ocultarlos proactivamente del picker de la
+  // línea. Vacío = todos los barberos pueden realizar el servicio.
+  excludedStaffIds: string[]
 }
 
 export interface CatalogProduct {

@@ -16,6 +16,16 @@ interface BarberPickerInlineProps {
 }
 
 export function BarberPickerInline({ barbers, currentBarberId, onSelect }: BarberPickerInlineProps) {
+  // Todos los barberos quedaron filtrados (excluidos de este servicio): no hay
+  // a quién asignar. Estado vacío corto en vez de una fila vacía silenciosa.
+  if (barbers.length === 0) {
+    return (
+      <p className="px-3 py-3 text-[12px] text-[var(--color-bone-muted)]">
+        Ningún barbero disponible para este servicio.
+      </p>
+    )
+  }
+
   return (
     <div className="flex gap-2 overflow-x-auto px-1 py-2">
       {barbers.map((b) => {
