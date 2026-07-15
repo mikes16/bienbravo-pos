@@ -77,15 +77,34 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setError(null)
   }, [open])
 
-  // Cambiar de modo limpia la selección de barbero — los criterios cambian
-  // (lista de "libres ahora" vs "cualquiera clocked-in") y un id válido en
-  // un modo puede no serlo en el otro. Mejor pedirle al operador que vuelva
-  // a elegir explícitamente.
+  // Cambiar de modo revalida la selección de barbero — los criterios cambian
+  // según el modo destino.
   function handleModeChange(next: FlowMode) {
     if (next === mode) return
     setMode(next)
-    setSelectedBarberId(null)
     setError(null)
+    if (next === 'serve_now') {
+      // En 'serve_now' un barbero ocupado NO es elegible (en 'queue' sí, como
+      // preferencia mientras el cliente espera). Si veníamos con un ocupado
+      // seleccionado, lo soltamos — la selección no puede apuntar a algo
+      // no-elegible en este modo.
+      const sel = allBarbers.find((b) => b.id === selectedBarberId)
+      if (sel?.isOccupied) setSelectedBarberId(null)
+      // Ocupación FRESCA al momento de decidir "atiende ya": isOccupied cambia
+      // con cada cobro/atender del piso (incluso desde otra tablet), no al abrir
+      // el sheet. network-only, ya lo es. NO limpiamos la selección si el
+      // refetch revela ocupación tardía — dejamos que el guard del submit lo
+      // diga fuerte y claro con el motivo del API, en lugar de silenciarlo.
+      if (locationId) {
+        void checkout
+          .getAvailableBarbers(locationId)
+          .then((b) => setAllBarbers(b.filter((bb) => bb.hasClockedIn)))
+          .catch(() => {})
+      }
+    } else {
+      // Volver a 'queue': los criterios cambian; pedir elección explícita.
+      setSelectedBarberId(null)
+    }
   }
 
   // Load the location's barbers + combos + categories once the sheet opens.
@@ -206,6 +225,15 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       setError('Elige un barbero para empezar el servicio')
       return
     }
+    // Guard de ocupación con el snapshot fresco (refetch al cambiar de modo):
+    // si el barbero elegido se ocupó entre la selección y el submit, prevenimos
+    // el assign condenado ANTES de crear nada. Sin esto, el API rechazaba el
+    // assign y el sheet cerraba como éxito con el cliente aún en cola.
+    const selectedBarber = allBarbers.find((b) => b.id === selectedBarberId)
+    if (mode === 'serve_now' && selectedBarber?.isOccupied) {
+      setError(`${selectedBarber.fullName.split(' ')[0]} está ocupado — cóbrale a su cliente primero o deja este walk-in en cola`)
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -227,19 +255,29 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         preferredStaffUserId: preferredId || null,
       })
       let assignedBarberName: string | null = null
+      let assignError: string | null = null
       if (mode === 'serve_now' && selectedBarberId) {
         try {
           await walkins.assign(created.id, selectedBarberId)
           assignedBarberName = allBarbers.find((b) => b.id === selectedBarberId)?.fullName.split(' ')[0] ?? null
-        } catch {
-          // Walk-in landed; assignment failed. Still treat as success and let the
-          // operator claim it from the queue manually.
+        } catch (err) {
+          // El walk-in ya aterrizó (correcto: el cliente está formado). Pero el
+          // "atiende ya" NO pasó — lo decimos fuerte con el motivo del API,
+          // nunca como éxito silencioso. Bug de prod: el operador creía estar
+          // atendiendo y el cliente seguía en cola.
+          assignError = err instanceof Error ? err.message : 'no se pudo asignar'
         }
       }
-      const toastMsg = assignedBarberName
-        ? `${trimmedName} agregado · asignado a ${assignedBarberName}`
-        : `${trimmedName} agregado · en cola`
-      addToast(toastMsg, 'success')
+      if (assignError) {
+        addToast(`${trimmedName} quedó EN COLA — ${assignError}`, 'error')
+      } else {
+        addToast(
+          assignedBarberName
+            ? `${trimmedName} agregado · asignado a ${assignedBarberName}`
+            : `${trimmedName} agregado · en cola`,
+          'success',
+        )
+      }
       onCreated()
       if (resetForCompanion) {
         // Clear per-person fields. Keep barber + service + category — the

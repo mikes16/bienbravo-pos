@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { AddWalkInSheet } from './AddWalkInSheet'
@@ -6,6 +6,14 @@ import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { createMockRepositories } from '@/test/mocks/repositories'
 import { CustomerNameTakenException } from '@/shared/lib/customer-errors'
 import type { WalkIn } from '../domain/walkins.types'
+
+// Espiamos `addToast` mockeando el hook: el ToastViewport no se renderiza en el
+// harness de pruebas (solo el ToastProvider), así que el tono/texto del toast
+// no llega al DOM. Mockear el hook nos da un spy directo sobre (mensaje, tono).
+const { addToastMock } = vi.hoisted(() => ({ addToastMock: vi.fn() }))
+vi.mock('@/core/toast/useToast', () => ({
+  useToast: () => ({ addToast: addToastMock, toasts: [], removeToast: vi.fn() }),
+}))
 
 function baseWalkIn(overrides: Partial<WalkIn> = {}): WalkIn {
   return {
@@ -150,5 +158,86 @@ describe('AddWalkInSheet', () => {
 
     await user.click(screen.getByRole('button', { name: /sin preferencia/i }))
     expect(await screen.findByText('45 min')).toBeInTheDocument()
+  })
+
+  // "Atiende ya" honesto — bug de prod: el operador ya en servicio se elegía a
+  // sí mismo, el API rechazaba el assign y el sheet cerraba como éxito con el
+  // cliente aún en cola. Los tres tests cubren las tres defensas.
+
+  it('cambiar a "Atiende ya" limpia la selección si el barbero está ocupado', async () => {
+    const user = userEvent.setup()
+    const repos = createMockRepositories()
+    repos.checkout.getAvailableBarbers = vi.fn().mockResolvedValue([
+      { id: 'staff-9', fullName: 'Beto Ocupado', photoUrl: null, hasClockedIn: true, isOccupied: true },
+    ])
+    renderWithProviders(<AddWalkInSheet open locationId="loc-1" onClose={vi.fn()} onCreated={vi.fn()} />, { repos })
+
+    // En cola, un ocupado ES elegible como preferencia (el cliente puede esperar).
+    await user.click(await screen.findByRole('button', { name: /beto/i }))
+    expect(screen.getByRole('button', { name: /espera a beto/i })).toBeInTheDocument()
+
+    // Al pasar a "Atiende ya" el ocupado deja de ser elegible → se suelta.
+    await user.click(screen.getByRole('button', { name: /con un barbero libre/i }))
+
+    // Sin selección: la CTA vuelve a exigir elegir barbero.
+    expect(await screen.findByRole('button', { name: /elige un barbero para empezar/i })).toBeInTheDocument()
+  })
+
+  it('submit en "Atiende ya" con barbero ocupado muestra error y no crea nada', async () => {
+    const user = userEvent.setup()
+    const repos = createMockRepositories()
+    // Libre al abrir; el refetch al cambiar a "Atiende ya" lo revela ocupado
+    // (otra tablet lo puso en servicio mientras tanto). La selección libre
+    // sobrevive el cambio de modo y el guard la caza en el submit.
+    repos.checkout.getAvailableBarbers = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 'staff-1', fullName: 'Carlos Libre', photoUrl: null, hasClockedIn: true, isOccupied: false }])
+      .mockResolvedValue([{ id: 'staff-1', fullName: 'Carlos Libre', photoUrl: null, hasClockedIn: true, isOccupied: true }])
+    const createSpy = vi.fn()
+    repos.walkins.create = createSpy
+    renderWithProviders(<AddWalkInSheet open locationId="loc-1" onClose={vi.fn()} onCreated={vi.fn()} />, { repos })
+
+    await selectFirstService(user)
+    await user.type(screen.getByPlaceholderText('Nombre o teléfono…'), 'Luis')
+    await user.click(await screen.findByRole('button', { name: /carlos/i }))
+    await user.click(screen.getByRole('button', { name: /con un barbero libre/i }))
+
+    // El refetch actualiza el hint del barbero de "libre" a "ocupado".
+    expect(await screen.findByText('ocupado')).toBeInTheDocument()
+
+    // La CTA sigue habilitada (hay selección) pero el submit debe abortar.
+    await user.click(screen.getByRole('button', { name: /atiende ya con carlos/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/está ocupado/i)
+    expect(createSpy).not.toHaveBeenCalled()
+  })
+
+  it('si el assign falla, el toast dice EN COLA con el motivo del API y onCreated sí se llama', async () => {
+    const user = userEvent.setup()
+    const repos = createMockRepositories()
+    repos.checkout.getAvailableBarbers = vi.fn().mockResolvedValue([
+      { id: 'staff-1', fullName: 'Carlos Libre', photoUrl: null, hasClockedIn: true, isOccupied: false },
+    ])
+    repos.walkins.create = vi.fn().mockResolvedValue(baseWalkIn({ id: 'wi-9', customerName: 'Luis' }))
+    repos.walkins.assign = vi.fn().mockRejectedValue(new Error('El barbero ya tiene un servicio en curso.'))
+    const onCreated = vi.fn()
+    renderWithProviders(<AddWalkInSheet open locationId="loc-1" onClose={vi.fn()} onCreated={onCreated} />, { repos })
+
+    addToastMock.mockClear()
+
+    await selectFirstService(user)
+    await user.type(screen.getByPlaceholderText('Nombre o teléfono…'), 'Luis')
+    await user.click(screen.getByRole('button', { name: /con un barbero libre/i }))
+    await user.click(await screen.findByRole('button', { name: /carlos/i }))
+    await user.click(screen.getByRole('button', { name: /atiende ya con carlos/i }))
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1))
+    expect(repos.walkins.assign).toHaveBeenCalledWith('wi-9', 'staff-1')
+    // Tono error + "quedó EN COLA" + el motivo tal cual lo devolvió el API.
+    expect(addToastMock).toHaveBeenCalledWith(expect.stringContaining('quedó EN COLA'), 'error')
+    expect(addToastMock).toHaveBeenCalledWith(
+      expect.stringContaining('El barbero ya tiene un servicio en curso.'),
+      'error',
+    )
   })
 })
