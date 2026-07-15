@@ -164,7 +164,7 @@ export function BarberSelectorView({
  * El status se deriva del TimeClockEvent + occupancy real. No es decorativo:
  *   - en_piso        → cuadrado bone, pulse, label "EN PISO" (puede atender)
  *   - en_servicio    → cuadrado leather, sin pulse, label "EN SERVICIO"
- *   - fuera_de_turno → cuadrado vacío leather hairline, label "SIN TURNO",
+ *   - fuera_de_turno → cuadrado vacío leather hairline, label "SIN CHECAR",
  *                      card con opacity reducido (sigue tappable — puede
  *                      loguearse y luego clockear-in)
  *
@@ -303,6 +303,6 @@ function statusToBadge(status: PosBarberStatus): { tone: StatusTone; label: stri
     case 'en_servicio':
       return { tone: 'busy', label: 'En servicio' }
     case 'fuera_de_turno':
-      return { tone: 'inactive', label: 'Sin turno' }
+      return { tone: 'inactive', label: 'Sin checar' }
   }
 }

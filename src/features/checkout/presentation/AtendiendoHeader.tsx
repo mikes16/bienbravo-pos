@@ -37,7 +37,7 @@ export function AtendiendoHeader({ barber, onTap }: AtendiendoHeaderProps) {
         </span>
         {noShift && (
           <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--color-bravo)]">
-            Sin turno — toca para reasignar
+            Sin checar — toca para reasignar
           </span>
         )}
       </div>

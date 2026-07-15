@@ -24,7 +24,7 @@ export function BarberPickerInline({ barbers, currentBarberId, onSelect }: Barbe
           <button
             key={b.id}
             type="button"
-            aria-label={blocked ? `${b.fullName} (sin turno)` : b.fullName}
+            aria-label={blocked ? `${b.fullName} (sin checar)` : b.fullName}
             disabled={blocked}
             onClick={() => {
               if (!blocked) onSelect(b.id)
@@ -48,7 +48,7 @@ export function BarberPickerInline({ barbers, currentBarberId, onSelect }: Barbe
               </div>
             )}
             <span className="text-[10px] text-[var(--color-bone)]">
-              {blocked ? 'Sin turno' : b.fullName.split(' ')[0]}
+              {blocked ? 'Sin checar' : b.fullName.split(' ')[0]}
             </span>
           </button>
         )

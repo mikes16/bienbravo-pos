@@ -48,7 +48,7 @@ function statusToBadge(status: PosBarberStatus): { tone: StatusTone; label: stri
     case 'en_servicio':
       return { tone: 'busy', label: 'En servicio' }
     case 'fuera_de_turno':
-      return { tone: 'inactive', label: 'Sin turno' }
+      return { tone: 'inactive', label: 'Sin checar' }
   }
 }
 
@@ -94,7 +94,7 @@ export function IdentityStripV2({
 
       <div className="flex items-center gap-3 sm:gap-4">
         {/* Operator status badge — refleja el status laboral del barbero
-            logueado: en piso / en servicio / sin turno. Mismo lenguaje
+            logueado: en piso / en servicio / sin checar. Mismo lenguaje
             semántico que las cards del lock roster — el operador ve su
             propio estado con el mismo dialecto visual. Si aún no carga,
             esconde el badge (no muestra placeholder confuso). */}

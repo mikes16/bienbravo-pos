@@ -7,7 +7,7 @@ interface StatusBadgeProps {
    * Tono semántico del estado:
    *  - active   → cuadrado bone con pulse: el sujeto está disponible/activo
    *  - busy     → cuadrado leather sólido sin pulse: ocupado/en uso
-   *  - inactive → cuadrado vacío hairline: dormido/desconectado/sin turno
+   *  - inactive → cuadrado vacío hairline: dormido/desconectado/sin checar
    */
   tone: StatusTone
   /** Label en mono uppercase. Ej. "EN PISO", "EN LÍNEA", "SIN CONEXIÓN". */

@@ -34,14 +34,14 @@ describe('IdentityStripV2', () => {
     expect(screen.getByText(/en servicio/i)).toBeInTheDocument()
   })
 
-  it('renders "Sin turno" badge when operator has not clocked in', () => {
+  it('renders "Sin checar" badge when operator has not clocked in', () => {
     render(<IdentityStripV2 {...baseProps} operatorStatus="fuera_de_turno" />)
-    expect(screen.getByText(/sin turno/i)).toBeInTheDocument()
+    expect(screen.getByText(/sin checar/i)).toBeInTheDocument()
   })
 
   it('hides badge while operator status is loading', () => {
     render(<IdentityStripV2 {...baseProps} operatorStatus={null} />)
-    expect(screen.queryByText(/en piso|en servicio|sin turno/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/en piso|en servicio|sin checar/i)).not.toBeInTheDocument()
   })
 
   it('renders the time formatted as HH:MM 24h', () => {

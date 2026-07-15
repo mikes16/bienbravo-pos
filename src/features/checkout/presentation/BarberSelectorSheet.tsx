@@ -69,7 +69,7 @@ export function BarberSelectorSheet({ open, barbers, currentBarberId, onSelect, 
                 <span className="text-center text-[12px] text-[var(--color-bone)]">{b.fullName}</span>
                 {blocked && (
                   <span className="text-[10px] uppercase tracking-wide text-[var(--color-bone-muted)]">
-                    Sin turno
+                    Sin checar
                   </span>
                 )}
               </button>
