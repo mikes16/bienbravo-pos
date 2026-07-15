@@ -201,7 +201,7 @@ export function useCheckout() {
   useEffect(() => {
     if (!context || !locationId || !loaded) return
     if (context.kind === 'walk-in') {
-      checkout.getWalkIn(context.walkInId, locationId).then((w) => {
+      checkout.getWalkIn(context.walkInId, locationId).then(async (w) => {
         if (w?.customer) {
           dispatch({
             type: 'setCustomer',
@@ -225,14 +225,33 @@ export function useCheckout() {
         // cliente pidió al registrarse. Si después cambió de opinión, el
         // cajero los quita y agrega otros. Ahorra ~5-10s por venta.
         if (w?.requestedServices && w.requestedServices.length > 0) {
+          // El barbero asignado (si sigue disponible) define el precio de la
+          // línea: staff > sucursal > base. Sin barbero: sucursal > base.
+          // Nunca base directo — ese fue el bug de prod (línea cobraba $200
+          // cuando el override de sucursal/barbero era $280/$350).
+          const assignedId = w.assignedStaffUser?.id ?? null
+          const priceStaffId =
+            assignedId && barbers.some((b) => b.id === assignedId && b.hasClockedIn !== false)
+              ? assignedId
+              : null
           for (const svc of w.requestedServices) {
+            let unitPriceCents = svc.basePriceCents ?? 0
+            try {
+              unitPriceCents = await checkout.resolveServicePriceForBarber(svc.id, locationId, priceStaffId)
+            } catch (err) {
+              // Fallback a base solo si la resolución truena (raro). El API
+              // rechazará ese precio si difiere del resuelto, y el cajero
+              // puede quitar/re-agregar la línea.
+              // eslint-disable-next-line no-console
+              console.error('[prefill] failed to resolve price', { serviceId: svc.id, priceStaffId, err })
+            }
             dispatch({
               type: 'add',
               item: {
                 kind: 'service',
                 itemId: svc.id,
                 name: svc.name,
-                unitPriceCents: svc.basePriceCents ?? 0,
+                unitPriceCents,
                 categoryId: svc.categoryId ?? null,
               },
             })

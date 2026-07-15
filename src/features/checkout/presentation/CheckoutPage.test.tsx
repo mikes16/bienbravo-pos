@@ -152,6 +152,27 @@ describe('CheckoutPage (integration)', () => {
     })
   })
 
+  it('prefill de walk-in usa precio resuelto con overrides, no el base', async () => {
+    const repos = makeRepos()
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1',
+      customer: { id: 'c1', fullName: 'Fabián' },
+      assignedStaffUser: { id: 'b1' },
+      requestedServices: [{ id: 'svc-corte', name: 'Corte', basePriceCents: 20000, categoryId: 'cat-cortes' }],
+    })
+    repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue(35000)
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findByText('Fabián', {}, { timeout: 3000 })
+    expect(repos.checkout.resolveServicePriceForBarber).toHaveBeenCalledWith('svc-corte', 'loc1', 'b1')
+    // El precio ($350) aparece en la línea del carrito y en el Total; el base
+    // ($200) no debe verse en ningún lado.
+    expect((await screen.findAllByText('$350')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('$200')).not.toBeInTheDocument()
+  })
+
   it('multi-barber split: 3 cortes with 3 different barbers → mutation has 3 distinct staffUserIds', async () => {
     const user = userEvent.setup()
     const repos = makeRepos()
