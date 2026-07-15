@@ -118,4 +118,37 @@ describe('AddWalkInSheet', () => {
     expect(await screen.findByText('+528111112222')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /quitar/i })).toBeInTheDocument()
   })
+
+  // Overrides de duración por barbero: pricingFor resuelve barbero > sucursal
+  // > base. El sheet debe re-resolver el catálogo con el barbero seleccionado
+  // — un corte de 45 min base puede ser de 35 con el override de Javi — y
+  // volver a la resolución por sucursal al regresar a "Sin preferencia".
+  it('re-resolves service durations with the selected barber and falls back to sucursal on "Sin preferencia"', async () => {
+    const user = userEvent.setup()
+    const repos = createMockRepositories()
+    repos.checkout.getServices = vi.fn(async (_locationId: string, staffUserId?: string | null) => [
+      {
+        id: 'svc-1',
+        name: 'Corte Clásico',
+        priceCents: 35000,
+        // staff-1 (Carlos) tiene override de duración; sin barbero, sucursal/base.
+        durationMin: staffUserId === 'staff-1' ? 35 : 45,
+        isAddOn: false,
+        imageUrl: null,
+        categoryId: null,
+        sortOrder: 0,
+        extras: [],
+      },
+    ])
+    renderWithProviders(<AddWalkInSheet open locationId="loc-1" onClose={vi.fn()} onCreated={vi.fn()} />, { repos })
+
+    expect(await screen.findByText('45 min')).toBeInTheDocument()
+
+    await user.click(await screen.findByRole('button', { name: /carlos/i }))
+    expect(await screen.findByText('35 min')).toBeInTheDocument()
+    expect(repos.checkout.getServices).toHaveBeenLastCalledWith('loc-1', 'staff-1')
+
+    await user.click(screen.getByRole('button', { name: /sin preferencia/i }))
+    expect(await screen.findByText('45 min')).toBeInTheDocument()
+  })
 })

@@ -88,10 +88,11 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setError(null)
   }
 
-  // Load the location's barbers + services + combos + categories once the
-  // sheet opens. Catálogo (services/combos/categories) es cache-first, así
-  // que reabrir pinta al instante; los barberos van network-only porque
-  // isOccupied/hasClockedIn son datos vivos (ver getAvailableBarbers).
+  // Load the location's barbers + combos + categories once the sheet opens.
+  // Catálogo (combos/categories) es cache-first, así que reabrir pinta al
+  // instante; los barberos van network-only porque isOccupied/hasClockedIn
+  // son datos vivos (ver getAvailableBarbers). Los servicios se cargan en el
+  // efecto de abajo, keyed por barbero seleccionado.
   useEffect(() => {
     if (!open || !locationId) return
     let cancelled = false
@@ -100,24 +101,43 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
       // currently in service. The enriched query also returns hasClockedIn
       // and isOccupied so we can filter here without a second hop.
       checkout.getAvailableBarbers(locationId),
-      checkout.getServices(locationId, null),
       checkout.getCombos(),
       checkout.getCategories(),
     ])
-      .then(([b, s, c, cats]) => {
+      .then(([b, c, cats]) => {
         if (cancelled) return
         // Single set para ambos modos. El renderer (BarberRow) decide
         // selectable vs disabled en base a `isOccupied` + modo actual.
         setAllBarbers(b.filter((bb) => bb.hasClockedIn))
-        // Only show non-add-on services in the picker (add-ons are upsells, not
-        // standalone visit reasons).
-        setServices(s.filter((svc) => !svc.isAddOn))
         setCombos(c)
         setCategories(cats)
       })
       .catch(() => {})
     return () => { cancelled = true }
   }, [open, locationId, checkout])
+
+  // Servicios re-resueltos con el barbero seleccionado: pricingFor aplica
+  // overrides de duración/precio por barbero (barbero > sucursal > base) —
+  // un corte de 45 min base puede ser de 35 con el override de Javi. Sin
+  // barbero ("Sin preferencia") resuelve a nivel sucursal (staffUserId
+  // null). Cards, duración de combos y el resumen "N servicios · X min"
+  // derivan todos de `services`, así que se actualizan solos. El cache de
+  // Apollo guarda las variantes de pricingFor por barbero, así que cambiar
+  // de barbero solo cuesta un round trip la primera vez.
+  useEffect(() => {
+    if (!open || !locationId) return
+    let cancelled = false
+    checkout
+      .getServices(locationId, selectedBarberId)
+      .then((s) => {
+        if (cancelled) return
+        // Only show non-add-on services in the picker (add-ons are upsells,
+        // not standalone visit reasons).
+        setServices(s.filter((svc) => !svc.isAddOn))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [open, locationId, selectedBarberId, checkout])
 
   // Debounced customer search — dispara desde nombre O teléfono. El operador
   // POS típicamente conoce al cliente por el celular ("el que es el 8440000"),
