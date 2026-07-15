@@ -905,13 +905,18 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   }
 
   async getAvailableBarbers(locationId: string): Promise<BarberResult[]> {
-    // cache-first: pinta el snapshot del modal al instante. Mutaciones de
-    // walk-in / clock escriben al cache, así que tras un assign el siguiente
-    // open del sheet ve estado actualizado sin round trip.
+    // network-only: hasClockedIn/isOccupied son datos VIVOS — cambian al
+    // completar/asignar servicios (incluso desde otra tablet) y ninguna de
+    // esas mutaciones evicta este root field (solo clock in/out lo hace).
+    // Con cache-first + cache persistido en localStorage, un "ocupado"
+    // viejo se quedaba pegado: el barbero terminaba su servicio y el sheet
+    // de walk-in lo seguía mostrando OCUPADO, bloqueando "Atiende ya".
+    // Mismo criterio que getBarberStatuses (auth.repository), que alimenta
+    // el lock roster con esta misma query en network-only.
     const { data } = await this.#client.query({
       query: POS_AVAILABLE_BARBERS_QUERY,
       variables: { locationId },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: 'network-only',
     })
     return (data as { posAvailableBarbers: BarberResult[] }).posAvailableBarbers
   }

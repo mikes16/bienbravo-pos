@@ -88,8 +88,10 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     setError(null)
   }
 
-  // Load the location's barbers + services + combos + categories once the sheet
-  // opens. cache-first under the hood, so reopening is instant.
+  // Load the location's barbers + services + combos + categories once the
+  // sheet opens. Catálogo (services/combos/categories) es cache-first, así
+  // que reabrir pinta al instante; los barberos van network-only porque
+  // isOccupied/hasClockedIn son datos vivos (ver getAvailableBarbers).
   useEffect(() => {
     if (!open || !locationId) return
     let cancelled = false
