@@ -24,6 +24,7 @@ Regla única para todas las superficies (POS, admin, web futura):
 
 ### 2. Catálogo (`src/features/checkout/application/useCheckout.ts`)
 - Excluir items con `categoryId: null` **una sola vez al cargar** (al armar `catalogItems`), no en cada render. Con eso quedan fuera del grid y de la búsqueda a la vez.
+- **La búsqueda se vuelve global:** hoy la búsqueda filtra dentro de la categoría seleccionada y el chip "Todo" era la forma de buscar en todo el catálogo. Al quitar "Todo", cuando hay texto de búsqueda el filtro de categoría se ignora (se busca en todos los items categorizados). Sin texto, el grid filtra por el chip seleccionado como siempre.
 - `sortCatalogItems` ya no necesita el rank `MAX_SAFE_INTEGER` para sin-categoría (no llegan), pero se conserva como defensa — no romper su contrato.
 
 ### 3. Casos borde
