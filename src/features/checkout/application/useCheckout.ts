@@ -530,6 +530,28 @@ export function useCheckout() {
     }
   }
 
+  // Ruta ÚNICA de resolución de precio por barbero (staff > sucursal > base):
+  // resuelve el precio del servicio para `staffUserId` y lo fija en la línea.
+  // Compartida por changeLineBarber (el operador cambia el barbero de una
+  // línea existente) y addCatalogItem (una línea nueva entra con barbero
+  // default). Ambas DEBEN aterrizar el precio del barbero de la línea, no el
+  // del viewer logueado. El API valida y rechaza desajustes, así que esta
+  // corrección no es cosmética — sin ella la venta se bloquea.
+  const resolveAndCommitLinePrice = async (lineId: string, serviceItemId: string, staffUserId: string) => {
+    if (!locationId) return
+    try {
+      const newPriceCents = await checkout.resolveServicePriceForBarber(serviceItemId, locationId, staffUserId)
+      dispatch({ type: 'setLineBarberAndPrice', lineId, staffUserId, unitPriceCents: newPriceCents })
+    } catch (err) {
+      // Surface the error in dev so we can see why the price didn't update; in prod this
+      // becomes a no-op (price stays at its previous value, barber change persists).
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('[resolveLinePrice] failed to resolve price', { lineId, staffUserId, err })
+      }
+    }
+  }
+
   // Change a line's barber. For service lines, also re-resolve the price (barber overrides)
   // and dispatch atomically so the operator never sees a stale price for the new barber.
   // For products/combos, price is invariant — just dispatch the barber change.
@@ -541,20 +563,40 @@ export function useCheckout() {
       return
     }
     // Optimistic: update barber chip immediately so the UI feels responsive,
-    // then patch in the resolved price.
+    // then patch in the resolved price via la ruta compartida.
     dispatch({ type: 'setLineBarber', lineId, staffUserId })
-    try {
-      const newPriceCents = await checkout.resolveServicePriceForBarber(line.itemId, locationId, staffUserId)
-      // Only commit the price if the line still belongs to the barber we fetched for —
-      // protects against rapid taps where a stale fetch would otherwise overwrite a newer one.
-      dispatch({ type: 'setLineBarberAndPrice', lineId, staffUserId, unitPriceCents: newPriceCents })
-    } catch (err) {
-      // Surface the error in dev so we can see why the price didn't update; in prod this
-      // becomes a no-op (price stays at its previous value, barber change persists).
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.error('[changeLineBarber] failed to resolve price', { lineId, staffUserId, err })
-      }
+    await resolveAndCommitLinePrice(lineId, line.itemId, staffUserId)
+  }
+
+  // Add optimista desde el catálogo: la línea entra YA con el precio del
+  // catálogo (resuelto para el viewer logueado) para feedback instantáneo al
+  // tap y, si es servicio con barbero default, se corrige al precio de ESE
+  // barbero vía resolveAndCommitLinePrice — la MISMA ruta que usa el picker
+  // (cache-first: corrección típicamente sin parpadeo). No encadenamos
+  // changeLineBarber porque éste lee la línea del estado del carrito, que aún
+  // no incluye la recién despachada (dispatch es asíncrono); por eso pasamos
+  // el itemId directo a la ruta compartida.
+  const addCatalogItem = (item: {
+    kind: 'service' | 'product' | 'combo'
+    id: string
+    name: string
+    priceCents: number
+    categoryId: string | null
+  }) => {
+    const lineId = crypto.randomUUID()
+    dispatch({
+      type: 'add',
+      lineId,
+      item: {
+        kind: item.kind,
+        itemId: item.id,
+        name: item.name,
+        unitPriceCents: item.priceCents,
+        categoryId: item.categoryId,
+      },
+    })
+    if (item.kind === 'service' && cartState.defaultBarberId) {
+      void resolveAndCommitLinePrice(lineId, item.id, cartState.defaultBarberId)
     }
   }
 
@@ -566,6 +608,7 @@ export function useCheckout() {
     cartState,
     dispatch,
     changeLineBarber,
+    addCatalogItem,
     customerResults,
     searchCustomers,
     createCustomer,

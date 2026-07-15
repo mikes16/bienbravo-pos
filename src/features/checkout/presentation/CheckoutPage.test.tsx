@@ -45,6 +45,12 @@ function makeRepos() {
   repos.checkout.findOrCreateMostradorCustomer = vi.fn().mockResolvedValue(MOSTRADOR)
   repos.checkout.getCustomer = vi.fn().mockResolvedValue(null)
   repos.checkout.getWalkIn = vi.fn().mockResolvedValue(null)
+  // Default realista: resolveServicePriceForBarber devuelve el precio del
+  // catálogo del corte (28000). Al cablear addCatalogItem, cada add de un
+  // servicio re-resuelve vía esta ruta; sin un default los tests que agregan
+  // "Corte" caerían al 0 del InMemoryCheckoutRepository y romperían los checks
+  // de $280 / $840. Tests que prueban overrides lo sobre-escriben (p.ej. 35000).
+  repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue(28000)
   repos.checkout.createSale = vi.fn().mockResolvedValue({
     id: 'sale-1', status: 'PAID', paymentStatus: 'PAID', totalCents: 28000, paidTotalCents: 28000,
   })
@@ -171,6 +177,32 @@ describe('CheckoutPage (integration)', () => {
     // ($200) no debe verse en ningún lado.
     expect((await screen.findAllByText('$350')).length).toBeGreaterThan(0)
     expect(screen.queryByText('$200')).not.toBeInTheDocument()
+  })
+
+  it('add manual con barbero default re-resuelve el precio para ese barbero', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    repos.checkout.resolveServicePriceForBarber = vi.fn().mockResolvedValue(35000)
+    // Walk-in sin servicios: solo fija el barbero default (b2 = Beto, distinto
+    // del fallback de display barbers[0]=Antonio, para poder esperar de forma
+    // determinista a que el prefill del barbero se aplique antes del tap).
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1', customer: null, assignedStaffUser: { id: 'b2' }, requestedServices: [],
+    })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    // Espera a que el barbero default (Beto) quede aplicado — el header cambia
+    // de Antonio (fallback) a Beto (prefill). Sin esto el tap podría ganarle al
+    // dispatch del prefill y re-resolver con el staff inicial.
+    await screen.findByRole('button', { name: /cambiar barbero: beto/i }, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    // La línea entra optimista con el precio del catálogo ($280) y se corrige a
+    // $350 (override del barbero) — $350 aparece en la línea y en el Total.
+    await waitFor(() => expect(screen.getAllByText('$350').length).toBeGreaterThan(0))
+    expect(repos.checkout.resolveServicePriceForBarber).toHaveBeenCalledWith('svc-corte', 'loc1', 'b2')
   })
 
   it('multi-barber split: 3 cortes with 3 different barbers → mutation has 3 distinct staffUserIds', async () => {

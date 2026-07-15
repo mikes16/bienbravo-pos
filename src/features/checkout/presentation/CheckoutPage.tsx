@@ -394,7 +394,7 @@ export function CheckoutPage() {
               items={ck.catalogItems}
               selectedCategoryId={effectiveCategoryId}
               searchQuery={searchQuery}
-              onAdd={(item) => ck.dispatch({ type: 'add', item: { kind: item.kind, itemId: item.id, name: item.name, unitPriceCents: item.priceCents, categoryId: item.categoryId } })}
+              onAdd={(item) => ck.addCatalogItem(item)}
             />
           </>
         )}

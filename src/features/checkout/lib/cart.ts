@@ -30,7 +30,10 @@ export interface CartState {
 }
 
 export type CartAction =
-  | { type: 'add'; item: CartLineItem }
+  // lineId opcional: cuando el caller necesita conocer el id de la línea de
+  // antemano (para encadenar una corrección de precio por barbero, ver
+  // addCatalogItem en useCheckout). Si no se pasa, el reducer genera uno.
+  | { type: 'add'; item: CartLineItem; lineId?: string }
   | { type: 'incQty'; lineId: string }
   | { type: 'decQty'; lineId: string }
   | { type: 'removeLine'; lineId: string }
@@ -53,7 +56,7 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'add': {
       const line: CartLine = {
-        id: uid(),
+        id: action.lineId ?? uid(),
         kind: action.item.kind,
         itemId: action.item.itemId,
         name: action.item.name,

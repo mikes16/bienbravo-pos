@@ -24,6 +24,15 @@ describe('cart reducer', () => {
     expect(state.lines[0].itemId).toBe('svc-1')
   })
 
+  it('add respeta lineId explícito', () => {
+    const s = cartReducer(initialCart('barber-1'), {
+      type: 'add',
+      lineId: 'line-x',
+      item: { kind: 'service', itemId: 'svc1', name: 'Corte', unitPriceCents: 20000, categoryId: null },
+    })
+    expect(s.lines[0].id).toBe('line-x')
+  })
+
   it('add of same item creates a new line (multi-barber support)', () => {
     const a = cartReducer(initialCart('barber-1'), { type: 'add', item: SERVICE_ITEM })
     const b = cartReducer(a, { type: 'add', item: SERVICE_ITEM })
