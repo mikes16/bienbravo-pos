@@ -11,7 +11,7 @@ interface Category {
 interface CatalogChipsProps {
   categories: Category[]
   selectedCategoryId: string | null
-  onSelect: (id: string | null) => void
+  onSelect: (id: string) => void
   searchQuery: string
   onSearchChange: (q: string) => void
 }
@@ -41,17 +41,6 @@ export function CatalogChips({ categories, selectedCategoryId, onSelect, searchQ
         />
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
-        <TouchButton
-          variant="secondary"
-          size="min"
-          onClick={() => onSelect(null)}
-          className={cn(
-            'shrink-0',
-            selectedCategoryId === null && 'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]',
-          )}
-        >
-          Todo
-        </TouchButton>
         {categories.map((c) => (
           <TouchButton
             key={c.id}

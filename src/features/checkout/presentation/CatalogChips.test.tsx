@@ -11,21 +11,21 @@ const CATEGORIES = [
 
 describe('CatalogChips', () => {
   it('renders all categories', () => {
-    render(<CatalogChips categories={CATEGORIES} selectedCategoryId={null} onSelect={() => {}} searchQuery="" onSearchChange={() => {}} />)
+    render(<CatalogChips categories={CATEGORIES} selectedCategoryId="cat-1" onSelect={() => {}} searchQuery="" onSearchChange={() => {}} />)
     expect(screen.getByText('Cortes')).toBeInTheDocument()
     expect(screen.getByText('Color')).toBeInTheDocument()
     expect(screen.getByText('Productos')).toBeInTheDocument()
   })
 
-  it('renders "Todo" chip', () => {
-    render(<CatalogChips categories={CATEGORIES} selectedCategoryId={null} onSelect={() => {}} searchQuery="" onSearchChange={() => {}} />)
-    expect(screen.getByText('Todo')).toBeInTheDocument()
+  it('no renderiza chip "Todo" — solo categorías reales', () => {
+    render(<CatalogChips categories={CATEGORIES} selectedCategoryId="cat-1" onSelect={() => {}} searchQuery="" onSearchChange={() => {}} />)
+    expect(screen.queryByText('Todo')).not.toBeInTheDocument()
   })
 
   it('clicking a chip fires onSelect with id', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(<CatalogChips categories={CATEGORIES} selectedCategoryId={null} onSelect={onSelect} searchQuery="" onSearchChange={() => {}} />)
+    render(<CatalogChips categories={CATEGORIES} selectedCategoryId="cat-1" onSelect={onSelect} searchQuery="" onSearchChange={() => {}} />)
     await user.click(screen.getByText('Cortes'))
     expect(onSelect).toHaveBeenCalledWith('cat-1')
   })
@@ -33,7 +33,7 @@ describe('CatalogChips', () => {
   it('search input fires onSearchChange', async () => {
     const onSearchChange = vi.fn()
     const user = userEvent.setup()
-    render(<CatalogChips categories={CATEGORIES} selectedCategoryId={null} onSelect={() => {}} searchQuery="" onSearchChange={onSearchChange} />)
+    render(<CatalogChips categories={CATEGORIES} selectedCategoryId="cat-1" onSelect={() => {}} searchQuery="" onSearchChange={onSearchChange} />)
     const input = screen.getByPlaceholderText(/buscar/i)
     await user.type(input, 'corte')
     expect(onSearchChange).toHaveBeenLastCalledWith('corte')
