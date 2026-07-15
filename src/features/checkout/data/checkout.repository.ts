@@ -490,7 +490,7 @@ export interface CheckoutRepository {
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
   getProducts(locationId: string): Promise<CatalogProduct[]>
   getCombos(): Promise<CatalogCombo[]>
-  resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string): Promise<number>
+  resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<number>
   /**
    * Stock es dato LIVE y correctness-critical (riesgo de sobreventa si se
    * muestra stale). `opts.force` fuerza `network-only`; el checkout lo usa
@@ -683,7 +683,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       }))
   }
 
-  async resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string): Promise<number> {
+  async resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<number> {
     const { data } = await this.#client.query<{
       service: { id: string; basePriceCents: number; pricingFor: { priceCents: number } | null } | null
     }>({
