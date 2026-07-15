@@ -45,6 +45,37 @@ describe('ClockPage', () => {
     expect(await screen.findByText(/estás trabajando/i)).toBeInTheDocument()
   })
 
+  // Retardo en vivo: el número grande es el RETARDO (minutos después de
+  // vencer la tolerancia), no el tiempo desde que empezó el horario. Con
+  // turno de 10:00 y tolerancia de 10, a las 10:16 el barbero lleva 6 min
+  // de retardo — el copy anterior decía "tu horario empezó hace 6 minutos",
+  // que es falso (empezó hace 16) y confundía. El copy nuevo nombra el
+  // retardo, explica la tolerancia y el efecto en la comisión del día.
+  it('live-lateness status names the retardo, explains tolerance and commissions', async () => {
+    // Lunes 2026-05-04, 10:16 AM en America/Monterrey (UTC-6): turno
+    // startMin 600 (10:00) + tolerancia default 10 → 6 min de retardo.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-05-04T16:16:00Z'))
+    try {
+      renderWithProviders(<ClockPage />, {
+        repos: {
+          ...makeRepos({
+            templates: [{ id: 't1', staffUserId: 'staff-1', locationId: 'loc1', dayOfWeek: 1, startMin: 600, endMin: 1140 }],
+          }),
+          auth: new TestAuthRepo(),
+        },
+      })
+      expect(await screen.findByText(/de retardo/i)).toBeInTheDocument()
+      expect(screen.getByText('6 minutos')).toBeInTheDocument()
+      expect(screen.getByText(/tolerancia/i)).toBeInTheDocument()
+      expect(screen.getByText(/comisión/i)).toBeInTheDocument()
+      // El headline engañoso anterior no debe volver.
+      expect(screen.queryByText(/empezó hace/i)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('CTA shows "Entrar" when not clocked in', async () => {
     renderWithProviders(<ClockPage />, {
       repos: { ...makeRepos(), auth: new TestAuthRepo() },

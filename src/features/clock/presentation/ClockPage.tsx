@@ -325,18 +325,34 @@ function StatusCard({
   const isLate = minsLate > 0
 
   // 3. SIN TURNO + RETARDO EN VIVO — urgencia, tono bravo. Solo aplica
-  //    cuando aún no has marcado entrada hoy y el reloj ya pasó tu horario.
+  //    cuando aún no has marcado entrada hoy y ya venció la tolerancia.
+  //    minsLate ya trae descontada la tolerancia, así que el headline lo
+  //    nombra "retardo" — decir "tu horario empezó hace X" con ese número
+  //    es falso (a las 10:16 con turno de 10:00 diría "hace 6 minutos") y
+  //    confunde al barbero. El body explica de dónde sale el número y qué
+  //    le cuesta, porque el retardo paga comisión con castigo (payroll).
   if (isLate) {
     return (
       <StatusBox tone="bravo">
         <Headline>
-          Tu horario empezó hace{' '}
-          <DataInline>{formatDurationWords(minsLate)}</DataInline>.
+          Llevas <DataInline>{formatDurationWords(minsLate)}</DataInline> de
+          retardo.
         </Headline>
         <Body>
-          Debías llegar a las{' '}
-          <DataInline>{formatMinTime12(shiftStatus.scheduledStartMin)}</DataInline>.
-          Son las <DataInline>{formatNowInTz12(nowMs, tz)}</DataInline>.
+          Tu horario empezó a las{' '}
+          <DataInline>{formatMinTime12(shiftStatus.scheduledStartMin)}</DataInline>
+          {shiftStatus.latenessThresholdMin > 0 && (
+            <>
+              {' '}y tienes{' '}
+              <DataInline>{formatDurationWords(shiftStatus.latenessThresholdMin)}</DataInline>{' '}
+              de tolerancia
+            </>
+          )}
+          . Son las <DataInline>{formatNowInTz12(nowMs, tz)}</DataInline>.
+        </Body>
+        <Body>
+          Marca tu entrada ya — el retardo sigue contando hasta que marques.
+          Llegar tarde afecta tu comisión del día; llegar a tiempo la protege.
         </Body>
       </StatusBox>
     )
