@@ -51,6 +51,9 @@ export function CheckoutPage() {
   // todavía no expone botones de "anular" ni "reembolsar". Cuando se
   // construyan, añadir los gates aquí + perms.includes(...) correspondientes.
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  // Sin chip "Todo": la selección efectiva siempre es una categoría real —
+  // la que tocó el operador o la primera del orden definido en el admin.
+  const effectiveCategoryId = selectedCategoryId ?? ck.categories[0]?.id ?? null
   const [searchQuery, setSearchQuery] = useState('')
   const [barberSheetOpen, setBarberSheetOpen] = useState(false)
   const [customerSheetOpen, setCustomerSheetOpen] = useState(false)
@@ -367,19 +370,34 @@ export function CheckoutPage() {
     <div className="flex h-full">
       {/* Catalog column. Full width on mobile; ~60% on tablet+ */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <CatalogChips
-          categories={ck.categories}
-          selectedCategoryId={selectedCategoryId}
-          onSelect={setSelectedCategoryId}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-        />
-        <CatalogGrid
-          items={ck.catalogItems}
-          selectedCategoryId={selectedCategoryId}
-          searchQuery={searchQuery}
-          onAdd={(item) => ck.dispatch({ type: 'add', item: { kind: item.kind, itemId: item.id, name: item.name, unitPriceCents: item.priceCents, categoryId: item.categoryId } })}
-        />
+        {ck.loaded && ck.categories.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center px-6 py-12 text-center">
+            <div className="max-w-md">
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+                Catálogo sin categorías
+              </p>
+              <p className="text-sm text-[var(--color-bone-muted)]">
+                Crea categorías en el admin y asigna tus servicios y productos para armar el catálogo del POS.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <CatalogChips
+              categories={ck.categories}
+              selectedCategoryId={effectiveCategoryId}
+              onSelect={setSelectedCategoryId}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+            />
+            <CatalogGrid
+              items={ck.catalogItems}
+              selectedCategoryId={effectiveCategoryId}
+              searchQuery={searchQuery}
+              onAdd={(item) => ck.dispatch({ type: 'add', item: { kind: item.kind, itemId: item.id, name: item.name, unitPriceCents: item.priceCents, categoryId: item.categoryId } })}
+            />
+          </>
+        )}
 
         {/* Mobile-only sticky bottom CTA bar. Tap to open the cart sheet. */}
         {cartItemCount > 0 && (

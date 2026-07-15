@@ -219,8 +219,10 @@ describe('CheckoutPage (integration)', () => {
       initialRoute: '/checkout',
       repos: { ...repos, auth: new TestAuthRepo() },
     })
-    await screen.findAllByText('Shampoo', {}, { timeout: 3000 })
-    await user.click(screen.getAllByText('Shampoo')[0])
+    // Default = primera categoría (Cortes); Shampoo vive en Productos. Hay que
+    // cambiar de chip para verlo (el default a primera categoría lo oculta).
+    await user.click(await screen.findByRole('button', { name: 'Productos' }, { timeout: 3000 }))
+    await user.click((await screen.findAllByText('Shampoo'))[0])
     await user.click(screen.getByRole('button', { name: /cobrar/i }))
     await user.click(await screen.findByRole('button', { name: /efectivo/i }))
     await payInCash(user, 1)
@@ -274,5 +276,16 @@ describe('CheckoutPage (integration)', () => {
     await waitFor(() => {
       expect(repos.checkout.closeAppointmentSale).toHaveBeenCalledWith('sale-prepaid-99')
     })
+  })
+
+  it('sin categorías muestra EmptyState accionable en lugar del grid', async () => {
+    const repos = makeRepos()
+    repos.checkout.getCategories = vi.fn().mockResolvedValue([])
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findByText(/Catálogo sin categorías/i, {}, { timeout: 3000 })
+    expect(screen.queryByText('Corte')).not.toBeInTheDocument()
   })
 })

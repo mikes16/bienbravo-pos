@@ -19,10 +19,12 @@ interface CatalogGridProps {
 }
 
 export function CatalogGrid({ items, selectedCategoryId, searchQuery, onAdd }: CatalogGridProps) {
+  const q = searchQuery.trim().toLowerCase()
   const filtered = items.filter((i) => {
-    if (selectedCategoryId && i.categoryId !== selectedCategoryId) return false
-    if (searchQuery && !i.name.toLowerCase().includes(searchQuery.toLowerCase())) return false
-    return true
+    // Búsqueda global: reemplaza al viejo chip "Todo" como forma de ver/encontrar
+    // cualquier item sin importar el chip seleccionado.
+    if (q) return i.name.toLowerCase().includes(q)
+    return !selectedCategoryId || i.categoryId === selectedCategoryId
   })
 
   if (filtered.length === 0) {
