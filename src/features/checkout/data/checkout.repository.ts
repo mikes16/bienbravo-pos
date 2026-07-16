@@ -3,6 +3,7 @@ import { graphql } from '@/core/graphql/generated'
 import { PaymentProvider } from '@/core/graphql/generated/graphql'
 import type { PosSaleDetailQuery } from '@/core/graphql/generated/graphql'
 import { toCustomerNameTakenException } from '@/shared/lib/customer-errors'
+import type { CustomerReputationTag } from '@/shared/lib/reputation'
 import type {
   CatalogCategory,
   CatalogService,
@@ -57,6 +58,10 @@ const CUSTOMER_QUERY = graphql(`
       fullName
       email
       phone
+      # Marca de reputación para el chip VIP/ATENCIÓN del cliente vinculado.
+      # reputationNote NO se pide aquí: el checkout no muestra la nota del
+      # cliente (solo la nota de la cita), así que no traemos esa PII al bundle.
+      reputationTag
     }
   }
 `) as any
@@ -68,7 +73,7 @@ const WALKINS_FOR_LOOKUP_QUERY = graphql(`
       id
       status
       assignedStaffUser { id fullName }
-      customer { id fullName email phone }
+      customer { id fullName email phone reputationTag }
       requestedServices { id name baseDurationMin basePriceCents categoryId }
       requestedCatalogCombo { id name }
     }
@@ -83,6 +88,9 @@ const APPOINTMENT_CHECKOUT_INFO_QUERY = graphql(`
   query PosAppointmentCheckoutInfo($id: ID!) {
     appointment(id: $id) {
       id
+      # Nota interna de la cita: cuando el cobro viene de una cita
+      # (completeAppointmentId), el checkout la muestra como aviso al entrar.
+      staffNote
       sale {
         id
         source
@@ -299,6 +307,9 @@ const SEARCH_CUSTOMERS_QUERY = graphql(`
       fullName
       email
       phone
+      # Para que un cliente elegido en la búsqueda llegue al carrito ya con su
+      # marca VIP/ATENCIÓN (el chip aparece sin re-consultar).
+      reputationTag
     }
   }
 `)
@@ -443,6 +454,9 @@ export interface CustomerResult {
   fullName: string
   email: string | null
   phone: string | null
+  // Marca de reputación para el chip VIP/ATENCIÓN. Opcional: no todas las
+  // queries que producen un CustomerResult la piden (findOrCreate no la trae).
+  reputationTag?: CustomerReputationTag | null
 }
 
 export interface BarberResult {
@@ -497,6 +511,10 @@ export interface AppointmentPrepayState {
   prepaidSaleId: string | null
   prepaidMethod: PaymentProvider | null
   prepaidAt: string | null
+  // Nota interna de la cita (staffNote). Se deriva de la misma lectura del
+  // appointment que el estado prepago (una sola query) — co-localizada aquí
+  // para no gastar un round trip extra. null cuando la cita no tiene nota.
+  staffNote: string | null
 }
 
 /* ── Coupon DTOs ── */
@@ -1218,6 +1236,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     const appointment = (data as {
       appointment: {
         id: string
+        staffNote: string | null
         sale: {
           id: string
           source: string
@@ -1248,6 +1267,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       prepaidSaleId,
       prepaidMethod,
       prepaidAt,
+      staffNote: appointment?.staffNote ?? null,
     }
   }
 

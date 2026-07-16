@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
+import type { CustomerReputationTag } from '@/shared/lib/reputation'
 
 interface CustomerLite {
   id: string
   fullName: string
   email: string | null
   phone: string | null
+  // Se reenvía al carrito al seleccionar (no se muestra en la lista de
+  // búsqueda) para que el chip VIP/ATENCIÓN aparezca sin re-consultar.
+  reputationTag?: CustomerReputationTag | null
 }
 
 interface CustomerLookupSheetProps {

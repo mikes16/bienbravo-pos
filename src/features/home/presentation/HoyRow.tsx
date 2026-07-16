@@ -1,4 +1,7 @@
 import { cn } from '@/shared/lib/cn'
+import { ReputationBadge } from '@/shared/pos-ui'
+import { NoteIcon } from '@/shared/pos-ui/icons'
+import type { ReputationMark } from '@/shared/lib/reputation'
 
 export interface HoyRowProps {
   id: string
@@ -9,6 +12,10 @@ export interface HoyRowProps {
   customerInitials: string
   serviceLabel: string
   meta: string | null
+  /** Marca manual del cliente (VIP / FLAGGED_BY_STAFF) junto al nombre. */
+  reputationMark?: ReputationMark | null
+  /** Nota interna de la cita. Se muestra truncada (2 líneas) bajo el meta. */
+  staffNote?: string | null
   pillLabel: string
   pillTone: 'serving' | 'appt' | 'walkin'
   sourceKind: 'appointment' | 'walk-in'
@@ -39,6 +46,8 @@ export function HoyRow({
   customerInitials,
   serviceLabel,
   meta,
+  reputationMark = null,
+  staffNote,
   pillLabel,
   pillTone,
   onClick,
@@ -130,14 +139,17 @@ export function HoyRow({
       </div>
 
       <div className="min-w-0">
-        <p
-          className={cn(
-            'text-[16px] font-bold leading-tight text-[var(--color-bone)]',
-            isActive && 'text-[17px]',
-          )}
-        >
-          {customerName}
-        </p>
+        <div className="flex items-center gap-2">
+          <p
+            className={cn(
+              'min-w-0 truncate text-[16px] font-bold leading-tight text-[var(--color-bone)]',
+              isActive && 'text-[17px]',
+            )}
+          >
+            {customerName}
+          </p>
+          {reputationMark && <ReputationBadge mark={reputationMark} />}
+        </div>
         <p className="mt-0.5 truncate text-[12px] text-[var(--color-bone-muted)]">
           <strong className="font-semibold text-[var(--color-bone-muted)]">{serviceLabel}</strong>
           {meta && <span> · {meta}</span>}
@@ -145,6 +157,19 @@ export function HoyRow({
             <span className="text-[var(--color-leather)]"> · asignado a {assignedToName}</span>
           )}
         </p>
+        {staffNote && (
+          // Nota de la cita: icono en warning (destaca sin gritar) + texto bone.
+          // Sin sheet/detalle de cita en el POS, el truncado es generoso
+          // (line-clamp-2) para que quepa lo importante; `title` deja el texto
+          // completo accesible al hover en desktop.
+          <p
+            className="mt-1 flex items-start gap-1.5 text-[12px] leading-snug text-[var(--color-bone)]"
+            title={staffNote}
+          >
+            <NoteIcon aria-hidden className="mt-[1px] h-3.5 w-3.5 shrink-0 text-[var(--color-warning)]" />
+            <span className="line-clamp-2">{staffNote}</span>
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

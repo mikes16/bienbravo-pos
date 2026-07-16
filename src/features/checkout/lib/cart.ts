@@ -1,6 +1,11 @@
+import type { CustomerReputationTag } from '@/shared/lib/reputation'
+
 interface CustomerLite {
   id: string
   fullName: string
+  // Marca de reputación del cliente vinculado para el chip VIP/ATENCIÓN.
+  // Opcional: un cliente recién creado (findOrCreate) entra sin marca.
+  reputationTag?: CustomerReputationTag | null
 }
 
 export type CartLineKind = 'service' | 'product' | 'combo'

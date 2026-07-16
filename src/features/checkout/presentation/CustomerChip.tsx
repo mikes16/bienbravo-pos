@@ -1,6 +1,10 @@
+import { ReputationBadge } from '@/shared/pos-ui'
+import { reputationMark, type CustomerReputationTag } from '@/shared/lib/reputation'
+
 interface CustomerLite {
   id: string
   fullName: string
+  reputationTag?: CustomerReputationTag | null
 }
 
 interface CustomerChipProps {
@@ -10,6 +14,7 @@ interface CustomerChipProps {
 }
 
 export function CustomerChip({ customer, onTap, onClear }: CustomerChipProps) {
+  const mark = customer ? reputationMark(customer.reputationTag) : null
   if (customer === null) {
     return (
       <button
@@ -28,9 +33,10 @@ export function CustomerChip({ customer, onTap, onClear }: CustomerChipProps) {
       <button
         type="button"
         onClick={onTap}
-        className="flex-1 cursor-pointer text-left text-[13px] text-[var(--color-bone)]"
+        className="flex min-w-0 flex-1 items-center gap-2 cursor-pointer text-left text-[13px] text-[var(--color-bone)]"
       >
-        {customer.fullName}
+        <span className="min-w-0 truncate">{customer.fullName}</span>
+        {mark && <ReputationBadge mark={mark} />}
       </button>
       <button
         type="button"

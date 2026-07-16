@@ -20,6 +20,7 @@ import { CouponsBlock } from './CouponsBlock'
 import { PaymentSheet } from './PaymentSheet'
 import { ReceiptScreen } from './ReceiptScreen'
 import { SkeletonRow, SkeletonCard } from '@/shared/pos-ui'
+import { NoteIcon } from '@/shared/pos-ui/icons'
 import { formatMoney } from '@/shared/lib/money'
 import { useToast } from '@/core/toast/useToast'
 import { usePosAuth } from '@/core/auth/usePosAuth'
@@ -312,6 +313,23 @@ export function CheckoutPage() {
   //   - mobile full-screen sheet (when user taps the bottom bar)
   const cartContent = (
     <>
+      {ck.appointmentStaffNote && (
+        // Aviso de la nota de la cita: cuando el cobro viene de una cita
+        // (completeAppointmentId), mostramos la nota que dejó recepción/admin
+        // para el barbero. Discreto pero visible al entrar; texto completo (la
+        // nota es contexto del servicio, no la truncamos aquí).
+        <div className="mx-4 mt-4 flex items-start gap-2 border border-[var(--color-warning)]/50 bg-[var(--color-warning)]/[0.08] px-3 py-2.5">
+          <NoteIcon aria-hidden className="mt-[1px] h-4 w-4 shrink-0 text-[var(--color-warning)]" />
+          <div className="min-w-0">
+            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--color-warning)]">
+              Nota de la cita
+            </p>
+            <p className="mt-0.5 text-[13px] leading-snug text-[var(--color-bone)]">
+              {ck.appointmentStaffNote}
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-3 p-4">
         <AtendiendoHeader barber={defaultBarber} onTap={() => setBarberSheetOpen(true)} />
         <CustomerChip
@@ -485,7 +503,10 @@ export function CheckoutPage() {
         results={ck.customerResults}
         onSearchChange={ck.searchCustomers}
         onSelect={(c) => {
-          ck.dispatch({ type: 'setCustomer', customer: { id: c.id, fullName: c.fullName } })
+          ck.dispatch({
+            type: 'setCustomer',
+            customer: { id: c.id, fullName: c.fullName, reputationTag: c.reputationTag ?? null },
+          })
           setCustomerSheetOpen(false)
         }}
         onCreate={async (input) => {

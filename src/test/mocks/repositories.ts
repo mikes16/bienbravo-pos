@@ -258,15 +258,18 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     prepaidSaleId: string | null
     prepaidMethod: null
     prepaidAt: string | null
+    staffNote: string | null
   }> {
-    // Default: no prepago. Tests específicos del flujo de prepago pueden
-    // sobre-escribir este método con vi.spyOn al armar su escenario.
+    // Default: no prepago, sin nota de cita. Tests específicos del flujo de
+    // prepago / nota de cita pueden sobre-escribir con vi.spyOn al armar su
+    // escenario.
     return {
       isPrepaid: false,
       hasPendingLink: false,
       prepaidSaleId: null,
       prepaidMethod: null,
       prepaidAt: null,
+      staffNote: null,
     }
   }
 

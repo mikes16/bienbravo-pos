@@ -33,4 +33,38 @@ describe('CustomerChip', () => {
     expect(onClear).toHaveBeenCalledTimes(1)
     expect(onTap).not.toHaveBeenCalled()
   })
+
+  it('shows a VIP badge when the linked customer is VIP', () => {
+    render(
+      <CustomerChip
+        customer={{ id: 'c1', fullName: 'Carlos', reputationTag: 'VIP' }}
+        onTap={() => {}}
+        onClear={() => {}}
+      />,
+    )
+    expect(screen.getByText('VIP')).toBeInTheDocument()
+  })
+
+  it('shows an ATENCIÓN badge when the linked customer is FLAGGED_BY_STAFF', () => {
+    render(
+      <CustomerChip
+        customer={{ id: 'c1', fullName: 'Carlos', reputationTag: 'FLAGGED_BY_STAFF' }}
+        onTap={() => {}}
+        onClear={() => {}}
+      />,
+    )
+    expect(screen.getByText('ATENCIÓN')).toBeInTheDocument()
+  })
+
+  it('shows no reputation badge for reliable / no-show / untagged customers', () => {
+    render(
+      <CustomerChip
+        customer={{ id: 'c1', fullName: 'Carlos', reputationTag: 'RELIABLE' }}
+        onTap={() => {}}
+        onClear={() => {}}
+      />,
+    )
+    expect(screen.queryByText('VIP')).toBeNull()
+    expect(screen.queryByText('ATENCIÓN')).toBeNull()
+  })
 })

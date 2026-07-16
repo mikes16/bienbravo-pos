@@ -6,7 +6,11 @@ const APPOINTMENTS_QUERY = graphql(`
   query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {
     appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {
       id status salePaymentStatus startAt endAt totalCents
-      customer { id fullName phone }
+      # staffNote: nota interna escrita por admin/recepción para el barbero que
+      # atiende. reputationTag/reputationNote: marca del cliente (VIP/señalado)
+      # + nota persistente "solo staff". El POS solo LEE — no edita ninguna.
+      staffNote
+      customer { id fullName phone reputationTag reputationNote }
       staffUser { id fullName }
       items { label serviceId qty unitPriceCents }
       locationId locationName

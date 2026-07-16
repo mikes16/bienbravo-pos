@@ -414,4 +414,74 @@ describe('deriveHoyViewModel', () => {
     )
     expect(vm.rows[0].customerPhotoUrl).toBe('https://example.com/p.jpg')
   })
+
+  // ── Reputación + nota de cita (feature: el barbero ve la marca del cliente) ──
+
+  function apptWith(customerExtra: Record<string, unknown>, staffNote: string | null = null): Appointment {
+    return {
+      id: 'a1',
+      status: 'CONFIRMED',
+      staffUser: { id: STAFF_ID, fullName: 'Eli' },
+      customer: { id: 'c1', fullName: 'Pedro Soto', email: null, phone: null, ...customerExtra },
+      items: [{ label: 'Corte', priceCents: 0, qty: 1 }],
+      startAt: '2026-05-04T13:00:00Z',
+      staffNote,
+    } as unknown as Appointment
+  }
+
+  it('surfaces VIP as the reputation mark + threads staffNote and reputationNote', () => {
+    const vm = deriveHoyViewModel(
+      baseInput({
+        appointments: [
+          apptWith({ reputationTag: 'VIP', reputationNote: 'Cliente frecuente' }, 'Prefiere tijera, no máquina'),
+        ],
+      }),
+    )
+    expect(vm.rows[0].reputationMark).toBe('VIP')
+    expect(vm.rows[0].staffNote).toBe('Prefiere tijera, no máquina')
+    expect(vm.rows[0].customerReputationNote).toBe('Cliente frecuente')
+  })
+
+  it('surfaces FLAGGED_BY_STAFF as the reputation mark', () => {
+    const vm = deriveHoyViewModel(
+      baseInput({ appointments: [apptWith({ reputationTag: 'FLAGGED_BY_STAFF' })] }),
+    )
+    expect(vm.rows[0].reputationMark).toBe('FLAGGED_BY_STAFF')
+  })
+
+  it('does NOT surface no-show / reliable tags as a reputation mark (noise filter)', () => {
+    for (const tag of ['FREQUENT_NO_SHOW', 'OCCASIONAL_NO_SHOW', 'RELIABLE']) {
+      const vm = deriveHoyViewModel(
+        baseInput({ appointments: [apptWith({ reputationTag: tag })] }),
+      )
+      expect(vm.rows[0].reputationMark).toBeNull()
+    }
+  })
+
+  it('leaves reputationMark, staffNote and reputationNote null when the appointment has none', () => {
+    const vm = deriveHoyViewModel(baseInput({ appointments: [apptWith({})] }))
+    expect(vm.rows[0].reputationMark).toBeNull()
+    expect(vm.rows[0].staffNote).toBeNull()
+    expect(vm.rows[0].customerReputationNote).toBeNull()
+  })
+
+  it('walk-in rows never carry a reputation mark or staff note', () => {
+    const vm = deriveHoyViewModel(
+      baseInput({
+        walkIns: [
+          {
+            id: 'w1',
+            status: 'PENDING',
+            assignedStaffUser: null,
+            preferredStaffUser: null,
+            customer: { id: 'c9', fullName: 'Sofía Lira' },
+            customerName: 'Sofía Lira',
+            createdAt: '2026-05-04T12:00:00Z',
+          } as unknown as WalkIn,
+        ],
+      }),
+    )
+    expect(vm.rows[0].reputationMark).toBeNull()
+    expect(vm.rows[0].staffNote).toBeNull()
+  })
 })

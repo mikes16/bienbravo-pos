@@ -1,4 +1,5 @@
 export { StopwatchIcon } from './StopwatchIcon'
+export { NoteIcon } from './NoteIcon'
 export { GameCalendarIcon } from './GameCalendarIcon'
 export { TwoCoinsIcon } from './TwoCoinsIcon'
 export { StrongboxIcon } from './StrongboxIcon'

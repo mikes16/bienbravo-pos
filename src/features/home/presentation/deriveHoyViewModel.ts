@@ -1,7 +1,8 @@
-import type { Appointment } from '@/features/agenda/domain/agenda.types'
+import type { Appointment, CustomerReputationTag } from '@/features/agenda/domain/agenda.types'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types'
 import { formatTimeInTz } from '@/shared/lib/date'
+import { reputationMark, type ReputationMark } from '@/shared/lib/reputation'
 
 export interface HoyViewModelInput {
   staffId: string
@@ -26,6 +27,18 @@ export interface HoyRowData {
   customerInitials: string
   serviceLabel: string
   meta: string | null
+  // Marca manual del cliente a mostrar junto al nombre (VIP / FLAGGED_BY_STAFF).
+  // null = no se muestra chip (RELIABLE, no-show tags, o sin cliente). Solo las
+  // citas la traen hoy; walk-ins la dejan null (su query no lee reputación).
+  reputationMark: ReputationMark | null
+  // Nota interna de la cita (staffNote). Se muestra truncada bajo el meta.
+  // null en walk-ins (no tienen nota de cita).
+  staffNote: string | null
+  // Nota persistente "solo staff" del cliente (reputationNote). Se threadea
+  // hasta aquí por contrato, pero HOY no se renderiza en el Hoy: no existe un
+  // sheet/detalle de cita donde mostrarla completa (ver reporte). Queda lista
+  // para cuando ese detalle exista.
+  customerReputationNote: string | null
   pillLabel: string
   pillTone: 'serving' | 'appt' | 'walkin'
   sourceKind: 'appointment' | 'walk-in'
@@ -139,7 +152,13 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
   const candidates: Candidate[] = []
 
   for (const a of activeAppts) {
-    const customer = (a.customer ?? null) as { id?: string; fullName?: string; photoUrl?: string | null } | null
+    const customer = (a.customer ?? null) as {
+      id?: string
+      fullName?: string
+      photoUrl?: string | null
+      reputationTag?: CustomerReputationTag | null
+      reputationNote?: string | null
+    } | null
     const customerId = customer?.id ?? null
     const customerName = customer?.fullName ?? 'Cliente'
     const photo = customer?.photoUrl ?? null
@@ -165,6 +184,9 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         customerInitials: getInitials(customerName),
         serviceLabel: a.items[0]?.label ?? 'Servicio',
         meta: isInService ? `cita ${formatTimeMx(startAt, tz)}` : null,
+        reputationMark: reputationMark(customer?.reputationTag),
+        staffNote: a.staffNote ?? null,
+        customerReputationNote: customer?.reputationNote ?? null,
         pillLabel: isUnassignedAppt ? 'Sin barbero' : 'Cita',
         pillTone: isInService ? 'serving' : isUnassignedAppt ? 'walkin' : 'appt',
         sourceKind: 'appointment',
@@ -223,6 +245,11 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         // el de servicio. Juntos: "EN SERVICIO · 8 MIN" + "esperó 94 min" da
         // el cuadro completo sin tener que abrir nada.
         meta: isAssigned && waitMinutes > 0 ? `esperó ${waitMinutes} min` : null,
+        // Walk-ins no traen marca de reputación ni nota de cita (su query no las
+        // lee; la nota de cita no existe para un walk-in).
+        reputationMark: null,
+        staffNote: null,
+        customerReputationNote: null,
         pillLabel,
         // Tone bravo solo cuando es tuyo en servicio — sin eso, el pill rojo
         // de un walk-in ajeno te grita "actúa aquí" cuando justo no debes.
@@ -273,6 +300,9 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
         customerInitials: getInitials(customerName),
         serviceLabel: 'Walk-in',
         meta: `esperando ${minutes} min · ${preferenceMeta}`,
+        reputationMark: null,
+        staffNote: null,
+        customerReputationNote: null,
         pillLabel: 'Walk-in',
         pillTone: 'walkin',
         sourceKind: 'walk-in',

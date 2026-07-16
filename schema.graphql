@@ -42,6 +42,7 @@ type Appointment {
   locationName: String
   sale: Sale
   salePaymentStatus: SalePaymentStatus
+  staffNote: String
   staffUser: StaffUser
   startAt: DateTime!
   status: AppointmentStatus!
@@ -401,6 +402,7 @@ input CreateBookingDraftInput {
   locationId: ID!
   prepaid: Boolean
   prepaidMethod: PaymentProvider
+  staffNote: String
   staffUserId: ID
   startAt: DateTime!
 }
@@ -658,6 +660,7 @@ enum CustomerReputationTag {
   FREQUENT_NO_SHOW
   OCCASIONAL_NO_SHOW
   RELIABLE
+  VIP
 }
 
 type DailyLocationMetrics {
@@ -1124,6 +1127,7 @@ type Mutation {
   revokeLocationKioskToken(id: ID!): KioskToken!
   rotateServiceToken(input: RotateServiceTokenInput!): RotateServiceTokenResult!
   runPayout(periodEnd: DateTime!, periodStart: DateTime!, replace: Boolean = false): PayoutRun!
+  setAppointmentNote(appointmentId: ID!, staffNote: String): Appointment!
   setPosLocationPassword(locationId: ID!, password: String!): Boolean!
   setStaffPassword(password: String!, staffUserId: ID!): Boolean!
   setStaffPin(pin4: String!, staffUserId: ID!): Boolean!
@@ -1669,6 +1673,8 @@ type Register {
 
 type RegisterSession {
   closedAt: DateTime
+  closedById: ID
+  closedByName: String
   countedCardCents: Int
   countedCashCents: Int
   countedTransferCents: Int
@@ -1679,6 +1685,8 @@ type RegisterSession {
   id: ID!
   locationName: String
   openedAt: DateTime!
+  openedById: ID
+  openedByName: String
   openingCashCents: Int!
   status: RegisterSessionStatus!
 }

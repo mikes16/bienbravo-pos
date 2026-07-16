@@ -9,12 +9,14 @@ import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon
 import { sortCatalogItems, onlyCategorized } from '../lib/sort-catalog'
 import type { CheckoutPayment } from '../domain/checkout.types'
 import type { AppointmentPrepayState, AppliedCouponPreview, DraftSaleItemArg } from '../data/checkout.repository'
+import type { CustomerReputationTag } from '@/shared/lib/reputation'
 
 interface Customer {
   id: string
   fullName: string
   email: string | null
   phone: string | null
+  reputationTag?: CustomerReputationTag | null
 }
 
 interface Barber {
@@ -126,6 +128,7 @@ export function useCheckout() {
     prepaidSaleId: null,
     prepaidMethod: null,
     prepaidAt: null,
+    staffNote: null,
   }
   const [prepayState, setPrepayState] = useState<AppointmentPrepayState>(DEFAULT_PREPAY_STATE)
 
@@ -273,7 +276,11 @@ export function useCheckout() {
         if (w?.customer) {
           dispatch({
             type: 'setCustomer',
-            customer: { id: w.customer.id, fullName: w.customer.fullName },
+            customer: {
+              id: w.customer.id,
+              fullName: w.customer.fullName,
+              reputationTag: w.customer.reputationTag ?? null,
+            },
           })
         }
         // A1: solo pre-llenar el barbero default si sigue con turno
@@ -352,7 +359,12 @@ export function useCheckout() {
       })
     } else if (context.kind === 'preselected-customer') {
       checkout.getCustomer(context.customerId).then((c) => {
-        if (c) dispatch({ type: 'setCustomer', customer: { id: c.id, fullName: c.fullName } })
+        if (c) {
+          dispatch({
+            type: 'setCustomer',
+            customer: { id: c.id, fullName: c.fullName, reputationTag: c.reputationTag ?? null },
+          })
+        }
       })
     }
   }, [context, checkout, locationId, loaded, barbers, addToast])
@@ -790,6 +802,10 @@ export function useCheckout() {
     prepaidSaleId: prepayState.prepaidSaleId,
     prepaidMethod: prepayState.prepaidMethod,
     prepaidAt: prepayState.prepaidAt,
+    // Nota interna de la cita cuando el cobro viene de una cita
+    // (completeAppointmentId). null en ventas libres / walk-in / cliente
+    // preseleccionado sin cita. El checkout la muestra como aviso al entrar.
+    appointmentStaffNote: prepayState.staffNote,
     refetchPrepayState,
     // Cupones de descuento aplicados al draft del checkout. El total
     // descontado lo controla el API (recalculado en cada apply/remove);

@@ -84,4 +84,34 @@ describe('HoyRow', () => {
     const { container } = render(<HoyRow {...baseProps} kind="next" />)
     expect((container.firstChild as Element)?.className).toMatch(/cuero-viejo|leather/)
   })
+
+  it('renders VIP chip when reputationMark is VIP', () => {
+    render(<HoyRow {...baseProps} reputationMark="VIP" />)
+    expect(screen.getByText('VIP')).toBeInTheDocument()
+  })
+
+  it('renders ATENCIÓN chip when reputationMark is FLAGGED_BY_STAFF', () => {
+    render(<HoyRow {...baseProps} reputationMark="FLAGGED_BY_STAFF" />)
+    expect(screen.getByText('ATENCIÓN')).toBeInTheDocument()
+  })
+
+  it('renders no reputation chip by default', () => {
+    render(<HoyRow {...baseProps} />)
+    expect(screen.queryByText('VIP')).toBeNull()
+    expect(screen.queryByText('ATENCIÓN')).toBeNull()
+  })
+
+  it('renders the staff note truncated to two lines when present', () => {
+    const { container } = render(
+      <HoyRow {...baseProps} staffNote="Cliente alérgico al after shave, usar toalla propia" />,
+    )
+    expect(screen.getByText(/alérgico al after shave/i)).toBeInTheDocument()
+    // Sin sheet/detalle de cita, el truncado es generoso (line-clamp-2).
+    expect(container.querySelector('.line-clamp-2')).not.toBeNull()
+  })
+
+  it('does not render the staff note line when staffNote is absent', () => {
+    const { container } = render(<HoyRow {...baseProps} />)
+    expect(container.querySelector('.line-clamp-2')).toBeNull()
+  })
 })
