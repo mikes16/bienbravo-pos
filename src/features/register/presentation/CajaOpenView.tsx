@@ -1,6 +1,6 @@
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { formatMoney } from '@/shared/lib/money'
-import { formatTimeInTz } from '@/shared/lib/date'
+import { formatTimeInTz, formatShortDateInTz, localDayInTz } from '@/shared/lib/date'
 import { useLocation } from '@/core/location/useLocation'
 import type { RegisterSession, SaleLedgerEntry } from '../domain/register.types'
 
@@ -19,6 +19,17 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
   const sessionExpectedTotalCents =
     session.expectedCashCents + session.expectedCardCents + session.expectedTransferCents
 
+  // "Desde {hora}" es honesto solo si la sesión abrió hoy. Una caja que quedó
+  // abierta hace días (o abierta y luego cerrada remotamente) mostrando solo
+  // "Desde 10:33" parece de hoy — engañoso. Si no es de hoy, prefijamos fecha
+  // corta: "Desde 4 may · 10:33".
+  const openedToday =
+    localDayInTz(new Date(session.openedAt), locationTimezone) ===
+    localDayInTz(new Date(), locationTimezone)
+  const openedLabel = openedToday
+    ? formatTimeInTz(session.openedAt, locationTimezone)
+    : `${formatShortDateInTz(session.openedAt, locationTimezone)} · ${formatTimeInTz(session.openedAt, locationTimezone)}`
+
   return (
     <div className="flex h-full flex-col">
       {/* ── Status banner + totals ── */}
@@ -31,7 +42,7 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
             </span>
           </div>
           <span className="text-[11px] text-[var(--color-bone-muted)]">
-            Desde {formatTimeInTz(session.openedAt, locationTimezone)} · fondo {formatMoney(fondoCents)}
+            Desde {openedLabel} · fondo {formatMoney(fondoCents)}
           </span>
         </div>
 
@@ -64,28 +75,27 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
         </div>
       </div>
 
-      {/* ── Transactions ledger ── */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-baseline justify-between border-b border-[var(--color-leather-muted)]/40 px-5 py-3">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-            Ventas de hoy
-          </span>
-          <span className="text-[11px] text-[var(--color-bone-muted)]">
-            {todayTransactions.length === 0
-              ? 'Sin ventas todavía'
-              : `${todayTransactions.length} ventas · ${formatMoney(sessionExpectedTotalCents)}`}
-          </span>
-        </div>
+      {/* ── Ledger de ventas de hoy ──
+          TODO(ledger): hoy CajaPage pasa `todayTransactions={[]}` hardcodeado
+          porque el ledger real de la sesión aún no está cableado al API. Un
+          "Sin ventas todavía" permanente es una mentira peor que no mostrar
+          nada, así que ocultamos la sección completa mientras esté vacía.
+          Cuando se cablee el ledger real (leyendo las ventas de la sesión), la
+          sección reaparece sola sin tocar este componente. El `flex-1` de
+          relleno mantiene el CTA "Cerrar caja" pegado al fondo mientras tanto. */}
+      {todayTransactions.length > 0 ? (
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex items-baseline justify-between border-b border-[var(--color-leather-muted)]/40 px-5 py-3">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+              Ventas de hoy
+            </span>
+            <span className="text-[11px] text-[var(--color-bone-muted)]">
+              {`${todayTransactions.length} ventas · ${formatMoney(sessionExpectedTotalCents)}`}
+            </span>
+          </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {todayTransactions.length === 0 ? (
-            <div className="flex h-full items-center justify-center px-5 py-8 text-center">
-              <p className="text-[12px] text-[var(--color-bone-muted)]">
-                Cuando empieces a cobrar, las ventas aparecen aquí.
-              </p>
-            </div>
-          ) : (
-            todayTransactions.map((tx) => (
+          <div className="flex-1 overflow-y-auto">
+            {todayTransactions.map((tx) => (
               <div
                 key={tx.id}
                 className="grid grid-cols-[60px_1fr_80px_80px] items-center gap-3 border-b border-[var(--color-leather-muted)]/30 px-5 py-2.5 text-[12px]"
@@ -101,10 +111,12 @@ export function CajaOpenView({ session, todayTransactions, fondoCents, onCerrar 
                   {formatMoney(tx.totalCents)}
                 </span>
               </div>
-            ))
-          )}
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       {/* ── Cerrar caja CTA — solo si el viewer tiene pos.register.close ── */}
       {onCerrar ? (

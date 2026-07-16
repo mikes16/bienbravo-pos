@@ -10,6 +10,7 @@ const OPEN_REGISTER = {
   openSession: {
     id: 'sess-1', status: 'OPEN',
     openedAt: '2026-05-04T09:15:00.000Z', closedAt: null,
+    openingCashCents: 50000,
     expectedCashCents: 50000, expectedCardCents: 0, expectedTransferCents: 0,
     countedCashCents: null, countedCardCents: null, countedTransferCents: null,
   },
@@ -45,6 +46,7 @@ describe('CajaPage', () => {
         openSession: {
           id: 'sess-1', status: 'OPEN',
           openedAt: '2026-05-04T09:15:00.000Z', closedAt: null,
+          openingCashCents: 50000,
           expectedCashCents: 50000, expectedCardCents: 0, expectedTransferCents: 0,
           countedCashCents: null, countedCardCents: null, countedTransferCents: null,
         },
@@ -86,7 +88,7 @@ describe('CajaPage', () => {
     expect(getWalkIns).toHaveBeenCalledWith('loc1', undefined, undefined, { force: true })
   })
 
-  it('refetches registers with force:true on window focus and visibilitychange', async () => {
+  it('refetches registers with force:true on mount, window focus and visibilitychange', async () => {
     const repos = createMockRepositories()
     const getRegisters = vi.fn().mockResolvedValue([OPEN_REGISTER])
     repos.register.getRegisters = getRegisters
@@ -94,7 +96,9 @@ describe('CajaPage', () => {
       repos: { ...repos, auth: new TestAuthRepo() },
     })
 
-    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', undefined))
+    // Mount fuerza network-only (force:true): entrar a Caja no confía en el
+    // snapshot persistido — el cierre remoto desde admin debe reflejarse.
+    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', { force: true }))
 
     act(() => { window.dispatchEvent(new Event('focus')) })
     await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', { force: true }))

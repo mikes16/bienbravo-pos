@@ -10,11 +10,6 @@ import { CajaOpenView } from './CajaOpenView'
 import { ActiveServicesBlocker, type ActiveServiceItem } from './ActiveServicesBlocker'
 import { SkeletonRow, TouchButton } from '@/shared/pos-ui'
 
-// TODO: derive fondoCents from session metadata (the API doesn't expose
-// opening fondo as a discrete field today). For Sub-#3 v1 we use a placeholder;
-// post-merge follow-up: compute as session.expectedCashCents - sum(cash sales).
-const FONDO_PLACEHOLDER_CENTS = 50000
-
 function todayRangeISO(tz: string): { from: string; to: string } {
   const now = new Date()
   const { startUtc: from, endUtc: to } = localDayRangeInTz(localDayInTz(now, tz), tz)
@@ -175,8 +170,11 @@ export function CajaPage() {
       <>
         <CajaOpenView
           session={openRegister.openSession}
+          // TODO(ledger): el ledger real de ventas de la sesión aún no está
+          // cableado al API — CajaOpenView oculta la sección "Ventas de hoy"
+          // mientras esto sea []. Cablear leyendo las ventas de la sesión.
           todayTransactions={[]}
-          fondoCents={FONDO_PLACEHOLDER_CENTS}
+          fondoCents={openRegister.openSession.openingCashCents}
           onCerrar={canClose ? handleCerrar : null}
         />
         <ActiveServicesBlocker

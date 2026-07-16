@@ -16,12 +16,25 @@ const SESSION = {
   status: 'OPEN' as const,
   openedAt: '2026-05-04T09:15:00.000Z',
   closedAt: null,
+  openingCashCents: 50000,
   expectedCashCents: 184000,
   expectedCardCents: 254000,
   expectedTransferCents: 126000,
   countedCashCents: null,
   countedCardCents: null,
   countedTransferCents: null,
+}
+
+// Recorre los 3 pasos del wizard hasta dejar el CTA final "Cerrar caja" listo
+// para el submit. Reutilizado por los tests de éxito/fallo del cierre.
+async function advanceToFinalClose(user: ReturnType<typeof userEvent.setup>) {
+  await screen.findByText(/cuenta el efectivo/i)
+  await user.click(screen.getByRole('button', { name: /siguiente/i }))
+  await screen.findByText(/confirma los totales digitales/i)
+  await user.click(screen.getByRole('button', { name: /sí, \$2,540/i }))
+  await user.click(screen.getByRole('button', { name: /revisar/i }))
+  await screen.findByText(/revisa el resumen/i)
+  await user.click(screen.getByRole('checkbox'))
 }
 
 function makeRepos() {
@@ -88,6 +101,44 @@ describe('CloseCajaWizard', () => {
     await waitFor(() => {
       expect(repos.register.closeSession).toHaveBeenCalled()
     })
+  })
+
+  it('éxito real: la mutation resuelve → muestra la pantalla de éxito', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await advanceToFinalClose(user)
+    await user.click(screen.getByRole('button', { name: /cerrar caja/i }))
+    // "regresando a Hoy" solo aparece en la pantalla de éxito.
+    expect(await screen.findByText(/regresando a hoy/i)).toBeInTheDocument()
+  })
+
+  it('fallo del servidor: muestra el mensaje en español y NUNCA el éxito falso', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // El server rechaza (caja ya cerrada desde admin). getRegisters sigue
+    // devolviendo la sesión abierta → el wizard permanece y muestra el error
+    // (no navega). Antes: el hook tragaba el error y el wizard mostraba
+    // "✓ Caja cerrada" (éxito falso) y regresaba en loop.
+    repos.register.closeSession = vi
+      .fn()
+      .mockRejectedValue(
+        new Error('Esta caja ya fue cerrada (posiblemente desde el admin). Se actualizará la vista.'),
+      )
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await advanceToFinalClose(user)
+    await user.click(screen.getByRole('button', { name: /cerrar caja/i }))
+
+    // (a) El mensaje del servidor en español es visible.
+    expect(await screen.findByText(/ya fue cerrada/i)).toBeInTheDocument()
+    // (b) NUNCA la pantalla de éxito falso.
+    expect(screen.queryByText(/regresando a hoy/i)).not.toBeInTheDocument()
   })
 
   it('step 1 has no back button (nowhere to go)', async () => {

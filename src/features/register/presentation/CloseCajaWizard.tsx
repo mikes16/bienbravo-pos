@@ -10,6 +10,7 @@ import { totalCountedCents, emptyCashCounts, type CashCounts } from '@/shared/ca
 import { ConfirmDigitalStep, type DigitalCounted } from './steps/ConfirmDigitalStep'
 import { ReviewCloseStep } from './steps/ReviewCloseStep'
 import { formatMoney } from '@/shared/lib/money'
+import { readableSpanishError } from '@/shared/lib/errors'
 
 const PENDING_DIGITAL: DigitalCounted = { cardCents: null, transferCents: null }
 const SUCCESS_REDIRECT_DELAY_MS = 2000
@@ -120,10 +121,18 @@ export function CloseCajaWizard() {
         countedCardCents: counted.cardCents,
         countedTransferCents: counted.transferCents,
       })
+      // Solo llegamos aquí si la mutation resolvió — closeSession re-lanza en
+      // fallo, así que NUNCA mostramos éxito sobre un cierre rechazado.
       setSuccessOpen(true)
-      // useRegister.closeSession already calls refresh() internally
     } catch (e) {
-      setError((e as { message?: string }).message ?? 'No se pudo cerrar la caja.')
+      // closeSession ya re-sincronizó con force:true. Si la caja se cerró
+      // remotamente, `session` ahora es null → el effect de arriba navega a
+      // /caja (salida limpia). Si sigue abierta (otro fallo), mostramos el
+      // mensaje del servidor en español, o un fallback si viene en inglés técnico.
+      setError(
+        readableSpanishError((e as { message?: string }).message) ??
+          'No se pudo cerrar la caja.',
+      )
       setSubmitting(false)
     }
   }

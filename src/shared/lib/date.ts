@@ -21,6 +21,16 @@ export function formatTimeInTz(
   }).format(new Date(iso))
 }
 
+/** Fecha corta en la tz: "4 may" (día + mes abreviado, es-MX). Para etiquetar
+ *  instantes que NO son de hoy sin ruido de año, p. ej. "Desde 4 may · 10:33". */
+export function formatShortDateInTz(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('es-MX', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: tz,
+  }).format(new Date(iso))
+}
+
 /** Fecha+hora en la tz. Default: DD/MM/YYYY, HH:mm 24h (reproduce los tickets/sheets). */
 export function formatDateTimeInTz(
   iso: string,
