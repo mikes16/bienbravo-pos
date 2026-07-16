@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
+import { usePosAuth } from '@/core/auth/usePosAuth'
 import { cn } from '@/shared/lib/cn'
 import { CustomerNameTakenException } from '@/shared/lib/customer-errors'
+import { sortCatalogItems, onlyCategorized } from '@/features/checkout/lib/sort-catalog'
 import type { CustomerResult, BarberResult } from '@/features/checkout/data/checkout.repository'
 import type { CatalogService, CatalogCombo, CatalogCategory } from '@/features/checkout/domain/checkout.types'
 
@@ -41,6 +43,14 @@ type FlowMode = 'queue' | 'serve_now'
 export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalkInSheetProps) {
   const { walkins, checkout } = useRepositories()
   const { addToast } = useToast()
+  const { viewer } = usePosAuth()
+  // Teléfono es PII gateado por permiso, igual que las columnas de teléfono del
+  // admin. Deny-by-default: sin `customers.phone.view` NO renderizamos el campo,
+  // no lo capturamos y no lo anunciamos en el placeholder del buscador. El API
+  // es la autoridad real (nulifica el teléfono para viewers sin el permiso);
+  // esto es la mitad de UI. Durante la carga del viewer (null) también ocultamos
+  // — nunca mostramos PII "por si acaso".
+  const canViewPhone = viewer?.permissions?.includes('customers.phone.view') ?? false
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null)
@@ -158,6 +168,52 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
     return () => { cancelled = true }
   }, [open, locationId, selectedBarberId, checkout])
 
+  // Mapa itemId → barberos excluidos, derivado del catálogo STATIC (mismo
+  // mecanismo que el cobro). Servicios Y combos entran; los ids no colisionan.
+  // Alimenta las dos direcciones del filtrado por exclusión: (1) al elegir
+  // barbero, ocultar los servicios/combos que NO ofrece; (2) al elegir
+  // servicio/combo, ocultar del selector a los barberos que no lo ofrecen.
+  const excludedByItemId = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const s of services) m.set(s.id, s.excludedStaffIds ?? [])
+    for (const c of combos) m.set(c.id, c.excludedStaffIds ?? [])
+    return m
+  }, [services, combos])
+
+  // Barberos excluidos de la selección ACTUAL (unión de los excluidos de cada
+  // ítem elegido). El selector de barbero los oculta — un barbero preferido debe
+  // poder realizar TODO lo seleccionado, igual que el picker por línea del cobro.
+  const excludedBarberIds = useMemo(() => {
+    const ids =
+      selection.kind === 'services' ? selection.ids : selection.kind === 'combo' ? [selection.id] : []
+    const set = new Set<string>()
+    for (const id of ids) for (const b of excludedByItemId.get(id) ?? []) set.add(b)
+    return set
+  }, [selection, excludedByItemId])
+
+  // Reconciliación barbero → selección: al elegir un barbero preferido soltamos
+  // de la selección los ítems que NO ofrece (catálogo stale, o se eligió el ítem
+  // antes que al barbero), para que el resumen "N servicios · X min" y el submit
+  // nunca arrastren algo que el preferido no puede hacer. El picker ya oculta
+  // esos ítems proactivamente; esto cierra el caso de carrera. `excludedStaffIds`
+  // es independiente del barbero consultado (es la lista completa de overrides),
+  // así que podar en el momento del tap es suficiente — sin efecto que cause
+  // renders en cascada.
+  const handleSelectBarber = (barberId: string | null) => {
+    setSelectedBarberId(barberId)
+    if (!barberId) return
+    const isExcluded = (id: string) => (excludedByItemId.get(id) ?? []).includes(barberId)
+    setSelection((prev) => {
+      if (prev.kind === 'services') {
+        const kept = prev.ids.filter((id) => !isExcluded(id))
+        if (kept.length === prev.ids.length) return prev
+        return kept.length === 0 ? { kind: 'empty' } : { kind: 'services', ids: kept }
+      }
+      if (prev.kind === 'combo') return isExcluded(prev.id) ? { kind: 'empty' } : prev
+      return prev
+    })
+  }
+
   // Debounced customer search — dispara desde nombre O teléfono. El operador
   // POS típicamente conoce al cliente por el celular ("el que es el 8440000"),
   // así que esperar a que escriba el nombre completo es un trip-hazard. Watch
@@ -188,7 +244,8 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
   const linkExisting = (c: CustomerResult) => {
     setSelectedCustomer(c)
     setName(c.fullName)
-    setPhone(c.phone ?? '')
+    // Sin permiso de teléfono no capturamos el número del cliente vinculado.
+    setPhone(canViewPhone ? (c.phone ?? '') : '')
     setSearchResults([])
   }
 
@@ -246,7 +303,9 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
         locationId,
         customerId: selectedCustomer?.id ?? null,
         customerName: trimmedName,
-        customerPhone: phone.trim() || null,
+        // Deny-by-default: sin permiso no capturamos teléfono aunque el estado
+        // por algún camino trajera un valor.
+        customerPhone: canViewPhone ? (phone.trim() || null) : null,
         // Multi-servicio: si hay services seleccionados, los mandamos como
         // array. Si hay combo, solo el comboId. El resolver garantiza mutex.
         requestedServiceIds: selection.kind === 'services' ? selection.ids : null,
@@ -369,7 +428,7 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
               <div className="flex items-center justify-between border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-3 py-2">
                 <div className="flex flex-col">
                   <span className="text-[14px] font-bold text-[var(--color-bone)]">{selectedCustomer.fullName}</span>
-                  {selectedCustomer.phone && (
+                  {canViewPhone && selectedCustomer.phone && (
                     <span className="text-[12px] text-[var(--color-bone-muted)]">{selectedCustomer.phone}</span>
                   )}
                 </div>
@@ -386,7 +445,9 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Nombre o teléfono…"
+                // Sin permiso de teléfono no anunciamos que se puede buscar por
+                // número (aunque el server igual matchea si escriben dígitos).
+                placeholder={canViewPhone ? 'Nombre o teléfono…' : 'Nombre…'}
                 className="border border-[var(--color-leather-muted)] bg-[var(--color-carbon)] px-3 py-2 text-[15px] font-bold text-[var(--color-bone)] outline-none focus:border-[var(--color-bravo)]"
               />
             )}
@@ -402,9 +463,9 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
                       className="flex cursor-pointer flex-col items-start gap-0.5 border-b border-[var(--color-leather-muted)]/30 px-3 py-2 text-left last:border-b-0 hover:bg-[var(--color-cuero-viejo)]"
                     >
                       <span className="text-[13px] font-bold text-[var(--color-bone)]">{c.fullName}</span>
-                      {(c.phone || c.email) && (
+                      {((canViewPhone && c.phone) || c.email) && (
                         <span className="font-mono text-[10px] text-[var(--color-bone-muted)]">
-                          {[c.phone, c.email].filter(Boolean).join(' · ')}
+                          {[canViewPhone ? c.phone : null, c.email].filter(Boolean).join(' · ')}
                         </span>
                       )}
                     </button>
@@ -418,24 +479,29 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
             )}
           </div>
 
-          {/* Phone */}
-          <div className="flex flex-col gap-2">
-            <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-              Teléfono · opcional
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="55 1234 5678"
-              className="border border-[var(--color-leather-muted)] bg-[var(--color-carbon)] px-3 py-2 text-[15px] font-bold text-[var(--color-bone)] outline-none focus:border-[var(--color-bravo)]"
-            />
-          </div>
+          {/* Phone — gateado por permiso `customers.phone.view` (PII). Sin él el
+              campo desaparece por completo y el walk-in se manda sin teléfono. */}
+          {canViewPhone && (
+            <div className="flex flex-col gap-2">
+              <label className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+                Teléfono · opcional
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="55 1234 5678"
+                className="border border-[var(--color-leather-muted)] bg-[var(--color-carbon)] px-3 py-2 text-[15px] font-bold text-[var(--color-bone)] outline-none focus:border-[var(--color-bravo)]"
+              />
+            </div>
+          )}
 
           <ServicePicker
             services={services}
             combos={combos}
             categories={categories}
+            selectedBarberId={selectedBarberId}
+            selectedBarberName={selectedBarberName}
             selectedCategoryId={selectedCategoryId}
             onCategoryChange={setSelectedCategoryId}
             selection={selection}
@@ -491,27 +557,33 @@ export function AddWalkInSheet({ open, locationId, onClose, onCreated }: AddWalk
                   label="Sin preferencia"
                   hint="cualquier barbero libre"
                   active={selectedBarberId === null}
-                  onClick={() => setSelectedBarberId(null)}
+                  onClick={() => handleSelectBarber(null)}
                 />
               )}
-              {allBarbers.map((b) => {
-                const occupied = b.isOccupied
-                const disabled = mode === 'serve_now' && occupied
-                const isActive = selectedBarberId === b.id
-                return (
-                  <BarberRow
-                    key={`barber-${b.id}`}
-                    label={b.fullName.split(' ')[0]}
-                    hint={occupied ? 'ocupado' : 'libre'}
-                    active={isActive}
-                    disabled={disabled}
-                    onClick={() => {
-                      if (disabled) return
-                      setSelectedBarberId(b.id)
-                    }}
-                  />
-                )
-              })}
+              {/* Viceversa de la exclusión: si ya hay servicio/combo elegido,
+                  ocultamos a los barberos que NO lo ofrecen (mismo criterio que
+                  el picker por línea del cobro). Sin selección, se muestran
+                  todos los clocked-in. */}
+              {allBarbers
+                .filter((b) => !excludedBarberIds.has(b.id))
+                .map((b) => {
+                  const occupied = b.isOccupied
+                  const disabled = mode === 'serve_now' && occupied
+                  const isActive = selectedBarberId === b.id
+                  return (
+                    <BarberRow
+                      key={`barber-${b.id}`}
+                      label={b.fullName.split(' ')[0]}
+                      hint={occupied ? 'ocupado' : 'libre'}
+                      active={isActive}
+                      disabled={disabled}
+                      onClick={() => {
+                        if (disabled) return
+                        handleSelectBarber(b.id)
+                      }}
+                    />
+                  )
+                })}
             </div>
           </div>
 
@@ -678,10 +750,18 @@ function BarberRow({
 /* ──────────────────────────────────────────────────────────────────────────
  * ServicePicker — category chips + filtered cards.
  *
- * Mirrors the checkout grid pattern operators already use dozens of times a
- * day: a row of sticky-ish chips at the top picks a category; cards below
- * show services + combos that match. "Todo" shows everything; "Combos" is a
- * virtual chip showing only combos.
+ * ALINEADO 1:1 con el catálogo del cobro (CatalogGrid + CheckoutPage):
+ *  - Misma FUENTE de categorías (getCategories) y mismo ORDEN (sortOrder), sin
+ *    tab "Todo" — el modelo de categorías descartó "Todo"/"Otros". Arranca en la
+ *    primera categoría real, igual que effectiveCategoryId del checkout.
+ *  - Mismo sort de ítems (sortCatalogItems: categoría → sortOrder → nombre) y
+ *    onlyCategorized (sin categoría = no existe en POS). Servicios y combos
+ *    INTERCALADOS por orden, no en secciones separadas por tipo.
+ *  - SOLO servicios y combos (sin productos): un walk-in pide servicios; los
+ *    productos se agregan al cobrar.
+ *  - Exclusión por barbero preferido: oculta los servicios/combos que ese
+ *    barbero no ofrece (excludedStaffIds del catálogo STATIC), igual que el grid
+ *    del cobro con el atendiendo.
  * ────────────────────────────────────────────────────────────────────────── */
 
 function comboDurationMin(combo: CatalogCombo, services: CatalogService[]): number {
@@ -694,10 +774,24 @@ function comboDurationMin(combo: CatalogCombo, services: CatalogService[]): numb
   return total
 }
 
+// Ítem unificado servicio|combo para el picker — la forma mínima que necesitan
+// el orden (sortCatalogItems), el filtrado por categoría/barbero y las cards.
+interface PickerItem {
+  id: string
+  kind: 'service' | 'combo'
+  name: string
+  categoryId: string | null
+  sortOrder: number
+  durationMin: number
+  excludedStaffIds: string[]
+}
+
 interface ServicePickerProps {
   services: CatalogService[]
   combos: CatalogCombo[]
   categories: CatalogCategory[]
+  selectedBarberId: string | null
+  selectedBarberName: string | null
   selectedCategoryId: string | null
   onCategoryChange: (id: string | null) => void
   selection: PickerSelection
@@ -708,50 +802,71 @@ function ServicePicker({
   services,
   combos,
   categories,
+  selectedBarberId,
+  selectedBarberName,
   selectedCategoryId,
   onCategoryChange,
   selection,
   onSelectionChange,
 }: ServicePickerProps) {
-  const visibleCategories = useMemo(() => {
-    // Only show categories that actually have at least one service (or
-    // a combo that effectiveCategorizes into them). Avoids empty chips.
-    const usedIds = new Set<string>()
-    for (const s of services) if (s.categoryId) usedIds.add(s.categoryId)
-    for (const c of combos) for (const cid of c.effectiveCategoryIds) usedIds.add(cid)
-    return categories
-      .filter((c) => usedIds.has(c.id))
-      .sort((a, b) => a.sortOrder - b.sortOrder)
+  // Ítems unificados servicio+combo con la MISMA fuente/orden/agrupación que el
+  // catálogo del cobro: onlyCategorized (sin categoría = no existe en POS) +
+  // sortCatalogItems (categoría → sortOrder → nombre). Sin productos.
+  const items = useMemo<PickerItem[]>(() => {
+    const svc: PickerItem[] = services.map((s) => ({
+      id: s.id,
+      kind: 'service',
+      name: s.name,
+      categoryId: s.categoryId,
+      sortOrder: s.sortOrder,
+      durationMin: s.durationMin,
+      excludedStaffIds: s.excludedStaffIds ?? [],
+    }))
+    const cmb: PickerItem[] = combos.map((c) => ({
+      id: c.id,
+      kind: 'combo',
+      name: c.name,
+      categoryId: c.categoryId,
+      sortOrder: c.sortOrder,
+      durationMin: comboDurationMin(c, services),
+      excludedStaffIds: c.excludedStaffIds ?? [],
+    }))
+    return sortCatalogItems(onlyCategorized([...svc, ...cmb]), categories)
   }, [services, combos, categories])
 
-  const filteredServices = useMemo(() => {
-    if (selectedCategoryId === null) return services
-    return services.filter((s) => s.categoryId === selectedCategoryId)
-  }, [services, selectedCategoryId])
+  // Tabs = categorías con al menos un servicio/combo, en el orden del cobro
+  // (sortOrder). Estables ante el cambio de barbero (la exclusión afecta ítems,
+  // no tabs) — igual que en el cobro, donde los chips no desaparecen al cambiar
+  // de atendiendo; el grid muestra el vacío. Sin tab "Todo".
+  const visibleCategories = useMemo(() => {
+    const usedIds = new Set(items.map((i) => i.categoryId).filter((x): x is string => x != null))
+    return categories
+      .filter((c) => usedIds.has(c.id))
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+  }, [items, categories])
 
-  const filteredCombos = useMemo(() => {
-    if (selectedCategoryId === null) return combos
-    return combos.filter((c) => c.effectiveCategoryIds.includes(selectedCategoryId))
-  }, [combos, selectedCategoryId])
+  // Sin "Todo": la categoría efectiva es la elegida por el operador o la primera
+  // real del orden del cobro (mismo patrón que effectiveCategoryId del checkout).
+  const effectiveCategoryId = selectedCategoryId ?? visibleCategories[0]?.id ?? null
+
+  const itemsInCategory = useMemo(
+    () => items.filter((i) => i.categoryId === effectiveCategoryId),
+    [items, effectiveCategoryId],
+  )
+  // Oculta los servicios/combos que el barbero preferido NO ofrece, misma regla
+  // que el grid del cobro con el atendiendo (excludedStaffIds).
+  const shownItems = itemsInCategory.filter(
+    (i) => selectedBarberId == null || !i.excludedStaffIds.includes(selectedBarberId),
+  )
 
   const isLoading = services.length === 0 && combos.length === 0
-  const totalShown = filteredServices.length + filteredCombos.length
 
-  // Suma de duración total seleccionada para mostrar arriba del picker.
-  // Servicios: suma de durationMin. Combo: usa comboDurationMin helper.
+  // Suma de duración total seleccionada. Servicios: suma; combo: su duración.
   const selectedDurationMin = useMemo(() => {
-    if (selection.kind === 'services') {
-      return selection.ids.reduce((sum, id) => {
-        const svc = services.find((s) => s.id === id)
-        return sum + (svc?.durationMin ?? 0)
-      }, 0)
-    }
-    if (selection.kind === 'combo') {
-      const combo = combos.find((c) => c.id === selection.id)
-      return combo ? comboDurationMin(combo, services) : 0
-    }
-    return 0
-  }, [selection, services, combos])
+    const ids = selection.kind === 'services' ? selection.ids : selection.kind === 'combo' ? [selection.id] : []
+    return ids.reduce((sum, id) => sum + (items.find((it) => it.id === id)?.durationMin ?? 0), 0)
+  }, [selection, items])
 
   const selectedCount =
     selection.kind === 'services' ? selection.ids.length : selection.kind === 'combo' ? 1 : 0
@@ -776,6 +891,16 @@ function ServicePicker({
     }
   }
 
+  function toggleItem(i: PickerItem) {
+    if (i.kind === 'combo') toggleCombo(i.id)
+    else toggleService(i.id)
+  }
+
+  function isItemActive(i: PickerItem): boolean {
+    if (i.kind === 'combo') return selection.kind === 'combo' && selection.id === i.id
+    return selection.kind === 'services' && selection.ids.includes(i.id)
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-3">
@@ -792,70 +917,42 @@ function ServicePicker({
         )}
       </div>
 
-      {/* Filter tabs — flat text + bottom rule, not boxed. Sits under a hairline
-          divider so the eye reads it as a meta-control above the content area. */}
+      {/* Filter tabs — mismas categorías/orden que el catálogo del cobro, sin
+          "Todo". Flat text + bottom rule, no boxed. */}
       <div className="flex gap-5 overflow-x-auto border-b border-[var(--color-leather-muted)]/40">
-        <FilterTab
-          label="Todo"
-          active={selectedCategoryId === null}
-          onClick={() => onCategoryChange(null)}
-        />
         {visibleCategories.map((c) => (
           <FilterTab
             key={c.id}
             label={c.name}
-            active={selectedCategoryId === c.id}
+            active={effectiveCategoryId === c.id}
             onClick={() => onCategoryChange(c.id)}
           />
         ))}
       </div>
 
-      {/* Cards, grouped by kind so the visual structure tells the operator
-          "these are services, those are combos" without adding badges. */}
+      {/* Cards interpoladas servicio/combo en el orden del cobro (sin secciones
+          por tipo). El tag "COMBO" distingue los combos, igual que CatalogTile. */}
       {isLoading ? (
         <p className="text-[12px] text-[var(--color-bone-muted)]">Cargando servicios…</p>
-      ) : totalShown === 0 ? (
-        <p className="py-4 text-[12px] text-[var(--color-bone-muted)]">Sin opciones en esta categoría.</p>
+      ) : shownItems.length === 0 ? (
+        <p className="py-4 text-[12px] text-[var(--color-bone-muted)]">
+          {selectedBarberId != null && itemsInCategory.length > 0
+            ? `${selectedBarberName ?? 'Ese barbero'} no ofrece servicios en esta categoría. Elige otro barbero.`
+            : 'Sin opciones en esta categoría.'}
+        </p>
       ) : (
-        <>
-          {filteredServices.length > 0 && (
-            <Section label="Servicios">
-              <div className="grid grid-cols-2 gap-2">
-                {filteredServices.map((s) => {
-                  const active = selection.kind === 'services' && selection.ids.includes(s.id)
-                  return (
-                    <PickerCard
-                      key={`svc-${s.id}`}
-                      title={s.name}
-                      meta={`${s.durationMin} min`}
-                      active={active}
-                      onClick={() => toggleService(s.id)}
-                    />
-                  )
-                })}
-              </div>
-            </Section>
-          )}
-          {filteredCombos.length > 0 && (
-            <Section label="Combos" labelTone="bravo">
-              <div className="grid grid-cols-2 gap-2">
-                {filteredCombos.map((c) => {
-                  const active = selection.kind === 'combo' && selection.id === c.id
-                  const dur = comboDurationMin(c, services)
-                  return (
-                    <PickerCard
-                      key={`combo-${c.id}`}
-                      title={c.name}
-                      meta={dur > 0 ? `${dur} min` : 'Combo'}
-                      active={active}
-                      onClick={() => toggleCombo(c.id)}
-                    />
-                  )
-                })}
-              </div>
-            </Section>
-          )}
-        </>
+        <div className="grid grid-cols-2 gap-2">
+          {shownItems.map((i) => (
+            <PickerCard
+              key={`${i.kind}-${i.id}`}
+              title={i.name}
+              meta={i.kind === 'combo' && i.durationMin === 0 ? 'Combo' : `${i.durationMin} min`}
+              isCombo={i.kind === 'combo'}
+              active={isItemActive(i)}
+              onClick={() => toggleItem(i)}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
@@ -882,36 +979,13 @@ function FilterTab({
   )
 }
 
-function Section({
-  label,
-  labelTone = 'muted',
-  children,
-}: {
-  label: string
-  labelTone?: 'muted' | 'bravo'
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <span
-        className={cn(
-          'font-mono text-[9px] font-bold uppercase tracking-[0.2em]',
-          labelTone === 'bravo' ? 'text-[var(--color-bravo)]' : 'text-[var(--color-bone-muted)]',
-        )}
-      >
-        {label}
-      </span>
-      {children}
-    </div>
-  )
-}
-
 function PickerCard({
   title,
   meta,
   active,
+  isCombo = false,
   onClick,
-}: { title: string; meta: string; active: boolean; onClick: () => void }) {
+}: { title: string; meta: string; active: boolean; isCombo?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -923,6 +997,13 @@ function PickerCard({
           : 'border-[var(--color-leather-muted)]/60 hover:border-[var(--color-leather-muted)] hover:bg-[var(--color-cuero-viejo)]',
       )}
     >
+      {/* Tag "COMBO" — mismo distintivo que la card del cobro (CatalogTile), la
+          única señal de tipo ahora que servicios y combos van intercalados. */}
+      {isCombo && (
+        <span className="font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-[var(--color-bravo)]">
+          Combo
+        </span>
+      )}
       <span className="text-[13px] font-bold text-[var(--color-bone)]">{title}</span>
       <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">
         {meta}
