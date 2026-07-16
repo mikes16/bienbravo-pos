@@ -123,6 +123,30 @@ export type AssignWalkInResult = {
   warning?: Maybe<Scalars['String']['output']>;
 };
 
+export type AuditLog = {
+  __typename?: 'AuditLog';
+  action: Scalars['String']['output'];
+  actorCustomerId?: Maybe<Scalars['ID']['output']>;
+  actorStaffName?: Maybe<Scalars['String']['output']>;
+  actorStaffUserId?: Maybe<Scalars['ID']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  meta?: Maybe<Scalars['JSON']['output']>;
+};
+
+export type AuditLogConnection = {
+  __typename?: 'AuditLogConnection';
+  edges: Array<AuditLogEdge>;
+  pageInfo: PageInfo;
+  totalCount: Scalars['Int']['output'];
+};
+
+export type AuditLogEdge = {
+  __typename?: 'AuditLogEdge';
+  cursor: Scalars['String']['output'];
+  node: AuditLog;
+};
+
 export type AuthResult = {
   __typename?: 'AuthResult';
   viewer: Viewer;
@@ -247,9 +271,17 @@ export type CatalogCombo = {
   name: Scalars['String']['output'];
   penaltyCommissionCents: Scalars['Int']['output'];
   priceCents: Scalars['Int']['output'];
+  pricingFor: ResolvedComboPricing;
   slug: Scalars['String']['output'];
   sortOrder: Scalars['Int']['output'];
+  staffOverrides: Array<StaffComboPrice>;
   totalDurationMin: Scalars['Int']['output'];
+};
+
+
+export type CatalogComboPricingForArgs = {
+  locationId: Scalars['ID']['input'];
+  staffUserId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 
@@ -278,8 +310,11 @@ export type CatalogComboItemInput = {
 export type CatalogComboLocation = {
   __typename?: 'CatalogComboLocation';
   comboId: Scalars['ID']['output'];
+  commissionCentsOverride?: Maybe<Scalars['Int']['output']>;
+  durationMinOverride?: Maybe<Scalars['Int']['output']>;
   isActive: Scalars['Boolean']['output'];
   locationId: Scalars['ID']['output'];
+  penaltyCommissionCentsOverride?: Maybe<Scalars['Int']['output']>;
   priceCentsOverride?: Maybe<Scalars['Int']['output']>;
 };
 
@@ -992,6 +1027,7 @@ export type LocationPolicy = {
   holdDurationMinutes: Scalars['Int']['output'];
   lateBufferMinutes: Scalars['Int']['output'];
   minBookingLeadMinutes: Scalars['Int']['output'];
+  slotIntervalMin: Scalars['Int']['output'];
   walkinBlockWithinMinutes: Scalars['Int']['output'];
 };
 
@@ -1125,6 +1161,7 @@ export type Mutation = {
   deleteRole: Scalars['Boolean']['output'];
   deleteService: Service;
   deleteShiftOverride: Scalars['Boolean']['output'];
+  deleteStaffComboPrice: Scalars['Boolean']['output'];
   deleteStaffMembership: Scalars['Boolean']['output'];
   deleteStaffServicePrice: Scalars['Boolean']['output'];
   deleteStaffVacation: Scalars['Boolean']['output'];
@@ -1201,6 +1238,8 @@ export type Mutation = {
   upsertServiceLocation: ServiceLocation;
   upsertShiftTemplate: ShiftTemplate;
   upsertShiftTemplatesForWeek: Array<ShiftTemplate>;
+  upsertStaffComboPrice: StaffComboPrice;
+  upsertStaffSchedulingConfig: StaffSchedulingConfig;
   upsertStaffServicePrice: StaffServicePrice;
   verifyPosLocationAccess: Scalars['Boolean']['output'];
   voidSale: Sale;
@@ -1563,6 +1602,12 @@ export type MutationDeleteServiceArgs = {
 
 export type MutationDeleteShiftOverrideArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteStaffComboPriceArgs = {
+  comboId: Scalars['ID']['input'];
+  staffUserId: Scalars['ID']['input'];
 };
 
 
@@ -1988,6 +2033,18 @@ export type MutationUpsertShiftTemplatesForWeekArgs = {
 };
 
 
+export type MutationUpsertStaffComboPriceArgs = {
+  input: UpsertStaffComboPriceInput;
+};
+
+
+export type MutationUpsertStaffSchedulingConfigArgs = {
+  locationId: Scalars['ID']['input'];
+  slotIntervalMin?: InputMaybe<Scalars['Int']['input']>;
+  staffUserId: Scalars['ID']['input'];
+};
+
+
 export type MutationUpsertStaffServicePriceArgs = {
   input: UpsertStaffServicePriceInput;
 };
@@ -2343,6 +2400,7 @@ export type PublicQueueView = {
 export type PublicService = {
   __typename?: 'PublicService';
   durationMinutes: Scalars['Int']['output'];
+  excludedStaffIds: Array<Scalars['ID']['output']>;
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   priceCents: Scalars['Int']['output'];
@@ -2354,6 +2412,7 @@ export type Query = {
   alertsFeed: Array<DashboardAlert>;
   appointment?: Maybe<Appointment>;
   appointments: Array<Appointment>;
+  auditLogs: AuditLogConnection;
   availableSlots: Array<Scalars['DateTime']['output']>;
   barbers: Array<StaffUser>;
   blogPost?: Maybe<BlogPost>;
@@ -2461,6 +2520,7 @@ export type Query = {
   staffRevenueToday: Scalars['Int']['output'];
   staffRoleAssignments: Array<StaffRoleAssignmentRow>;
   staffRoleSummary: StaffRoleSummary;
+  staffSchedulingConfigs: Array<StaffSchedulingConfig>;
   staffServiceRevenueToday: Scalars['Int']['output'];
   staffShiftOverridesAllLocations: Array<ShiftOverride>;
   staffShiftTemplatesAllLocations: Array<ShiftTemplate>;
@@ -2491,6 +2551,16 @@ export type QueryAppointmentsArgs = {
   dateTo: Scalars['String']['input'];
   locationId?: InputMaybe<Scalars['ID']['input']>;
   status?: InputMaybe<AppointmentStatus>;
+};
+
+
+export type QueryAuditLogsArgs = {
+  action?: InputMaybe<Scalars['String']['input']>;
+  actorStaffUserId?: InputMaybe<Scalars['ID']['input']>;
+  after?: InputMaybe<Scalars['String']['input']>;
+  dateFrom?: InputMaybe<Scalars['String']['input']>;
+  dateTo?: InputMaybe<Scalars['String']['input']>;
+  first?: Scalars['Int']['input'];
 };
 
 
@@ -3111,6 +3181,12 @@ export type QueryStaffRoleSummaryArgs = {
 };
 
 
+export type QueryStaffSchedulingConfigsArgs = {
+  locationId?: InputMaybe<Scalars['ID']['input']>;
+  staffUserId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type QueryStaffServiceRevenueTodayArgs = {
   date: Scalars['String']['input'];
   locationId: Scalars['ID']['input'];
@@ -3562,6 +3638,20 @@ export type RescheduleAppointmentResult = {
   ok: Scalars['Boolean']['output'];
 };
 
+export type ResolvedComboPricing = {
+  __typename?: 'ResolvedComboPricing';
+  comboId: Scalars['ID']['output'];
+  commissionCents: Scalars['Int']['output'];
+  durationMin: Scalars['Int']['output'];
+  isActive: Scalars['Boolean']['output'];
+  isExcluded: Scalars['Boolean']['output'];
+  locationId: Scalars['ID']['output'];
+  priceCents: Scalars['Int']['output'];
+  priceFromLocationOverride: Scalars['Boolean']['output'];
+  priceFromStaffOverride: Scalars['Boolean']['output'];
+  staffUserId?: Maybe<Scalars['ID']['output']>;
+};
+
 export type ResolvedExtra = {
   __typename?: 'ResolvedExtra';
   commissionCents?: Maybe<Scalars['Int']['output']>;
@@ -3841,6 +3931,17 @@ export type ShiftTemplateDayInput = {
   startMin: Scalars['Int']['input'];
 };
 
+export type StaffComboPrice = {
+  __typename?: 'StaffComboPrice';
+  comboId: Scalars['ID']['output'];
+  commissionCentsOverride?: Maybe<Scalars['Int']['output']>;
+  durationMinOverride?: Maybe<Scalars['Int']['output']>;
+  isExcluded: Scalars['Boolean']['output'];
+  penaltyCommissionCentsOverride?: Maybe<Scalars['Int']['output']>;
+  priceCents: Scalars['Int']['output'];
+  staffUserId: Scalars['ID']['output'];
+};
+
 export enum StaffContextRole {
   Admin = 'ADMIN',
   Barber = 'BARBER',
@@ -3916,6 +4017,14 @@ export type StaffSaleEarnings = {
   saleId: Scalars['ID']['output'];
   soldAt: Scalars['DateTime']['output'];
   tipCents: Scalars['Int']['output'];
+};
+
+export type StaffSchedulingConfig = {
+  __typename?: 'StaffSchedulingConfig';
+  id: Scalars['ID']['output'];
+  locationId: Scalars['ID']['output'];
+  slotIntervalMin?: Maybe<Scalars['Int']['output']>;
+  staffUserId: Scalars['ID']['output'];
 };
 
 export type StaffServicePrice = {
@@ -4095,6 +4204,7 @@ export type UpdateLocationPolicyInput = {
   holdDurationMinutes?: InputMaybe<Scalars['Int']['input']>;
   lateBufferMinutes?: InputMaybe<Scalars['Int']['input']>;
   minBookingLeadMinutes?: InputMaybe<Scalars['Int']['input']>;
+  slotIntervalMin?: InputMaybe<Scalars['Int']['input']>;
   walkinBlockWithinMinutes?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -4188,8 +4298,11 @@ export type UpdateStockLocationInput = {
 
 export type UpsertCatalogComboLocationInput = {
   comboId: Scalars['ID']['input'];
+  commissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
+  durationMinOverride?: InputMaybe<Scalars['Int']['input']>;
   isActive?: InputMaybe<Scalars['Boolean']['input']>;
   locationId: Scalars['ID']['input'];
+  penaltyCommissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
   priceCentsOverride?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -4257,6 +4370,16 @@ export type UpsertShiftTemplatesForWeekInput = {
   locationId: Scalars['ID']['input'];
   staffUserId: Scalars['ID']['input'];
   startMin: Scalars['Int']['input'];
+};
+
+export type UpsertStaffComboPriceInput = {
+  comboId: Scalars['ID']['input'];
+  commissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
+  durationMinOverride?: InputMaybe<Scalars['Int']['input']>;
+  isExcluded?: InputMaybe<Scalars['Boolean']['input']>;
+  penaltyCommissionCentsOverride?: InputMaybe<Scalars['Int']['input']>;
+  priceCents: Scalars['Int']['input'];
+  staffUserId: Scalars['ID']['input'];
 };
 
 export type UpsertStaffServicePriceInput = {
@@ -4519,6 +4642,14 @@ export type PosResolveServicePriceQueryVariables = Exact<{
 
 export type PosResolveServicePriceQuery = { __typename?: 'Query', service?: { __typename?: 'Service', id: string, basePriceCents: number, pricingFor: { __typename?: 'ResolvedServicePricing', priceCents: number, isExcluded: boolean } } | null };
 
+export type PosServicesPricingQueryVariables = Exact<{
+  locationId: Scalars['ID']['input'];
+  staffUserId?: InputMaybe<Scalars['ID']['input']>;
+}>;
+
+
+export type PosServicesPricingQuery = { __typename?: 'Query', services: Array<{ __typename?: 'Service', id: string, pricingFor: { __typename?: 'ResolvedServicePricing', priceCents: number, isExcluded: boolean } }> };
+
 export type PosCustomerHistoryQueryVariables = Exact<{
   customerId: Scalars['ID']['input'];
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -4544,7 +4675,24 @@ export type PosInventoryLevelsQuery = { __typename?: 'Query', posInventoryLevels
 export type PosCatalogCombosQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type PosCatalogCombosQuery = { __typename?: 'Query', catalogCombos: Array<{ __typename?: 'CatalogCombo', id: string, name: string, priceCents: number, imageUrl?: string | null, effectiveCategoryIds: Array<string>, categoryId?: string | null, sortOrder: number, items: Array<{ __typename?: 'CatalogComboItem', serviceId?: string | null, productId?: string | null, serviceName?: string | null, productName?: string | null, qty: number, sortOrder: number }> }> };
+export type PosCatalogCombosQuery = { __typename?: 'Query', catalogCombos: Array<{ __typename?: 'CatalogCombo', id: string, name: string, priceCents: number, imageUrl?: string | null, effectiveCategoryIds: Array<string>, categoryId?: string | null, sortOrder: number, items: Array<{ __typename?: 'CatalogComboItem', serviceId?: string | null, productId?: string | null, serviceName?: string | null, productName?: string | null, qty: number, sortOrder: number }>, staffOverrides: Array<{ __typename?: 'StaffComboPrice', staffUserId: string, isExcluded: boolean }> }> };
+
+export type PosCombosPricingQueryVariables = Exact<{
+  locationId: Scalars['ID']['input'];
+  staffUserId?: InputMaybe<Scalars['ID']['input']>;
+}>;
+
+
+export type PosCombosPricingQuery = { __typename?: 'Query', catalogCombos: Array<{ __typename?: 'CatalogCombo', id: string, pricingFor: { __typename?: 'ResolvedComboPricing', priceCents: number, isExcluded: boolean } }> };
+
+export type PosResolveComboPriceQueryVariables = Exact<{
+  id: Scalars['ID']['input'];
+  locationId: Scalars['ID']['input'];
+  staffUserId?: InputMaybe<Scalars['ID']['input']>;
+}>;
+
+
+export type PosResolveComboPriceQuery = { __typename?: 'Query', catalogCombo?: { __typename?: 'CatalogCombo', id: string, priceCents: number, pricingFor: { __typename?: 'ResolvedComboPricing', priceCents: number, isExcluded: boolean } } | null };
 
 export type PosSearchCustomersQueryVariables = Exact<{
   query: Scalars['String']['input'];
@@ -4819,10 +4967,13 @@ export const PosAppointmentCheckoutInfoDocument = {"kind":"Document","definition
 export const PosCatalogCategoriesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosCatalogCategories"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"catalogCategories"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"slug"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}},{"kind":"Field","name":{"kind":"Name","value":"appliesTo"}}]}}]}}]} as unknown as DocumentNode<PosCatalogCategoriesQuery, PosCatalogCategoriesQueryVariables>;
 export const PosServicesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosServices"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"services"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"basePriceCents"}},{"kind":"Field","name":{"kind":"Name","value":"baseDurationMin"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"isAddOn"}},{"kind":"Field","name":{"kind":"Name","value":"imageUrl"}},{"kind":"Field","name":{"kind":"Name","value":"categoryId"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}},{"kind":"Field","name":{"kind":"Name","value":"pricingFor"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"durationMin"}},{"kind":"Field","name":{"kind":"Name","value":"extras"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"serviceId"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"durationMin"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"staffOverrides"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffUserId"}},{"kind":"Field","name":{"kind":"Name","value":"isExcluded"}}]}}]}}]}}]} as unknown as DocumentNode<PosServicesQuery, PosServicesQueryVariables>;
 export const PosResolveServicePriceDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosResolveServicePrice"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"service"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"basePriceCents"}},{"kind":"Field","name":{"kind":"Name","value":"pricingFor"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"isExcluded"}}]}}]}}]}}]} as unknown as DocumentNode<PosResolveServicePriceQuery, PosResolveServicePriceQueryVariables>;
+export const PosServicesPricingDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosServicesPricing"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"services"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"pricingFor"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"isExcluded"}}]}}]}}]}}]} as unknown as DocumentNode<PosServicesPricingQuery, PosServicesPricingQueryVariables>;
 export const PosCustomerHistoryDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosCustomerHistory"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"customerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"customerAppointments"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"customerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"customerId"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"startAt"}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}}]}}]} as unknown as DocumentNode<PosCustomerHistoryQuery, PosCustomerHistoryQueryVariables>;
 export const PosProductsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosProducts"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"products"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"sku"}},{"kind":"Field","name":{"kind":"Name","value":"imageUrl"}},{"kind":"Field","name":{"kind":"Name","value":"categoryId"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"priceCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosProductsQuery, PosProductsQueryVariables>;
 export const PosInventoryLevelsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosInventoryLevels"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"posInventoryLevels"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"productId"}},{"kind":"Field","name":{"kind":"Name","value":"quantity"}}]}}]}}]} as unknown as DocumentNode<PosInventoryLevelsQuery, PosInventoryLevelsQueryVariables>;
-export const PosCatalogCombosDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosCatalogCombos"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"catalogCombos"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"activeOnly"},"value":{"kind":"BooleanValue","value":true}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"imageUrl"}},{"kind":"Field","name":{"kind":"Name","value":"effectiveCategoryIds"}},{"kind":"Field","name":{"kind":"Name","value":"categoryId"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"serviceId"}},{"kind":"Field","name":{"kind":"Name","value":"productId"}},{"kind":"Field","name":{"kind":"Name","value":"serviceName"}},{"kind":"Field","name":{"kind":"Name","value":"productName"}},{"kind":"Field","name":{"kind":"Name","value":"qty"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}}]}}]}}]}}]} as unknown as DocumentNode<PosCatalogCombosQuery, PosCatalogCombosQueryVariables>;
+export const PosCatalogCombosDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosCatalogCombos"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"catalogCombos"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"activeOnly"},"value":{"kind":"BooleanValue","value":true}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"imageUrl"}},{"kind":"Field","name":{"kind":"Name","value":"effectiveCategoryIds"}},{"kind":"Field","name":{"kind":"Name","value":"categoryId"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"serviceId"}},{"kind":"Field","name":{"kind":"Name","value":"productId"}},{"kind":"Field","name":{"kind":"Name","value":"serviceName"}},{"kind":"Field","name":{"kind":"Name","value":"productName"}},{"kind":"Field","name":{"kind":"Name","value":"qty"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}}]}},{"kind":"Field","name":{"kind":"Name","value":"staffOverrides"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"staffUserId"}},{"kind":"Field","name":{"kind":"Name","value":"isExcluded"}}]}}]}}]}}]} as unknown as DocumentNode<PosCatalogCombosQuery, PosCatalogCombosQueryVariables>;
+export const PosCombosPricingDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosCombosPricing"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"catalogCombos"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"activeOnly"},"value":{"kind":"BooleanValue","value":true}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"pricingFor"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"isExcluded"}}]}}]}}]}}]} as unknown as DocumentNode<PosCombosPricingQuery, PosCombosPricingQueryVariables>;
+export const PosResolveComboPriceDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosResolveComboPrice"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"catalogCombo"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"pricingFor"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"staffUserId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"staffUserId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"priceCents"}},{"kind":"Field","name":{"kind":"Name","value":"isExcluded"}}]}}]}}]}}]} as unknown as DocumentNode<PosResolveComboPriceQuery, PosResolveComboPriceQueryVariables>;
 export const PosSearchCustomersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosSearchCustomers"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"query"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"searchCustomers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"query"},"value":{"kind":"Variable","name":{"kind":"Name","value":"query"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}}]}}]} as unknown as DocumentNode<PosSearchCustomersQuery, PosSearchCustomersQueryVariables>;
 export const FindOrCreateCustomerDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"FindOrCreateCustomer"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"name"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"email"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"phone"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findOrCreateCustomer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"name"},"value":{"kind":"Variable","name":{"kind":"Name","value":"name"}}},{"kind":"Argument","name":{"kind":"Name","value":"email"},"value":{"kind":"Variable","name":{"kind":"Name","value":"email"}}},{"kind":"Argument","name":{"kind":"Name","value":"phone"},"value":{"kind":"Variable","name":{"kind":"Name","value":"phone"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}}]}}]} as unknown as DocumentNode<FindOrCreateCustomerMutation, FindOrCreateCustomerMutationVariables>;
 export const CreatePosSaleDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreatePosSale"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreatePOSSaleInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createPOSSale"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"paymentStatus"}},{"kind":"Field","name":{"kind":"Name","value":"totalCents"}},{"kind":"Field","name":{"kind":"Name","value":"paidTotalCents"}}]}}]}}]} as unknown as DocumentNode<CreatePosSaleMutation, CreatePosSaleMutationVariables>;

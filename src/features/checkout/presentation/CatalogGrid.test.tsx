@@ -183,4 +183,79 @@ describe('CatalogGrid', () => {
     expect(prices.length).toBeGreaterThan(0)
     for (const p of prices) expect(p).toHaveAttribute('aria-busy', 'true')
   })
+
+  /* ── Combos: mismo overlay + exclusión que servicios ── */
+
+  const COMBO = {
+    id: 'c1', kind: 'combo' as const, name: 'Combo Corte+Barba',
+    priceCents: 40000, imageUrl: null, categoryId: 'cat-1', excludedStaffIds: [] as string[],
+  }
+
+  it('overlay de combo: la card del combo muestra el precio del atendiendo, no el base', () => {
+    render(
+      <CatalogGrid
+        items={[COMBO]}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        attendingBarberId="eli"
+        overlayFresh
+        priceOverlay={new Map([['c1', { priceCents: 45000, isExcluded: false }]])}
+        onAdd={() => {}}
+      />,
+    )
+    // Overlay $450 gana; el base estático ($400) ya no se muestra.
+    expect(screen.getAllByText('$450').length).toBeGreaterThan(0)
+    expect(screen.queryByText('$400')).not.toBeInTheDocument()
+  })
+
+  it('overlay fresco con isExcluded oculta la card del combo (nunca $0)', () => {
+    render(
+      <CatalogGrid
+        items={[COMBO]}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        attendingBarberId="eli"
+        attendingBarberName="Eli"
+        overlayFresh
+        priceOverlay={new Map([['c1', { priceCents: 0, isExcluded: true }]])}
+        onAdd={() => {}}
+      />,
+    )
+    expect(screen.queryByText('Combo Corte+Barba')).not.toBeInTheDocument()
+    expect(screen.queryByText('$0')).not.toBeInTheDocument()
+    expect(screen.getByText(/eli no ofrece servicios\. cambia de barbero\./i)).toBeInTheDocument()
+  })
+
+  it('combo excluido por staffOverrides estático se oculta; conserva productos', () => {
+    const items = [
+      { ...COMBO, excludedStaffIds: ['javi'] },
+      { id: 'p1', kind: 'product' as const, name: 'Pomada', priceCents: 25000, imageUrl: null, categoryId: 'cat-1' },
+    ]
+    render(
+      <CatalogGrid
+        items={items}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        attendingBarberId="javi"
+        attendingBarberName="Javi Cruz"
+        onAdd={() => {}}
+      />,
+    )
+    expect(screen.queryByText('Combo Corte+Barba')).not.toBeInTheDocument()
+    // Los productos nunca se excluyen.
+    expect(screen.getAllByText('Pomada').length).toBeGreaterThan(0)
+  })
+
+  it('sin barbero atendiendo el combo con exclusiones sigue visible', () => {
+    render(
+      <CatalogGrid
+        items={[{ ...COMBO, excludedStaffIds: ['javi'] }]}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        attendingBarberId={null}
+        onAdd={() => {}}
+      />,
+    )
+    expect(screen.getAllByText('Combo Corte+Barba').length).toBeGreaterThan(0)
+  })
 })

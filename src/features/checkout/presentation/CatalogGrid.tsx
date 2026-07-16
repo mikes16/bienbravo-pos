@@ -9,9 +9,9 @@ interface CatalogItem {
   stockQty?: number
   imageUrl?: string | null
   categoryId: string | null
-  // Solo servicios: IDs de barberos que NO realizan este servicio. Si el
+  // Servicios y COMBOS: IDs de barberos que NO realizan/ofrecen este item. Si el
   // barbero atendiendo actual está en la lista, la card se OCULTA del grid (y
-  // de los resultados de búsqueda). Vacío/undefined para productos y combos.
+  // de los resultados de búsqueda). Vacío/undefined para productos.
   excludedStaffIds?: string[]
 }
 
@@ -62,11 +62,11 @@ export function CatalogGrid({
   // Precio de display: overlay del atendiendo si existe, si no el estático.
   const displayPrice = (item: CatalogItem): number =>
     priceOverlay?.get(item.id)?.priceCents ?? item.priceCents
-  // ¿El servicio queda excluido para el atendiendo? Preferimos el overlay cuando
-  // es fresco (más actual que el staffOverrides estático); si no, caemos al
-  // estático, que ya es reactivo al atendiendo.
+  // ¿El servicio o combo queda excluido para el atendiendo? Preferimos el overlay
+  // cuando es fresco (más actual que el staffOverrides estático); si no, caemos
+  // al estático, que ya es reactivo al atendiendo. Productos nunca se excluyen.
   const isExcludedForAttending = (item: CatalogItem): boolean => {
-    if (item.kind !== 'service' || !attendingBarberId) return false
+    if ((item.kind !== 'service' && item.kind !== 'combo') || !attendingBarberId) return false
     const ov = overlayFresh ? priceOverlay?.get(item.id) : undefined
     if (ov) return ov.isExcluded
     return item.excludedStaffIds?.includes(attendingBarberId) ?? false

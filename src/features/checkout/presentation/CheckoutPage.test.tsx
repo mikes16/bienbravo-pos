@@ -530,4 +530,133 @@ describe('CheckoutPage (integration)', () => {
     await user.click(changeBarberBtns[changeBarberBtns.length - 1])
     expect(await screen.findByText(/ningún barbero disponible para este servicio/i)).toBeInTheDocument()
   })
+
+  /* ── COMBOS: espejo del fix de servicios (overlay + exclusión + venta con
+        precio resuelto). Mata el bug latente: hoy el combo mandaba el base y
+        cualquier override lo dejaría invendible (PRICE_MISMATCH). ── */
+
+  const COMBO_VIP = {
+    id: 'combo-vip', name: 'Combo VIP', priceCents: 40000, imageUrl: null,
+    effectiveCategoryIds: ['cat-cortes'], categoryId: 'cat-cortes', sortOrder: 5,
+    items: [], excludedStaffIds: [] as string[],
+  }
+
+  it('combo: la venta manda el precio RESUELTO por barbero, no el base (evita PRICE_MISMATCH)', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Walk-in fija el barbero default (b2 = Beto), que es quien aterriza el
+    // precio de la línea vía resolveComboPriceForBarber — la ruta única. (En un
+    // free sale el default barber queda vacío al mount, igual que en servicios,
+    // y la línea toma el precio del overlay directo; aquí probamos la ruta de
+    // resolución por barbero de punta a punta.)
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1', customer: null, assignedStaffUser: { id: 'b2' }, requestedServices: [],
+    })
+    repos.checkout.getCombos = vi.fn().mockResolvedValue([COMBO_VIP])
+    // Overlay (display) y autoridad de línea alineados en el override del barbero
+    // ($450). El base es $400 — si la venta mandara el base, el API lo rechazaría.
+    repos.checkout.getComboPricing = vi.fn().mockResolvedValue([{ id: 'combo-vip', priceCents: 45000, isExcluded: false }])
+    repos.checkout.resolveComboPriceForBarber = vi.fn().mockResolvedValue({ priceCents: 45000, isExcluded: false })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Combo VIP', {}, { timeout: 3000 })
+    // Espera a que Beto quede como atendiendo antes del tap (determinismo).
+    await screen.findByRole('button', { name: /cambiar barbero: beto/i }, { timeout: 3000 })
+    await user.click(screen.getAllByText('Combo VIP')[0])
+    // El CTA usa el precio resuelto ($450), nunca el base ($400).
+    const cobrarBtn = await screen.findByRole('button', { name: /cobrar.*450/i }, { timeout: 3000 })
+    await user.click(cobrarBtn)
+    await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
+    await user.click(screen.getByRole('button', { name: /confirmar/i }))
+    await waitFor(() => {
+      const call = (repos.checkout.createSale as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const comboLine = call.items.find((it: { catalogComboId: string | null }) => it.catalogComboId === 'combo-vip')
+      expect(comboLine).toBeDefined()
+      expect(comboLine.unitPriceCents).toBe(45000)
+    })
+    // La línea de combo se resolvió por la ruta única, con el barbero de la línea.
+    expect(repos.checkout.resolveComboPriceForBarber).toHaveBeenCalledWith('combo-vip', 'loc1', 'b2')
+  })
+
+  it('combo: cambiar el atendiendo re-resuelve el precio de la card', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Atendiendo inicial fijado por walk-in = b1 (Antonio), sin servicios.
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1', customer: null, assignedStaffUser: { id: 'b1' }, requestedServices: [],
+    })
+    repos.checkout.getCombos = vi.fn().mockResolvedValue([COMBO_VIP])
+    // Overlay por barbero: Antonio (b1) $450, Beto (b2) $420. El base es $400 —
+    // distinto de ambos, así que ver $450/$420 prueba que el overlay reaccionó.
+    repos.checkout.getComboPricing = vi.fn().mockImplementation(
+      (_loc: string, staff: string | null) =>
+        Promise.resolve([{ id: 'combo-vip', priceCents: staff === 'b2' ? 42000 : 45000, isExcluded: false }]),
+    )
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findByRole('button', { name: /cambiar barbero: antonio/i }, { timeout: 3000 })
+    await waitFor(() => expect(screen.getAllByText('$450').length).toBeGreaterThan(0))
+    expect(screen.queryByText('$400')).not.toBeInTheDocument()
+    // Cambia el atendiendo a Beto (b2) → la card del combo reacciona a $420.
+    await user.click(screen.getByRole('button', { name: /cambiar barbero: antonio/i }))
+    const sheet = await screen.findByRole('dialog', { name: /seleccionar barbero/i })
+    await user.click(within(sheet).getByRole('button', { name: /beto/i }))
+    await waitFor(() => expect(screen.getAllByText('$420').length).toBeGreaterThan(0))
+    expect(repos.checkout.getComboPricing).toHaveBeenCalledWith('loc1', 'b2')
+  })
+
+  it('combo: tap de combo excluido para el atendiendo NO deja línea (se elimina) + toast', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Walk-in fija el atendiendo (b2 = Beto) sin servicios.
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1', customer: null, assignedStaffUser: { id: 'b2' }, requestedServices: [],
+    })
+    // Catálogo stale: el combo se muestra (excludedStaffIds vacío, overlay vacío)
+    // pero el resolve para el atendiendo devuelve excluido → única barrera.
+    repos.checkout.getCombos = vi.fn().mockResolvedValue([COMBO_VIP])
+    repos.checkout.resolveComboPriceForBarber = vi.fn().mockResolvedValue({ priceCents: 0, isExcluded: true })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Combo VIP', {}, { timeout: 3000 })
+    await screen.findByRole('button', { name: /cambiar barbero: beto/i }, { timeout: 3000 })
+    await user.click(screen.getAllByText('Combo VIP')[0])
+    // Toast claro…
+    expect(await screen.findByText(/no ofrece combo vip/i)).toBeInTheDocument()
+    // …y la línea nunca queda en el carrito.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /toca para modificar/i })).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled()
+  })
+
+  it('combo: picker de línea oculta a los barberos excluidos del combo', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Beto (b2) excluido del combo según el catálogo STATIC.
+    repos.checkout.getCombos = vi.fn().mockResolvedValue([{ ...COMBO_VIP, excludedStaffIds: ['b2'] }])
+    // El default (staff-1) no está excluido → la línea se agrega normal.
+    repos.checkout.resolveComboPriceForBarber = vi.fn().mockResolvedValue({ priceCents: 40000, isExcluded: false })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Combo VIP', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Combo VIP')[0])
+    const lineRows = screen.getAllByRole('button', { name: /toca para modificar/i })
+    await user.click(lineRows[lineRows.length - 1])
+    const changeBarberBtns = screen.getAllByRole('button', { name: /cambiar barbero/i })
+    await user.click(changeBarberBtns[changeBarberBtns.length - 1])
+    expect(await screen.findByLabelText('Antonio')).toBeInTheDocument()
+    expect(screen.getByLabelText('Carlos')).toBeInTheDocument()
+    // Beto queda fuera del picker de la línea de combo.
+    expect(screen.queryByLabelText('Beto')).not.toBeInTheDocument()
+  })
 })

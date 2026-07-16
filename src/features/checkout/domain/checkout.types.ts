@@ -55,12 +55,20 @@ export interface CatalogComboItem {
 export interface CatalogCombo {
   id: string
   name: string
+  // Precio BASE estático del combo. El precio REAL a mostrar/cobrar se resuelve
+  // por (locationId, staffUserId) vía el overlay de combos (getComboPricing) y
+  // la ruta única de precio de línea (resolveComboPriceForBarber): barbero >
+  // sucursal > base. Nunca mandes este base a la venta si hay overlay/resuelto.
   priceCents: number
   imageUrl: string | null
   effectiveCategoryIds: string[]
   categoryId: string | null
   sortOrder: number
   items: CatalogComboItem[]
+  // IDs de barberos que NO ofrecen este combo (StaffComboPrice.isExcluded). Se
+  // lee del catálogo STATIC para ocultarlo proactivamente del grid/búsqueda y
+  // del picker de la línea. Vacío = todos los barberos pueden ofrecer el combo.
+  excludedStaffIds: string[]
 }
 
 export interface StockLevel {

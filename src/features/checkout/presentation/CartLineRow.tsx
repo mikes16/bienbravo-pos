@@ -13,9 +13,9 @@ interface Barber {
 interface CartLineRowProps {
   line: CartLine
   barbers: Barber[]
-  // IDs de barberos que NO realizan el servicio de esta línea — se ocultan del
-  // picker para que el cajero nunca los asigne (dejaría la línea en $0). Vacío
-  // para productos/combos (no hay exclusión) o servicios sin exclusiones.
+  // IDs de barberos que NO realizan/ofrecen el servicio o combo de esta línea —
+  // se ocultan del picker para que el cajero nunca los asigne (dejaría la línea
+  // en $0). Vacío para productos o servicios/combos sin exclusiones.
   excludedBarberIds?: string[]
   onIncQty: (lineId: string) => void
   onDecQty: (lineId: string) => void

@@ -99,6 +99,27 @@ type AssignWalkInResult {
   warning: String
 }
 
+type AuditLog {
+  action: String!
+  actorCustomerId: ID
+  actorStaffName: String
+  actorStaffUserId: ID
+  createdAt: DateTime!
+  id: ID!
+  meta: JSON
+}
+
+type AuditLogConnection {
+  edges: [AuditLogEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type AuditLogEdge {
+  cursor: String!
+  node: AuditLog!
+}
+
 type AuthResult {
   viewer: Viewer!
 }
@@ -212,8 +233,10 @@ type CatalogCombo {
   name: String!
   penaltyCommissionCents: Int!
   priceCents: Int!
+  pricingFor(locationId: ID!, staffUserId: ID): ResolvedComboPricing!
   slug: String!
   sortOrder: Int!
+  staffOverrides: [StaffComboPrice!]!
   totalDurationMin(locationId: ID): Int!
 }
 
@@ -236,8 +259,11 @@ input CatalogComboItemInput {
 
 type CatalogComboLocation {
   comboId: ID!
+  commissionCentsOverride: Int
+  durationMinOverride: Int
   isActive: Boolean!
   locationId: ID!
+  penaltyCommissionCentsOverride: Int
   priceCentsOverride: Int
 }
 
@@ -925,6 +951,7 @@ type LocationPolicy {
   holdDurationMinutes: Int!
   lateBufferMinutes: Int!
   minBookingLeadMinutes: Int!
+  slotIntervalMin: Int!
   walkinBlockWithinMinutes: Int!
 }
 
@@ -1052,6 +1079,7 @@ type Mutation {
   deleteRole(id: ID!): Boolean!
   deleteService(id: ID!): Service!
   deleteShiftOverride(id: ID!): Boolean!
+  deleteStaffComboPrice(comboId: ID!, staffUserId: ID!): Boolean!
   deleteStaffMembership(id: ID!): Boolean!
   deleteStaffServicePrice(serviceId: ID!, staffUserId: ID!): Boolean!
   deleteStaffVacation(id: ID!): Boolean!
@@ -1128,6 +1156,8 @@ type Mutation {
   upsertServiceLocation(input: UpsertServiceLocationInput!): ServiceLocation!
   upsertShiftTemplate(input: UpsertShiftTemplateInput!): ShiftTemplate!
   upsertShiftTemplatesForWeek(input: UpsertShiftTemplatesForWeekInput!): [ShiftTemplate!]!
+  upsertStaffComboPrice(input: UpsertStaffComboPriceInput!): StaffComboPrice!
+  upsertStaffSchedulingConfig(locationId: ID!, slotIntervalMin: Int, staffUserId: ID!): StaffSchedulingConfig!
   upsertStaffServicePrice(input: UpsertStaffServicePriceInput!): StaffServicePrice!
   verifyPosLocationAccess(locationId: ID!, password: String!): Boolean!
   voidSale(saleId: ID!): Sale!
@@ -1444,6 +1474,7 @@ type PublicQueueView {
 
 type PublicService {
   durationMinutes: Int!
+  excludedStaffIds: [ID!]!
   id: ID!
   name: String!
   priceCents: Int!
@@ -1454,6 +1485,7 @@ type Query {
   alertsFeed(filters: DashboardFiltersInput!): [DashboardAlert!]!
   appointment(id: ID!): Appointment
   appointments(dateFrom: String!, dateTo: String!, locationId: ID, status: AppointmentStatus): [Appointment!]!
+  auditLogs(action: String, actorStaffUserId: ID, after: String, dateFrom: String, dateTo: String, first: Int! = 24): AuditLogConnection!
   availableSlots(input: AvailableSlotsInput!): [DateTime!]!
   barbers(locationId: ID!): [StaffUser!]!
   blogPost(id: ID!): BlogPost
@@ -1561,6 +1593,7 @@ type Query {
   staffRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffRoleAssignments(staffUserId: ID): [StaffRoleAssignmentRow!]!
   staffRoleSummary(staffUserId: ID!): StaffRoleSummary!
+  staffSchedulingConfigs(locationId: ID, staffUserId: ID): [StaffSchedulingConfig!]!
   staffServiceRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffShiftOverridesAllLocations(fromDate: String!, locationIds: [ID!]!, staffUserIds: [ID!]!, toDate: String!): [ShiftOverride!]!
   staffShiftTemplatesAllLocations(locationIds: [ID!]!, staffUserIds: [ID!]!): [ShiftTemplate!]!
@@ -1931,6 +1964,19 @@ type RescheduleAppointmentResult {
   ok: Boolean!
 }
 
+type ResolvedComboPricing {
+  comboId: ID!
+  commissionCents: Int!
+  durationMin: Int!
+  isActive: Boolean!
+  isExcluded: Boolean!
+  locationId: ID!
+  priceCents: Int!
+  priceFromLocationOverride: Boolean!
+  priceFromStaffOverride: Boolean!
+  staffUserId: ID
+}
+
 type ResolvedExtra {
   commissionCents: Int
   durationMin: Int!
@@ -2189,6 +2235,16 @@ input ShiftTemplateDayInput {
   startMin: Int!
 }
 
+type StaffComboPrice {
+  comboId: ID!
+  commissionCentsOverride: Int
+  durationMinOverride: Int
+  isExcluded: Boolean!
+  penaltyCommissionCentsOverride: Int
+  priceCents: Int!
+  staffUserId: ID!
+}
+
 enum StaffContextRole {
   ADMIN
   BARBER
@@ -2257,6 +2313,13 @@ type StaffSaleEarnings {
   saleId: ID!
   soldAt: DateTime!
   tipCents: Int!
+}
+
+type StaffSchedulingConfig {
+  id: ID!
+  locationId: ID!
+  slotIntervalMin: Int
+  staffUserId: ID!
 }
 
 type StaffServicePrice {
@@ -2414,6 +2477,7 @@ input UpdateLocationPolicyInput {
   holdDurationMinutes: Int
   lateBufferMinutes: Int
   minBookingLeadMinutes: Int
+  slotIntervalMin: Int
   walkinBlockWithinMinutes: Int
 }
 
@@ -2507,8 +2571,11 @@ input UpdateStockLocationInput {
 
 input UpsertCatalogComboLocationInput {
   comboId: ID!
+  commissionCentsOverride: Int
+  durationMinOverride: Int
   isActive: Boolean
   locationId: ID!
+  penaltyCommissionCentsOverride: Int
   priceCentsOverride: Int
 }
 
@@ -2576,6 +2643,16 @@ input UpsertShiftTemplatesForWeekInput {
   locationId: ID!
   staffUserId: ID!
   startMin: Int!
+}
+
+input UpsertStaffComboPriceInput {
+  comboId: ID!
+  commissionCentsOverride: Int
+  durationMinOverride: Int
+  isExcluded: Boolean = false
+  penaltyCommissionCentsOverride: Int
+  priceCents: Int!
+  staffUserId: ID!
 }
 
 input UpsertStaffServicePriceInput {

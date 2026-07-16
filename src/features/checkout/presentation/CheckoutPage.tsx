@@ -114,13 +114,18 @@ export function CheckoutPage() {
     }
   }, [ck.successSale, splashShown])
 
-  // Mapa serviceId → barberos excluidos, derivado del catálogo STATIC. Alimenta
-  // el filtrado del picker por línea (CartList → CartLineRow → BarberPickerInline).
-  // Solo servicios con exclusiones entran al mapa; el resto no filtra nada.
-  const excludedByService = useMemo(() => {
+  // Mapa itemId → barberos excluidos, derivado del catálogo STATIC. Alimenta el
+  // filtrado del picker por línea (CartList → CartLineRow → BarberPickerInline).
+  // Servicios Y COMBOS con exclusiones entran al mapa (mismo mecanismo); los ids
+  // no colisionan. Productos y items sin exclusión no filtran nada.
+  const excludedByCatalogItem = useMemo(() => {
     const m = new Map<string, string[]>()
     for (const it of ck.catalogItems) {
-      if (it.kind === 'service' && it.excludedStaffIds && it.excludedStaffIds.length > 0) {
+      if (
+        (it.kind === 'service' || it.kind === 'combo') &&
+        it.excludedStaffIds &&
+        it.excludedStaffIds.length > 0
+      ) {
         m.set(it.id, it.excludedStaffIds)
       }
     }
@@ -321,7 +326,7 @@ export function CheckoutPage() {
       <CartList
         lines={ck.cartState.lines}
         barbers={ck.barbers}
-        excludedByService={excludedByService}
+        excludedByCatalogItem={excludedByCatalogItem}
         onIncQty={(lineId) => ck.dispatch({ type: 'incQty', lineId })}
         onDecQty={(lineId) => ck.dispatch({ type: 'decQty', lineId })}
         onSetBarber={(lineId, barberId) => void ck.changeLineBarber(lineId, barberId)}

@@ -54,3 +54,65 @@ describe('ApolloCheckoutRepository.getAvailableBarbers', () => {
     expect(getRequestCount()).toBe(2)
   })
 })
+
+// Overlay de precios de combo por barbero: lockea la forma del query hermana
+// (catalogCombos { id pricingFor { priceCents isExcluded } }) y que el repo
+// mapee id + precio resuelto + exclusión. Es la mitad "display" del fix de
+// dinero de combos.
+function makeClientReturning(payload: Record<string, unknown>) {
+  const link = new ApolloLink(
+    () =>
+      new Observable((observer) => {
+        observer.next({ data: payload })
+        observer.complete()
+      }),
+  )
+  return new ApolloClient({ link, cache: new InMemoryCache() })
+}
+
+describe('ApolloCheckoutRepository.getComboPricing', () => {
+  it('mapea id + precio resuelto + isExcluded de catalogCombos.pricingFor', async () => {
+    const client = makeClientReturning({
+      catalogCombos: [
+        { __typename: 'CatalogCombo', id: 'combo-1', pricingFor: { __typename: 'ResolvedComboPricing', priceCents: 45000, isExcluded: false } },
+        { __typename: 'CatalogCombo', id: 'combo-2', pricingFor: { __typename: 'ResolvedComboPricing', priceCents: 0, isExcluded: true } },
+      ],
+    })
+    const repo = new ApolloCheckoutRepository(client)
+    const rows = await repo.getComboPricing('loc-1', 'barber-9')
+    expect(rows).toEqual([
+      { id: 'combo-1', priceCents: 45000, isExcluded: false },
+      { id: 'combo-2', priceCents: 0, isExcluded: true },
+    ])
+  })
+})
+
+describe('ApolloCheckoutRepository.resolveComboPriceForBarber', () => {
+  it('devuelve el precio resuelto + isExcluded del combo para el barbero', async () => {
+    const client = makeClientReturning({
+      catalogCombo: {
+        __typename: 'CatalogCombo',
+        id: 'combo-1',
+        priceCents: 40000,
+        pricingFor: { __typename: 'ResolvedComboPricing', priceCents: 45000, isExcluded: false },
+      },
+    })
+    const repo = new ApolloCheckoutRepository(client)
+    const resolved = await repo.resolveComboPriceForBarber('combo-1', 'loc-1', 'barber-9')
+    expect(resolved).toEqual({ priceCents: 45000, isExcluded: false })
+  })
+
+  it('marca isExcluded=true cuando el barbero no ofrece el combo (nunca comitea $0 desde aquí)', async () => {
+    const client = makeClientReturning({
+      catalogCombo: {
+        __typename: 'CatalogCombo',
+        id: 'combo-1',
+        priceCents: 40000,
+        pricingFor: { __typename: 'ResolvedComboPricing', priceCents: 0, isExcluded: true },
+      },
+    })
+    const repo = new ApolloCheckoutRepository(client)
+    const resolved = await repo.resolveComboPriceForBarber('combo-1', 'loc-1', 'barber-x')
+    expect(resolved.isExcluded).toBe(true)
+  })
+})

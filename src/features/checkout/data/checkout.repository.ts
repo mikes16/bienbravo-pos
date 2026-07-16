@@ -240,9 +240,57 @@ const COMBOS_QUERY = graphql(`
         qty
         sortOrder
       }
+      # Overrides por barbero del combo — igual que en servicios, solo nos
+      # importa la exclusión (isExcluded=true = "este barbero NO ofrece este
+      # combo"). Viaja con el catálogo STATIC (gated por catalogVersion) para
+      # OCULTAR proactivamente el combo del grid/búsqueda y del picker de la
+      # línea cuando el atendiendo lo tiene excluido — sin queries por render.
+      staffOverrides {
+        staffUserId
+        isExcluded
+      }
     }
   }
 `)
+
+// Overlay de SOLO precios de combo por barbero para el grid del catálogo.
+// Hermana exacta de SERVICES_PRICING_QUERY (misma forma id + pricingFor), pero
+// sobre el root field `catalogCombos` — el combo resuelve precio con precedencia
+// barbero > sucursal > base y ahora puede quedar excluido (isExcluded). Se
+// re-dispara al cambiar el barbero atendiendo para que la card del combo muestre
+// el precio de ESE barbero; el catálogo STATIC resuelve el base una sola vez y
+// no reacciona. Usa `gql` directo — mismo criterio que las queries de servicio:
+// se mantiene fuera del scan de codegen (client-preset solo procesa graphql()),
+// evitando drift. El API sigue siendo la autoridad del precio al cobrar
+// (resolveAndCommitLinePrice + PRICE_MISMATCH/BARBER_EXCLUDED server-side).
+const COMBOS_PRICING_QUERY = gql`
+  query PosCombosPricing($locationId: ID!, $staffUserId: ID) {
+    catalogCombos(activeOnly: true) {
+      id
+      pricingFor(locationId: $locationId, staffUserId: $staffUserId) {
+        priceCents
+        isExcluded
+      }
+    }
+  }
+`
+
+// Resuelve el precio de UN combo para un barbero concreto (barbero > sucursal >
+// base) + su bandera de exclusión. Hermana de RESOLVE_SERVICE_PRICE_QUERY. La
+// usa la ruta única de precio de línea cuando una línea de combo estrena/cambia
+// de barbero. `gql` directo (fuera de codegen) igual que su gemela de servicio.
+const RESOLVE_COMBO_PRICE_QUERY = gql`
+  query PosResolveComboPrice($id: ID!, $locationId: ID!, $staffUserId: ID) {
+    catalogCombo(id: $id) {
+      id
+      priceCents
+      pricingFor(locationId: $locationId, staffUserId: $staffUserId) {
+        priceCents
+        isExcluded
+      }
+    }
+  }
+`
 
 const SEARCH_CUSTOMERS_QUERY = graphql(`
   query PosSearchCustomers($query: String!, $limit: Int) {
@@ -543,12 +591,30 @@ export interface ServicePricingOverlay {
   isExcluded: boolean
 }
 
+/**
+ * Entrada del overlay de precios por barbero para una card de COMBO. Forma
+ * idéntica a `ServicePricingOverlay` (id + precio resuelto + exclusión) — el
+ * combo resuelve con precedencia barbero > sucursal > base y puede quedar
+ * excluido para ese barbero. Solo display + filtro de exclusión del grid; la
+ * autoridad del precio de la línea sigue siendo el API al cobrar.
+ */
+export type ComboPricingOverlay = ServicePricingOverlay
+
 export interface CheckoutRepository {
   getCategories(): Promise<CatalogCategory[]>
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
   getProducts(locationId: string): Promise<CatalogProduct[]>
   getCombos(): Promise<CatalogCombo[]>
   resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<ResolvedLinePrice>
+  /**
+   * Hermana de `resolveServicePriceForBarber` para combos: resuelve el precio
+   * del combo para `staffUserId` (barbero > sucursal > base) + `isExcluded`. La
+   * ruta única de precio de línea la usa cuando una línea de combo estrena o
+   * cambia de barbero. `isExcluded=true` = ese barbero NO ofrece el combo → el
+   * caller NO comitea (misma red de seguridad que servicios; el API además
+   * rechaza con BARBER_EXCLUDED).
+   */
+  resolveComboPriceForBarber(comboId: string, locationId: string, staffUserId: string | null): Promise<ResolvedLinePrice>
   /**
    * Overlay ligero de precios por barbero para el grid del catálogo. Devuelve,
    * por servicio, el precio resuelto para `staffUserId` (staff > sucursal >
@@ -559,6 +625,16 @@ export interface CheckoutRepository {
    * autoridad del precio de la línea sigue siendo el API al cobrar.
    */
   getServicePricing(locationId: string, staffUserId: string | null): Promise<ServicePricingOverlay[]>
+  /**
+   * Overlay ligero de precios de COMBO por barbero para el grid — hermana de
+   * `getServicePricing`. Devuelve, por combo, el precio resuelto para
+   * `staffUserId` (barbero > sucursal > base) + `isExcluded`. Se re-consulta al
+   * cambiar el atendiendo para que la card del combo muestre el precio de ESE
+   * barbero (el catálogo STATIC resuelve el base una sola vez y no reacciona).
+   * cache-first: volver a un barbero ya consultado es instantáneo. Solo display;
+   * la autoridad del precio de la línea sigue siendo el API al cobrar.
+   */
+  getComboPricing(locationId: string, staffUserId: string | null): Promise<ComboPricingOverlay[]>
   /**
    * Stock es dato LIVE y correctness-critical (riesgo de sobreventa si se
    * muestra stale). `opts.force` fuerza `network-only`; el checkout lo usa
@@ -720,6 +796,27 @@ interface RawProduct {
   variants: { id: string; priceCents: number }[]
 }
 
+interface RawComboItem {
+  serviceId: string | null
+  productId: string | null
+  serviceName: string | null
+  productName: string | null
+  qty: number
+  sortOrder: number
+}
+
+interface RawCombo {
+  id: string
+  name: string
+  priceCents: number
+  imageUrl: string | null
+  effectiveCategoryIds: string[]
+  categoryId: string | null
+  sortOrder: number
+  items: RawComboItem[]
+  staffOverrides?: RawStaffOverride[] | null
+}
+
 export class ApolloCheckoutRepository implements CheckoutRepository {
   #client: ApolloClient
   constructor(client: ApolloClient) {
@@ -779,6 +876,25 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     }
   }
 
+  async resolveComboPriceForBarber(comboId: string, locationId: string, staffUserId: string | null): Promise<ResolvedLinePrice> {
+    const { data } = await this.#client.query<{
+      catalogCombo: { id: string; priceCents: number; pricingFor: { priceCents: number; isExcluded: boolean } | null } | null
+    }>({
+      query: RESOLVE_COMBO_PRICE_QUERY,
+      variables: { id: comboId, locationId, staffUserId },
+      fetchPolicy: 'cache-first',
+    })
+    const combo = data?.catalogCombo
+    if (!combo) throw new Error(`Combo ${comboId} not found`)
+    return {
+      // Fallback al precio base del combo si pricingFor no vino (schema parcial
+      // en dev). NUNCA comitear el precio excluido ($0) — el caller lo bloquea
+      // vía isExcluded, igual que en servicios.
+      priceCents: combo.pricingFor?.priceCents ?? combo.priceCents,
+      isExcluded: combo.pricingFor?.isExcluded ?? false,
+    }
+  }
+
   async getServicePricing(locationId: string, staffUserId: string | null): Promise<ServicePricingOverlay[]> {
     const { data } = await this.#client.query<{
       services: Array<{ id: string; pricingFor: { priceCents: number; isExcluded: boolean } | null }>
@@ -798,6 +914,21 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       .map((s) => ({ id: s.id, priceCents: s.pricingFor!.priceCents, isExcluded: s.pricingFor!.isExcluded }))
   }
 
+  async getComboPricing(locationId: string, staffUserId: string | null): Promise<ComboPricingOverlay[]> {
+    const { data } = await this.#client.query<{
+      catalogCombos: Array<{ id: string; pricingFor: { priceCents: number; isExcluded: boolean } | null }>
+    }>({
+      query: COMBOS_PRICING_QUERY,
+      variables: { locationId, staffUserId: staffUserId ?? null },
+      // Mismo criterio que getServicePricing: cache-first por (locationId,
+      // staffUserId); autoridad del precio en el API al cobrar.
+      fetchPolicy: 'cache-first',
+    })
+    return (data?.catalogCombos ?? [])
+      .filter((c) => c.pricingFor != null)
+      .map((c) => ({ id: c.id, priceCents: c.pricingFor!.priceCents, isExcluded: c.pricingFor!.isExcluded }))
+  }
+
   async getStockLevels(locationId: string, opts?: { force?: boolean }): Promise<StockLevel[]> {
     // opts.force → network-only. useCheckout siempre pasa force:true al
     // entrar al checkout: el stock es LIVE (riesgo de sobreventa si se
@@ -814,14 +945,31 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   }
 
   async getCombos(): Promise<CatalogCombo[]> {
-    const { data } = await this.#client.query<{ catalogCombos: CatalogCombo[] }>({
+    const { data } = await this.#client.query<{ catalogCombos: RawCombo[] }>({
       query: COMBOS_QUERY,
       fetchPolicy: 'cache-first',
     })
     return data!.catalogCombos.map((c) => ({
-      ...c,
-      sortOrder: c.sortOrder,
+      id: c.id,
+      name: c.name,
+      priceCents: c.priceCents,
+      imageUrl: c.imageUrl ?? null,
+      effectiveCategoryIds: c.effectiveCategoryIds,
       categoryId: c.categoryId ?? null,
+      sortOrder: c.sortOrder,
+      items: c.items.map((it) => ({
+        serviceId: it.serviceId ?? null,
+        productId: it.productId ?? null,
+        serviceName: it.serviceName ?? null,
+        productName: it.productName ?? null,
+        qty: it.qty,
+      })),
+      // IDs de barberos que NO ofrecen este combo (override con isExcluded=true).
+      // Oculta el combo del grid/búsqueda y del picker de la línea cuando el
+      // atendiendo lo tiene excluido — mismo doble mecanismo que servicios.
+      excludedStaffIds: (c.staffOverrides ?? [])
+        .filter((o) => o.isExcluded)
+        .map((o) => o.staffUserId),
     }))
   }
 

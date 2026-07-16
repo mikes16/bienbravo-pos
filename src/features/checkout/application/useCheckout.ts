@@ -34,8 +34,9 @@ interface CatalogItem {
   imageUrl?: string | null
   categoryId: string | null
   sortOrder: number
-  // Solo servicios: IDs de barberos que NO realizan este servicio. El picker
-  // de la línea los oculta. Vacío/undefined para productos y combos.
+  // Servicios y COMBOS: IDs de barberos que NO realizan/ofrecen este item. El
+  // picker de la línea los oculta y el grid oculta la card cuando el atendiendo
+  // está excluido. Vacío/undefined para productos.
   excludedStaffIds?: string[]
 }
 
@@ -197,6 +198,7 @@ export function useCheckout() {
             imageUrl: c.imageUrl,
             categoryId: c.categoryId,
             sortOrder: c.sortOrder,
+            excludedStaffIds: c.excludedStaffIds ?? [],
           })),
         ]
         setCatalogItems(sortCatalogItems(onlyCategorized(items), cats))
@@ -223,15 +225,27 @@ export function useCheckout() {
   // ya consultado es instantáneo. En la carga inicial `overlayBarberId` es
   // `undefined` y el grid usa el precio estático del viewer como arranque; a
   // partir de ahí cada cambio de atendiendo re-resuelve el precio de las cards.
+  //
+  // SERVICIOS y COMBOS comparten un solo `priceOverlay` (Map id → precio/excl.):
+  // los ids no colisionan (entidades distintas) y el grid resuelve el precio de
+  // display de forma agnóstica al kind. Traemos ambos en paralelo (queries
+  // hermanas) y los fusionamos; un solo `overlayBarberId` describe a qué barbero
+  // corresponde el overlay completo (ambas queries se resuelven para el mismo
+  // atendiendo, así que un solo tracking es correcto).
   useEffect(() => {
     if (!locationId) return
     let cancelled = false
     setOverlayLoading(true)
-    checkout
-      .getServicePricing(locationId, attendingBarberId)
-      .then((rows) => {
+    Promise.all([
+      checkout.getServicePricing(locationId, attendingBarberId),
+      checkout.getComboPricing(locationId, attendingBarberId),
+    ])
+      .then(([serviceRows, comboRows]) => {
         if (cancelled) return
-        setPriceOverlay(new Map(rows.map((r) => [r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded }])))
+        const merged = new Map<string, { priceCents: number; isExcluded: boolean }>()
+        for (const r of serviceRows) merged.set(r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded })
+        for (const r of comboRows) merged.set(r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded })
+        setPriceOverlay(merged)
         setOverlayBarberId(attendingBarberId)
       })
       .catch(() => {
@@ -608,33 +622,40 @@ export function useCheckout() {
     }
   }
 
-  // Ruta ÚNICA de resolución de precio por barbero (staff > sucursal > base):
-  // resuelve el precio del servicio para `staffUserId` y lo fija en la línea.
-  // Compartida por changeLineBarber (el operador cambia el barbero de una
+  // Ruta ÚNICA de resolución de precio por barbero (barbero > sucursal > base):
+  // resuelve el precio del servicio O COMBO para `staffUserId` y lo fija en la
+  // línea. Compartida por changeLineBarber (el operador cambia el barbero de una
   // línea existente) y addCatalogItem (una línea nueva entra con barbero
   // default). Ambas DEBEN aterrizar el precio del barbero de la línea, no el
-  // del viewer logueado. El API valida y rechaza desajustes, así que esta
-  // corrección no es cosmética — sin ella la venta se bloquea.
+  // del viewer logueado. El API valida y rechaza desajustes (PRICE_MISMATCH),
+  // así que esta corrección no es cosmética — sin ella la venta se bloquea. Es
+  // exactamente el bug latente que mata este esfuerzo para combos con override.
   //
-  // Red de seguridad contra el bug de dinero $0: si el barbero está EXCLUIDO
-  // del servicio (StaffServicePrice.isExcluded=true → priceCents=0), NO
-  // comiteamos el cambio. La línea conserva su barbero/precio anterior y
-  // avisamos al cajero con un toast. El picker ya oculta a los excluidos
-  // proactivamente; esto cubre el caso de catálogo stale o barbero default
-  // (prefill) excluido. El API además empezará a rechazar estas líneas con
-  // code BARBER_EXCLUDED — aquí las prevenimos de origen.
+  // `kind` decide el resolver hermano: servicios → resolveServicePriceForBarber,
+  // combos → resolveComboPriceForBarber (misma forma {priceCents,isExcluded}).
+  //
+  // Red de seguridad contra el bug de dinero $0: si el barbero está EXCLUIDO del
+  // servicio/combo (isExcluded=true → priceCents=0), NO comiteamos el cambio. La
+  // línea conserva su barbero/precio anterior y avisamos al cajero con un toast.
+  // El picker ya oculta a los excluidos proactivamente; esto cubre el caso de
+  // catálogo stale o barbero default (prefill) excluido. El API además rechaza
+  // estas líneas con code BARBER_EXCLUDED — aquí las prevenimos de origen.
   const resolveAndCommitLinePrice = async (
     lineId: string,
-    serviceItemId: string,
+    kind: 'service' | 'combo',
+    itemId: string,
     staffUserId: string,
   ): Promise<'committed' | 'excluded' | 'error'> => {
     if (!locationId) return 'error'
     try {
-      const resolved = await checkout.resolveServicePriceForBarber(serviceItemId, locationId, staffUserId)
+      const resolved =
+        kind === 'combo'
+          ? await checkout.resolveComboPriceForBarber(itemId, locationId, staffUserId)
+          : await checkout.resolveServicePriceForBarber(itemId, locationId, staffUserId)
       if (resolved.isExcluded) {
         const barberName = barbers.find((b) => b.id === staffUserId)?.fullName ?? 'Ese barbero'
-        const serviceName = catalogItems.find((i) => i.id === serviceItemId)?.name ?? 'este servicio'
-        addToast(`${barberName} no ofrece ${serviceName}. Elige otro barbero.`, 'error')
+        const itemName = catalogItems.find((i) => i.id === itemId)?.name ?? (kind === 'combo' ? 'este combo' : 'este servicio')
+        addToast(`${barberName} no ofrece ${itemName}. Elige otro barbero.`, 'error')
         return 'excluded'
       }
       dispatch({ type: 'setLineBarberAndPrice', lineId, staffUserId, unitPriceCents: resolved.priceCents })
@@ -650,13 +671,15 @@ export function useCheckout() {
     }
   }
 
-  // Change a line's barber. For service lines, also re-resolve the price (barber overrides)
-  // and dispatch atomically so the operator never sees a stale price for the new barber.
-  // For products/combos, price is invariant — just dispatch the barber change.
+  // Change a line's barber. For SERVICE and COMBO lines, also re-resolve the
+  // price (barber overrides) and dispatch atomically so the operator never sees
+  // a stale price for the new barber — combos now carry per-barber price/excl.
+  // just like services (the money bug this effort kills). For products, price is
+  // invariant — just dispatch the barber change.
   const changeLineBarber = async (lineId: string, staffUserId: string) => {
     const line = cartState.lines.find((l) => l.id === lineId)
     if (!line) return
-    if (line.kind !== 'service' || !locationId) {
+    if ((line.kind !== 'service' && line.kind !== 'combo') || !locationId) {
       dispatch({ type: 'setLineBarber', lineId, staffUserId })
       return
     }
@@ -664,7 +687,7 @@ export function useCheckout() {
     // then patch in the resolved price via la ruta compartida.
     const prevStaffUserId = line.staffUserId
     dispatch({ type: 'setLineBarber', lineId, staffUserId })
-    const outcome = await resolveAndCommitLinePrice(lineId, line.itemId, staffUserId)
+    const outcome = await resolveAndCommitLinePrice(lineId, line.kind, line.itemId, staffUserId)
     if (outcome === 'excluded') {
       // El barbero elegido no ofrece el servicio: revertimos el chip optimista
       // al barbero anterior (o "sin asignar" si no había). El toast ya avisó.
@@ -674,15 +697,15 @@ export function useCheckout() {
   }
 
   // Add optimista desde el catálogo: la línea entra YA con un precio para
-  // feedback instantáneo al tap y, si es servicio con barbero default, se
+  // feedback instantáneo al tap y, si es servicio O COMBO con barbero default, se
   // corrige al precio de ESE barbero vía resolveAndCommitLinePrice — la MISMA
   // ruta que usa el picker (cache-first: corrección típicamente sin parpadeo).
-  // El precio optimista de un servicio ahora sale del OVERLAY (precio del
-  // atendiendo), no del catálogo STATIC (precio del viewer): así la línea nace
-  // ya con el precio correcto y no parpadea entre el del viewer y el resuelto.
+  // El precio optimista de un servicio/combo ahora sale del OVERLAY (precio del
+  // atendiendo), no del catálogo STATIC (precio base del viewer): así la línea
+  // nace ya con el precio correcto y no parpadea entre el base y el resuelto.
   // Cuando NO hay atendiendo, resolveAndCommitLinePrice no corre y el overlay
   // (staffUserId null = precio de sucursal) es el precio final — más correcto
-  // que el del viewer. Productos/combos no están en el overlay → precio STATIC.
+  // que el base. Productos no están en el overlay → precio STATIC.
   // No encadenamos changeLineBarber porque éste lee la línea del estado del
   // carrito, que aún no incluye la recién despachada (dispatch es asíncrono);
   // por eso pasamos el itemId directo a la ruta compartida.
@@ -694,7 +717,8 @@ export function useCheckout() {
     categoryId: string | null
   }) => {
     const lineId = crypto.randomUUID()
-    const overlayPriceCents = item.kind === 'service' ? priceOverlay?.get(item.id)?.priceCents : undefined
+    const overlayPriceCents =
+      item.kind === 'service' || item.kind === 'combo' ? priceOverlay?.get(item.id)?.priceCents : undefined
     dispatch({
       type: 'add',
       lineId,
@@ -706,13 +730,13 @@ export function useCheckout() {
         categoryId: item.categoryId,
       },
     })
-    if (item.kind === 'service' && cartState.defaultBarberId) {
-      void resolveAndCommitLinePrice(lineId, item.id, cartState.defaultBarberId).then((outcome) => {
-        // Si el barbero atendiendo está excluido de este servicio, la línea
+    if ((item.kind === 'service' || item.kind === 'combo') && cartState.defaultBarberId) {
+      void resolveAndCommitLinePrice(lineId, item.kind, item.id, cartState.defaultBarberId).then((outcome) => {
+        // Si el barbero atendiendo está excluido de este servicio/combo, la línea
         // entró optimista con ese barbero vía el reducer. En vez de dejarla sin
         // barbero (basura: precio optimista sin a quién acreditar), la ELIMINAMOS.
-        // El grid ya oculta estos servicios cuando hay barbero atendiendo, así
-        // que esto solo cubre catálogo stale. El toast ya avisó desde
+        // El grid ya oculta estos items cuando hay barbero atendiendo, así que
+        // esto solo cubre catálogo stale. El toast ya avisó desde
         // resolveAndCommitLinePrice. Trap del repo: la línea recién despachada no
         // está en `cartState` de este render, por eso removemos por `lineId`
         // directo. (El prefill de walk-in NO pasa por aquí — ahí el servicio lo

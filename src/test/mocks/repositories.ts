@@ -178,10 +178,20 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return { priceCents: 0, isExcluded: false }
   }
 
+  // Hermana de resolveServicePriceForBarber para combos. Mismo default {0,false}.
+  async resolveComboPriceForBarber(_comboId: string, _locationId: string, _staffUserId: string | null): Promise<{ priceCents: number; isExcluded: boolean }> {
+    return { priceCents: 0, isExcluded: false }
+  }
+
   // Overlay de precios por barbero: por defecto vacío → el grid cae al precio
   // estático del catálogo. Tests que verifican la reactividad del precio de las
   // cards al cambiar el atendiendo sobre-escriben con vi.fn por barbero.
   async getServicePricing(_locationId: string, _staffUserId: string | null): Promise<ServicePricingOverlay[]> {
+    return []
+  }
+
+  // Overlay de precios de combo por barbero — hermana de getServicePricing.
+  async getComboPricing(_locationId: string, _staffUserId: string | null): Promise<ServicePricingOverlay[]> {
     return []
   }
 
