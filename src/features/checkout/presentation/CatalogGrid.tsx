@@ -15,6 +15,11 @@ interface CatalogItem {
   excludedStaffIds?: string[]
 }
 
+interface PriceOverlayEntry {
+  priceCents: number
+  isExcluded: boolean
+}
+
 interface CatalogGridProps {
   items: CatalogItem[]
   selectedCategoryId: string | null
@@ -28,6 +33,18 @@ interface CatalogGridProps {
   // Nombre del barbero atendiendo, solo para el empty-state cuando TODO el grid
   // quedó oculto por exclusión.
   attendingBarberName?: string | null
+  // Overlay de precios por barbero (capa LIVE). Map serviceId → precio/exclusión
+  // resueltos para el atendiendo. Cuando existe, la card muestra `priceCents` del
+  // overlay en vez del precio estático (congelado en el del viewer). Productos y
+  // servicios sin entrada caen al precio estático.
+  priceOverlay?: Map<string, PriceOverlayEntry> | null
+  // ¿El overlay corresponde al atendiendo ACTUAL? Solo entonces usamos su
+  // `isExcluded` para el filtro (es lo más fresco); si es stale, el filtro cae
+  // al estático `excludedStaffIds`, que ya reacciona al atendiendo actual.
+  overlayFresh?: boolean
+  // Trayendo el overlay del nuevo atendiendo: atenuamos los precios para no
+  // mostrar los del barbero anterior "como actuales" (patrón previousData).
+  pricesUpdating?: boolean
 }
 
 export function CatalogGrid({
@@ -37,8 +54,23 @@ export function CatalogGrid({
   onAdd,
   attendingBarberId,
   attendingBarberName,
+  priceOverlay,
+  overlayFresh,
+  pricesUpdating,
 }: CatalogGridProps) {
   const q = searchQuery.trim().toLowerCase()
+  // Precio de display: overlay del atendiendo si existe, si no el estático.
+  const displayPrice = (item: CatalogItem): number =>
+    priceOverlay?.get(item.id)?.priceCents ?? item.priceCents
+  // ¿El servicio queda excluido para el atendiendo? Preferimos el overlay cuando
+  // es fresco (más actual que el staffOverrides estático); si no, caemos al
+  // estático, que ya es reactivo al atendiendo.
+  const isExcludedForAttending = (item: CatalogItem): boolean => {
+    if (item.kind !== 'service' || !attendingBarberId) return false
+    const ov = overlayFresh ? priceOverlay?.get(item.id) : undefined
+    if (ov) return ov.isExcluded
+    return item.excludedStaffIds?.includes(attendingBarberId) ?? false
+  }
   // 1) Búsqueda global (reemplaza al viejo chip "Todo") o filtro por la
   //    categoría seleccionada.
   const matching = items.filter((i) => {
@@ -49,11 +81,7 @@ export function CatalogGrid({
   //    servicios (productos/combos no tienen exclusión) y solo cuando hay
   //    barbero atendiendo. Esto apaga el bug de $0 de raíz: la card se resolvía
   //    para el atendiendo, así que un servicio excluido mostraba $0.
-  const filtered = attendingBarberId
-    ? matching.filter(
-        (i) => !(i.kind === 'service' && i.excludedStaffIds?.includes(attendingBarberId)),
-      )
-    : matching
+  const filtered = matching.filter((i) => !isExcludedForAttending(i))
 
   if (filtered.length === 0) {
     // Si había items en esta categoría/búsqueda pero TODOS quedaron ocultos por
@@ -80,7 +108,8 @@ export function CatalogGrid({
             key={item.id}
             kind={item.kind}
             name={item.name}
-            priceCents={item.priceCents}
+            priceCents={displayPrice(item)}
+            updating={pricesUpdating}
             stockQty={item.stockQty}
             imageUrl={item.imageUrl}
             onAdd={() => onAdd(item)}
@@ -95,7 +124,8 @@ export function CatalogGrid({
             key={item.id}
             kind={item.kind}
             name={item.name}
-            priceCents={item.priceCents}
+            priceCents={displayPrice(item)}
+            updating={pricesUpdating}
             stockQty={item.stockQty}
             imageUrl={item.imageUrl}
             onAdd={() => onAdd(item)}

@@ -8,11 +8,13 @@ interface CatalogListRowProps {
   stockQty?: number
   imageUrl?: string | null
   onAdd: () => void
+  // Overlay del nuevo atendiendo en vuelo: atenúa el precio (patrón previousData).
+  updating?: boolean
 }
 
 const LOW_STOCK_THRESHOLD = 5
 
-export function CatalogListRow({ kind, name, priceCents, stockQty, imageUrl, onAdd }: CatalogListRowProps) {
+export function CatalogListRow({ kind, name, priceCents, stockQty, imageUrl, onAdd, updating }: CatalogListRowProps) {
   const isOutOfStock = kind === 'product' && stockQty === 0
   const isLowStock = kind === 'product' && typeof stockQty === 'number' && stockQty > 0 && stockQty <= LOW_STOCK_THRESHOLD
 
@@ -60,7 +62,13 @@ export function CatalogListRow({ kind, name, priceCents, stockQty, imageUrl, onA
         )}
       </div>
 
-      <span className="shrink-0 text-[18px] font-extrabold tabular-nums text-[var(--color-bone)]">
+      <span
+        aria-busy={updating || undefined}
+        className={cn(
+          'shrink-0 text-[18px] font-extrabold tabular-nums text-[var(--color-bone)] transition-opacity duration-200',
+          updating && 'opacity-40',
+        )}
+      >
         {formatMoney(priceCents)}
       </span>
     </button>

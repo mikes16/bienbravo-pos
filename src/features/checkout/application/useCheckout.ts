@@ -88,6 +88,26 @@ export function useCheckout() {
 
   const [cartState, dispatch] = useReducer(cartReducer, initialCart(viewer?.staff?.id ?? ''))
 
+  // Barbero atendiendo = default barber real de la venta (no el fallback de
+  // display). Alimenta TANTO el filtro de exclusión del grid como el overlay de
+  // precios por barbero. Null cuando la venta no tiene default → overlay con
+  // staffUserId null = precios de sucursal.
+  const attendingBarberId = cartState.defaultBarberId || null
+
+  // Overlay de precios por barbero (capa LIVE sobre el catálogo STATIC). El
+  // catálogo STATIC (gated por catalogVersion) resuelve el precio UNA vez para
+  // el viewer y no reacciona al cambio de atendiendo — el precio de las cards se
+  // quedaba congelado en el del viewer. Esta capa re-consulta un query ligero de
+  // SOLO precios al cambiar el atendiendo y lo overlayea en el grid.
+  //   - priceOverlay: Map<serviceId, {priceCents,isExcluded}> del ÚLTIMO overlay
+  //     resuelto (patrón previousData: seguimos mostrando el anterior mientras
+  //     llega el nuevo, atenuado, sin flash de skeletons).
+  //   - overlayBarberId: a qué barbero corresponde `priceOverlay`. `undefined` =
+  //     nunca ha cargado. `overlayFresh` = corresponde al atendiendo actual.
+  const [priceOverlay, setPriceOverlay] = useState<Map<string, { priceCents: number; isExcluded: boolean }> | null>(null)
+  const [overlayBarberId, setOverlayBarberId] = useState<string | null | undefined>(undefined)
+  const [overlayLoading, setOverlayLoading] = useState(false)
+
   const [registerSessionId, setRegisterSessionId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -197,6 +217,34 @@ export function useCheckout() {
       cancelled = true
     }
   }, [locationId, viewer?.staff?.id, checkout, register])
+
+  // Overlay de precios: re-consulta el precio por barbero al cambiar el
+  // atendiendo. Query ligero (solo precios), cache-first — regresar a un barbero
+  // ya consultado es instantáneo. En la carga inicial `overlayBarberId` es
+  // `undefined` y el grid usa el precio estático del viewer como arranque; a
+  // partir de ahí cada cambio de atendiendo re-resuelve el precio de las cards.
+  useEffect(() => {
+    if (!locationId) return
+    let cancelled = false
+    setOverlayLoading(true)
+    checkout
+      .getServicePricing(locationId, attendingBarberId)
+      .then((rows) => {
+        if (cancelled) return
+        setPriceOverlay(new Map(rows.map((r) => [r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded }])))
+        setOverlayBarberId(attendingBarberId)
+      })
+      .catch(() => {
+        // Silencioso: si el overlay falla conservamos el previo (o el estático)
+        // — no es correctness-critical porque el API valida el precio al cobrar.
+      })
+      .finally(() => {
+        if (!cancelled) setOverlayLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [locationId, attendingBarberId, checkout])
 
   // Pre-fill customer/barber/services based on context.
   //
@@ -625,14 +673,19 @@ export function useCheckout() {
     }
   }
 
-  // Add optimista desde el catálogo: la línea entra YA con el precio del
-  // catálogo (resuelto para el viewer logueado) para feedback instantáneo al
-  // tap y, si es servicio con barbero default, se corrige al precio de ESE
-  // barbero vía resolveAndCommitLinePrice — la MISMA ruta que usa el picker
-  // (cache-first: corrección típicamente sin parpadeo). No encadenamos
-  // changeLineBarber porque éste lee la línea del estado del carrito, que aún
-  // no incluye la recién despachada (dispatch es asíncrono); por eso pasamos
-  // el itemId directo a la ruta compartida.
+  // Add optimista desde el catálogo: la línea entra YA con un precio para
+  // feedback instantáneo al tap y, si es servicio con barbero default, se
+  // corrige al precio de ESE barbero vía resolveAndCommitLinePrice — la MISMA
+  // ruta que usa el picker (cache-first: corrección típicamente sin parpadeo).
+  // El precio optimista de un servicio ahora sale del OVERLAY (precio del
+  // atendiendo), no del catálogo STATIC (precio del viewer): así la línea nace
+  // ya con el precio correcto y no parpadea entre el del viewer y el resuelto.
+  // Cuando NO hay atendiendo, resolveAndCommitLinePrice no corre y el overlay
+  // (staffUserId null = precio de sucursal) es el precio final — más correcto
+  // que el del viewer. Productos/combos no están en el overlay → precio STATIC.
+  // No encadenamos changeLineBarber porque éste lee la línea del estado del
+  // carrito, que aún no incluye la recién despachada (dispatch es asíncrono);
+  // por eso pasamos el itemId directo a la ruta compartida.
   const addCatalogItem = (item: {
     kind: 'service' | 'product' | 'combo'
     id: string
@@ -641,6 +694,7 @@ export function useCheckout() {
     categoryId: string | null
   }) => {
     const lineId = crypto.randomUUID()
+    const overlayPriceCents = item.kind === 'service' ? priceOverlay?.get(item.id)?.priceCents : undefined
     dispatch({
       type: 'add',
       lineId,
@@ -648,7 +702,7 @@ export function useCheckout() {
         kind: item.kind,
         itemId: item.id,
         name: item.name,
-        unitPriceCents: item.priceCents,
+        unitPriceCents: overlayPriceCents ?? item.priceCents,
         categoryId: item.categoryId,
       },
     })
@@ -668,6 +722,15 @@ export function useCheckout() {
     }
   }
 
+  // ¿El overlay corresponde al atendiendo actual? Si sí, sus precios/exclusión
+  // son la verdad más fresca para el grid. Si no (o aún no ha cargado), el grid
+  // cae al estático.
+  const overlayFresh = overlayBarberId === attendingBarberId
+  // Atenuar (previousData): true solo cuando ya había un overlay y estamos
+  // trayendo el del NUEVO atendiendo. En la carga inicial (overlayBarberId
+  // undefined) no atenuamos — el estático del viewer es el arranque correcto.
+  const pricesUpdating = overlayLoading && overlayBarberId !== undefined && !overlayFresh
+
   return {
     context,
     catalogItems,
@@ -677,6 +740,14 @@ export function useCheckout() {
     dispatch,
     changeLineBarber,
     addCatalogItem,
+    // Overlay de precios por barbero para el grid (capa LIVE sobre el catálogo
+    // STATIC). `priceOverlay` mapea serviceId → {priceCents,isExcluded} del
+    // atendiendo; `overlayFresh` indica si corresponde al atendiendo actual;
+    // `pricesUpdating` atenúa las cards mientras llega el overlay del nuevo
+    // atendiendo (sin flash de precios del barbero anterior "como actuales").
+    priceOverlay,
+    overlayFresh,
+    pricesUpdating,
     customerResults,
     searchCustomers,
     createCustomer,

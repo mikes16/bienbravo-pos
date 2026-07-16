@@ -463,6 +463,57 @@ describe('CheckoutPage (integration)', () => {
     expect(await screen.findByText(/no ofrece corte/i)).toBeInTheDocument()
   })
 
+  // Bug de prod: las cards conservaban el precio resuelto para el VIEWER y no
+  // reaccionaban al cambio de atendiendo. Fix: overlay de precios (capa LIVE)
+  // que re-consulta el precio por barbero. Al cambiar el atendiendo la card
+  // debe re-resolver, y el add posterior debe crear la línea con ese precio.
+  it('cambiar el atendiendo re-resuelve el precio de las cards y el add usa ese precio', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Atendiendo inicial fijado por walk-in = b1 (Antonio), sin servicios.
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1', customer: null, assignedStaffUser: { id: 'b1' }, requestedServices: [],
+    })
+    // Overlay por barbero: Antonio (b1) $350, Beto (b2) precio de sucursal $300.
+    // El estático del catálogo es $280 (SVC_CORTE) — distinto de ambos, así que
+    // ver $350/$300 prueba que el overlay se aplicó y reaccionó al atendiendo.
+    repos.checkout.getServicePricing = vi.fn().mockImplementation(
+      (_loc: string, staff: string | null) =>
+        Promise.resolve([{ id: 'svc-corte', priceCents: staff === 'b2' ? 30000 : 35000, isExcluded: false }]),
+    )
+    // La autoridad de la línea (resolveAndCommitLinePrice) alineada con el
+    // overlay de Beto ($300) para el paso "agregar tras cambiar".
+    repos.checkout.resolveServicePriceForBarber = vi.fn().mockImplementation(
+      (_svc: string, _loc: string, staff: string | null) =>
+        Promise.resolve({ priceCents: staff === 'b2' ? 30000 : 35000, isExcluded: false }),
+    )
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    // Antonio (b1) queda como atendiendo y su overlay carga → card $350, nunca
+    // el estático del viewer ($280).
+    await screen.findByRole('button', { name: /cambiar barbero: antonio/i }, { timeout: 3000 })
+    await waitFor(() => expect(screen.getAllByText('$350').length).toBeGreaterThan(0))
+    expect(screen.queryByText('$280')).not.toBeInTheDocument()
+
+    // Cambia el atendiendo a Beto (b2) vía el sheet.
+    await user.click(screen.getByRole('button', { name: /cambiar barbero: antonio/i }))
+    const sheet = await screen.findByRole('dialog', { name: /seleccionar barbero/i })
+    await user.click(within(sheet).getByRole('button', { name: /beto/i }))
+
+    // La card ahora muestra el precio de Beto ($300) — reaccionó al atendiendo.
+    await waitFor(() => expect(screen.getAllByText('$300').length).toBeGreaterThan(0))
+    expect(repos.checkout.getServicePricing).toHaveBeenCalledWith('loc1', 'b2')
+
+    // Agregar tras cambiar: la línea (y por tanto el total del CTA Cobrar) usa
+    // el precio de Beto ($300), no el de Antonio ($350).
+    await user.click(screen.getAllByText('Corte')[0])
+    expect(await screen.findByRole('button', { name: /cobrar.*300/i }, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /cobrar.*350/i })).not.toBeInTheDocument()
+    expect(repos.checkout.resolveServicePriceForBarber).toHaveBeenCalledWith('svc-corte', 'loc1', 'b2')
+  })
+
   it('picker de línea muestra estado vacío cuando todos los barberos están excluidos', async () => {
     const user = userEvent.setup()
     const repos = makeRepos()

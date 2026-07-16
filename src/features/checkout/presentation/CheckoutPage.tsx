@@ -418,6 +418,9 @@ export function CheckoutPage() {
               searchQuery={searchQuery}
               attendingBarberId={attendingBarberId}
               attendingBarberName={attendingBarber?.fullName ?? null}
+              priceOverlay={ck.priceOverlay}
+              overlayFresh={ck.overlayFresh}
+              pricesUpdating={ck.pricesUpdating}
               onAdd={(item) => ck.addCatalogItem(item)}
             />
           </>

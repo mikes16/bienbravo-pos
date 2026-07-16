@@ -1,7 +1,7 @@
 import type { AuthRepository } from '@/core/auth/auth.repository.ts'
 import type { PosViewer, PosStaffUser, PosLocation, PosPinLockoutStatus } from '@/core/auth/auth.types.ts'
 import type { Repositories } from '@/core/repositories/registry.ts'
-import type { CheckoutRepository, CustomerResult, SaleDetail } from '@/features/checkout/data/checkout.repository.ts'
+import type { CheckoutRepository, CustomerResult, SaleDetail, ServicePricingOverlay } from '@/features/checkout/data/checkout.repository.ts'
 import type {
   CatalogCategory,
   CatalogCombo,
@@ -176,6 +176,13 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
 
   async resolveServicePriceForBarber(_serviceId: string, _locationId: string, _staffUserId: string | null): Promise<{ priceCents: number; isExcluded: boolean }> {
     return { priceCents: 0, isExcluded: false }
+  }
+
+  // Overlay de precios por barbero: por defecto vacío → el grid cae al precio
+  // estático del catálogo. Tests que verifican la reactividad del precio de las
+  // cards al cambiar el atendiendo sobre-escriben con vi.fn por barbero.
+  async getServicePricing(_locationId: string, _staffUserId: string | null): Promise<ServicePricingOverlay[]> {
+    return []
   }
 
   async createSale(_input: CreateSaleInput): Promise<SaleResult> {

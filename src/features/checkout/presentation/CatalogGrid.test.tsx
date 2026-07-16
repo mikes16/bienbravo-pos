@@ -105,4 +105,82 @@ describe('CatalogGrid', () => {
     )
     expect(screen.getByText(/sin resultados/i)).toBeInTheDocument()
   })
+
+  // Overlay de precios (capa LIVE): la card muestra el precio resuelto para el
+  // atendiendo, no el estático (congelado en el del viewer).
+  it('overlay de precios: la card muestra el precio del atendiendo, no el estático', () => {
+    render(
+      <CatalogGrid
+        items={ITEMS}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        attendingBarberId="eli"
+        overlayFresh
+        priceOverlay={new Map([['s1', { priceCents: 35000, isExcluded: false }]])}
+        onAdd={() => {}}
+      />,
+    )
+    expect(screen.getAllByText('$350').length).toBeGreaterThan(0)
+    // El estático ($280) ya no se muestra: la card corresponde al atendiendo.
+    expect(screen.queryByText('$280')).not.toBeInTheDocument()
+  })
+
+  // El overlay fresco es más fresco que staffOverrides estático: oculta la card
+  // aunque el estático no marque exclusión.
+  it('overlay fresco con isExcluded oculta la card aunque el estático no la excluya', () => {
+    render(
+      <CatalogGrid
+        items={ITEMS}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        attendingBarberId="eli"
+        attendingBarberName="Eli"
+        overlayFresh
+        priceOverlay={new Map([['s1', { priceCents: 0, isExcluded: true }]])}
+        onAdd={() => {}}
+      />,
+    )
+    // Corte (único servicio de cat-1) queda oculto por el overlay → invita a
+    // cambiar de barbero, nunca muestra la card en $0.
+    expect(screen.queryByText('Corte')).not.toBeInTheDocument()
+    expect(screen.queryByText('$0')).not.toBeInTheDocument()
+    expect(screen.getByText(/eli no ofrece servicios\. cambia de barbero\./i)).toBeInTheDocument()
+  })
+
+  // Overlay stale (overlayFresh=false): NO usamos su isExcluded (es del barbero
+  // anterior). El filtro cae al estático, reactivo al atendiendo actual.
+  it('overlay stale no aplica su isExcluded — el filtro usa el estático reactivo', () => {
+    render(
+      <CatalogGrid
+        items={ITEMS}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        attendingBarberId="eli"
+        overlayFresh={false}
+        priceOverlay={new Map([['s1', { priceCents: 0, isExcluded: true }]])}
+        onAdd={() => {}}
+      />,
+    )
+    // El estático de Corte no excluye a "eli" → la card sigue visible pese al
+    // isExcluded stale. (El precio sí usa el overlay como previousData.)
+    expect(screen.getAllByText('Corte').length).toBeGreaterThan(0)
+  })
+
+  // Anti-flash (previousData): mientras llega el overlay del nuevo atendiendo,
+  // el precio se atenúa (aria-busy) en vez de mostrarse "como actual".
+  it('pricesUpdating atenúa el precio de las cards (aria-busy)', () => {
+    render(
+      <CatalogGrid
+        items={ITEMS}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        priceOverlay={new Map([['s1', { priceCents: 35000, isExcluded: false }]])}
+        pricesUpdating
+        onAdd={() => {}}
+      />,
+    )
+    const prices = screen.getAllByText('$350')
+    expect(prices.length).toBeGreaterThan(0)
+    for (const p of prices) expect(p).toHaveAttribute('aria-busy', 'true')
+  })
 })

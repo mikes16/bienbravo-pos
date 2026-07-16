@@ -9,11 +9,14 @@ interface CatalogTileProps {
   stockQty?: number
   imageUrl?: string | null
   onAdd: () => void
+  // El overlay del nuevo atendiendo está en vuelo: atenuamos el precio para no
+  // presentar el del barbero anterior como el actual (patrón previousData).
+  updating?: boolean
 }
 
 const LOW_STOCK_THRESHOLD = 5
 
-export function CatalogTile({ kind, name, priceCents, stockQty, imageUrl, onAdd }: CatalogTileProps) {
+export function CatalogTile({ kind, name, priceCents, stockQty, imageUrl, onAdd, updating }: CatalogTileProps) {
   const isOutOfStock = kind === 'product' && stockQty === 0
   const isLowStock = kind === 'product' && typeof stockQty === 'number' && stockQty > 0 && stockQty <= LOW_STOCK_THRESHOLD
 
@@ -53,7 +56,13 @@ export function CatalogTile({ kind, name, priceCents, stockQty, imageUrl, onAdd 
           <span className="text-[14px] font-bold leading-tight text-[var(--color-bone)] [text-shadow:_0_1px_2px_rgba(0,0,0,0.7)]">{name}</span>
         </div>
         <div className="flex w-full items-end justify-between">
-          <span className="text-[18px] font-extrabold tabular-nums text-[var(--color-bone)] [text-shadow:_0_1px_2px_rgba(0,0,0,0.7)]">
+          <span
+            aria-busy={updating || undefined}
+            className={cn(
+              'text-[18px] font-extrabold tabular-nums text-[var(--color-bone)] [text-shadow:_0_1px_2px_rgba(0,0,0,0.7)] transition-opacity duration-200',
+              updating && 'opacity-40',
+            )}
+          >
             {formatMoney(priceCents)}
           </span>
           {isLowStock && (

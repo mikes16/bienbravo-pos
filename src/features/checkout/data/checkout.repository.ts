@@ -163,6 +163,27 @@ const RESOLVE_SERVICE_PRICE_QUERY = gql`
   }
 `
 
+// Overlay de SOLO precios por barbero para el grid del catálogo. Ligerísima:
+// id + pricingFor(priceCents, isExcluded) — sin imágenes, nombres, extras ni
+// staffOverrides. Se re-dispara al cambiar el barbero atendiendo para que el
+// precio de la card corresponda a ESE barbero; el catálogo STATIC (gated por
+// catalogVersion) resuelve el precio una sola vez para el viewer y nunca
+// reacciona. Usa `gql` directo — mismo criterio que RESOLVE_SERVICE_PRICE_QUERY:
+// evita drift de codegen por el campo `isExcluded` que el generated de
+// `services` todavía no incluye. El API sigue siendo la autoridad del precio al
+// cobrar (resolveAndCommitLinePrice + PRICE_MISMATCH server-side).
+const SERVICES_PRICING_QUERY = gql`
+  query PosServicesPricing($locationId: ID!, $staffUserId: ID) {
+    services(locationId: $locationId) {
+      id
+      pricingFor(locationId: $locationId, staffUserId: $staffUserId) {
+        priceCents
+        isExcluded
+      }
+    }
+  }
+`
+
 const CUSTOMER_HISTORY_QUERY = gql`
   query PosCustomerHistory($customerId: ID!, $limit: Int) {
     customerAppointments(customerId: $customerId, limit: $limit) {
@@ -510,12 +531,34 @@ export interface ResolvedLinePrice {
   isExcluded: boolean
 }
 
+/**
+ * Entrada del overlay de precios por barbero para una card del grid. Precio ya
+ * resuelto (staff > sucursal > base) para el barbero atendiendo + la bandera de
+ * exclusión. Se usa SOLO para display (las cards) y para el filtro de exclusión
+ * del grid; NO es autoridad — la línea del carrito la resuelve/valida el API.
+ */
+export interface ServicePricingOverlay {
+  id: string
+  priceCents: number
+  isExcluded: boolean
+}
+
 export interface CheckoutRepository {
   getCategories(): Promise<CatalogCategory[]>
   getServices(locationId: string, staffUserId?: string | null): Promise<CatalogService[]>
   getProducts(locationId: string): Promise<CatalogProduct[]>
   getCombos(): Promise<CatalogCombo[]>
   resolveServicePriceForBarber(serviceId: string, locationId: string, staffUserId: string | null): Promise<ResolvedLinePrice>
+  /**
+   * Overlay ligero de precios por barbero para el grid del catálogo. Devuelve,
+   * por servicio, el precio resuelto para `staffUserId` (staff > sucursal >
+   * base) + `isExcluded`. Se re-consulta al cambiar el atendiendo para que la
+   * card muestre el precio de ESE barbero — el catálogo STATIC lo resuelve una
+   * sola vez para el viewer y no reacciona. cache-first: volver a un barbero ya
+   * consultado es instantáneo (el server cachea pricing ~60s). Solo display; la
+   * autoridad del precio de la línea sigue siendo el API al cobrar.
+   */
+  getServicePricing(locationId: string, staffUserId: string | null): Promise<ServicePricingOverlay[]>
   /**
    * Stock es dato LIVE y correctness-critical (riesgo de sobreventa si se
    * muestra stale). `opts.force` fuerza `network-only`; el checkout lo usa
@@ -734,6 +777,25 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       priceCents: svc.pricingFor?.priceCents ?? svc.basePriceCents,
       isExcluded: svc.pricingFor?.isExcluded ?? false,
     }
+  }
+
+  async getServicePricing(locationId: string, staffUserId: string | null): Promise<ServicePricingOverlay[]> {
+    const { data } = await this.#client.query<{
+      services: Array<{ id: string; pricingFor: { priceCents: number; isExcluded: boolean } | null }>
+    }>({
+      query: SERVICES_PRICING_QUERY,
+      variables: { locationId, staffUserId: staffUserId ?? null },
+      // cache-first: el par (locationId, staffUserId) cachea; regresar a un
+      // barbero ya consultado es instantáneo. El server cachea pricing ~60s,
+      // alineado. La autoridad del precio vive en el API al cobrar.
+      fetchPolicy: 'cache-first',
+    })
+    // pricingFor es non-null en el schema, pero filtramos por defensa: si
+    // faltara, no metemos overlay para ese servicio y la card cae al precio
+    // estático (fallback) en vez de mostrar un 0 inventado.
+    return (data?.services ?? [])
+      .filter((s) => s.pricingFor != null)
+      .map((s) => ({ id: s.id, priceCents: s.pricingFor!.priceCents, isExcluded: s.pricingFor!.isExcluded }))
   }
 
   async getStockLevels(locationId: string, opts?: { force?: boolean }): Promise<StockLevel[]> {
