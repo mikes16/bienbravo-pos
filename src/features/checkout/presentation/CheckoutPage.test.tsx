@@ -398,6 +398,71 @@ describe('CheckoutPage (integration)', () => {
     expect(screen.queryByLabelText('Beto')).not.toBeInTheDocument()
   })
 
+  // Basura en el carrito: el tap manual de un servicio que el barbero
+  // atendiendo no realiza (catálogo stale, la card se alcanzó a mostrar) NO
+  // debe dejar una línea en $0/sin barbero — se elimina y solo queda el toast.
+  it('tap manual de servicio excluido para el atendiendo NO deja línea en el carrito', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // El walk-in fija el barbero atendiendo (b2 = Beto) sin prefill de servicios
+    // — un free sale no tiene default barber y no dispararía el camino de add.
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1', customer: null, assignedStaffUser: { id: 'b2' }, requestedServices: [],
+    })
+    // Catálogo stale: Corte se muestra en el grid (excludedStaffIds vacío) pero
+    // el resolve para el barbero atendiendo devuelve excluido.
+    repos.checkout.resolveServicePriceForBarber = vi
+      .fn()
+      .mockResolvedValue({ priceCents: 0, isExcluded: true })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    // Espera a que Beto quede como atendiendo antes del tap (determinismo).
+    await screen.findByRole('button', { name: /cambiar barbero: beto/i }, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    // El toast avisa…
+    expect(await screen.findByText(/no ofrece corte/i)).toBeInTheDocument()
+    // …y la línea nunca queda en el carrito (se elimina): no queda ninguna fila
+    // de carrito. (El Total del carrito vacío es $0 legítimo, no una línea
+    // basura.)
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /toca para modificar/i })).not.toBeInTheDocument()
+    })
+    // Y el CTA de Cobrar queda deshabilitado (carrito vacío).
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled()
+  })
+
+  // EXCEPCIÓN: el prefill de walk-in conserva la línea aunque el barbero
+  // asignado esté excluido — el servicio lo pidió el cliente, no se descarta.
+  // Entra SIN barbero y re-resuelto al precio de sucursal (nunca $0, nunca
+  // eliminado).
+  it('prefill de walk-in con barbero excluido conserva la línea (sin barbero, precio de sucursal)', async () => {
+    const repos = makeRepos()
+    repos.checkout.getWalkIn = vi.fn().mockResolvedValue({
+      id: 'w1',
+      customer: { id: 'c1', fullName: 'Fabián' },
+      assignedStaffUser: { id: 'b1' },
+      requestedServices: [{ id: 'svc-corte', name: 'Corte', basePriceCents: 20000, categoryId: 'cat-cortes' }],
+    })
+    // b1 (Antonio) excluido del corte; el precio de sucursal (staff=null) = $300.
+    repos.checkout.resolveServicePriceForBarber = vi.fn().mockImplementation(
+      (_svc: string, _loc: string, staff: string | null) =>
+        Promise.resolve(staff === 'b1' ? { priceCents: 0, isExcluded: true } : { priceCents: 30000, isExcluded: false }),
+    )
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeWalkInId=w1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findByText('Fabián', {}, { timeout: 3000 })
+    // La línea se conserva a precio de sucursal ($300), no $0, no eliminada.
+    expect((await screen.findAllByText('$300')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('$0')).not.toBeInTheDocument()
+    // Y avisa que el barbero asignado no ofrece el servicio.
+    expect(await screen.findByText(/no ofrece corte/i)).toBeInTheDocument()
+  })
+
   it('picker de línea muestra estado vacío cuando todos los barberos están excluidos', async () => {
     const user = userEvent.setup()
     const repos = makeRepos()

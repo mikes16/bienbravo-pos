@@ -654,12 +654,16 @@ export function useCheckout() {
     })
     if (item.kind === 'service' && cartState.defaultBarberId) {
       void resolveAndCommitLinePrice(lineId, item.id, cartState.defaultBarberId).then((outcome) => {
-        // Si el barbero default está excluido de este servicio, la línea entró
-        // con ese barbero vía el reducer; lo limpiamos para que quede "sin
-        // asignar" (nunca $0, nunca acreditado a quien no ofrece el servicio).
-        // La línea conserva el precio optimista del catálogo (no $0). El toast
-        // ya avisó desde resolveAndCommitLinePrice.
-        if (outcome === 'excluded') dispatch({ type: 'clearLineBarber', lineId })
+        // Si el barbero atendiendo está excluido de este servicio, la línea
+        // entró optimista con ese barbero vía el reducer. En vez de dejarla sin
+        // barbero (basura: precio optimista sin a quién acreditar), la ELIMINAMOS.
+        // El grid ya oculta estos servicios cuando hay barbero atendiendo, así
+        // que esto solo cubre catálogo stale. El toast ya avisó desde
+        // resolveAndCommitLinePrice. Trap del repo: la línea recién despachada no
+        // está en `cartState` de este render, por eso removemos por `lineId`
+        // directo. (El prefill de walk-in NO pasa por aquí — ahí el servicio lo
+        // pidió el cliente y la línea se conserva sin barbero a precio de sucursal.)
+        if (outcome === 'excluded') dispatch({ type: 'removeLine', lineId })
       })
     }
   }

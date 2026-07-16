@@ -129,6 +129,14 @@ export function CheckoutPage() {
 
   const totals = computeTotals(ck.cartState.lines)
   const defaultBarber = ck.barbers.find((b) => b.id === ck.cartState.defaultBarberId) ?? ck.barbers[0]
+  // Barbero atendiendo = el default barber REAL de la venta (no el fallback de
+  // display barbers[0]). Alimenta el filtrado del grid: los servicios que este
+  // barbero no realiza se ocultan. Null cuando la venta no tiene default →
+  // no se oculta nada. Reactivo: cambiar de atendiendo re-filtra el grid.
+  const attendingBarberId = ck.cartState.defaultBarberId || null
+  const attendingBarber = attendingBarberId
+    ? ck.barbers.find((b) => b.id === attendingBarberId) ?? null
+    : null
   const cartItemCount = ck.cartState.lines.reduce((sum, l) => sum + l.qty, 0)
   // Total real a cobrar = subtotal - cupones. El API recalcula en el server
   // al cerrar venta, pero el cajero necesita ver el monto correcto en CTA
@@ -408,6 +416,8 @@ export function CheckoutPage() {
               items={ck.catalogItems}
               selectedCategoryId={effectiveCategoryId}
               searchQuery={searchQuery}
+              attendingBarberId={attendingBarberId}
+              attendingBarberName={attendingBarber?.fullName ?? null}
               onAdd={(item) => ck.addCatalogItem(item)}
             />
           </>
