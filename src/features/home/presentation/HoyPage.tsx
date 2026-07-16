@@ -29,6 +29,22 @@ function todayRangeISO(tz: string): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
+// Decide si el mensaje de error del servidor es apto para mostrárselo tal cual
+// a un operador hispanohablante no técnico. El API devuelve en español los
+// errores de cara al usuario (stock, reglas de negocio), pero los errores de
+// máquina de estados llegan en inglés técnico ("Appointment must be CHECKED_IN
+// to start") — esos NO se muestran; el caller cae a un fallback en español.
+function readableSpanishError(raw: string | undefined): string | null {
+  const msg = raw?.trim()
+  if (!msg) return null
+  const looksSpanish =
+    /[áéíóúñ¿¡]/i.test(msg) ||
+    /\b(no|sí|cita|barbero|caja|turno|stock|insuficiente|sin|ya|cliente|servicio)\b/i.test(msg)
+  const looksEnglish =
+    /\b(must|be|to|the|already|appointment|invalid|cannot|failed|start|checked|service)\b/i.test(msg)
+  return looksSpanish && !looksEnglish ? msg : null
+}
+
 export function HoyPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
@@ -235,6 +251,18 @@ export function HoyPage() {
             // eslint-disable-next-line no-console
             console.error('[atender] failed', { targetId, targetKind, err })
           }
+          // Nunca tragues el fallo. Caso reportado: la cita ya avanzó de estado
+          // en el servidor (otro la puso IN_SERVICE) y startService la rechaza
+          // — con data stale el operador tapeaba y no pasaba absolutamente nada.
+          // Avisamos SIEMPRE y re-sincronizamos la lista para reflejar el estado
+          // real. Solo mostramos el mensaje del servidor si es legible en
+          // español; los errores técnicos en inglés caen al fallback.
+          addToast(
+            readableSpanishError((err as { message?: string }).message) ??
+              'No se pudo iniciar la cita. Se actualizó la lista.',
+            'error',
+          )
+          await refetch({ force: true })
         } finally {
           setCtaBusy(false)
         }
@@ -257,7 +285,7 @@ export function HoyPage() {
         break
       }
     }
-  }, [vm, ctaBusy, navigate, viewer, agenda, walkins, refetch])
+  }, [vm, ctaBusy, navigate, viewer, agenda, walkins, refetch, addToast])
 
   const handleGateAction = useCallback(() => {
     if (!vm?.gate) return

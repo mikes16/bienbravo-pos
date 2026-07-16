@@ -317,7 +317,21 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     // por `isMine` — si Javi tiene a Cliente Demo en servicio, Alan no debe
     // ver "Cobrar a Cliente Demo" (no es suya esa cobranza).
     const activeMine = candidates.find((c) => c.isActive && c.row.isMine)
-    const nextMine = candidates.find((c) => c.row.kind === 'next')
+    // nextMine es el ESPEJO de activeMine: el CTA por-operador solo debe
+    // ofrecer "atender" trabajo del viewer. Buscamos su primer pendiente en
+    // orden cronológico (candidates ya viene ordenado por sortKey/startAt).
+    // NO usamos kind==='next' porque ese marca el primer pendiente de TODA la
+    // sucursal (correcto para la LISTA, incorrecto para el CTA): ofrecía
+    // "Atender a X" de la cita de otro barbero y, si esa cita ya había avanzado
+    // de estado en el servidor, el backend la rechazaba y el barbero quedaba
+    // atrapado.
+    const nextMine = candidates.find((c) => c.isPending && c.row.isMine)
+    // queueHead NO se filtra por isMine a propósito: la cola son walk-ins SIN
+    // dueño (assignedStaffUser null) que cualquier barbero libre puede tomar —
+    // "atender al siguiente" es un recurso compartido del piso, no trabajo del
+    // viewer. En filas de cola row.isMine solo marca preferencia del cliente
+    // (no posesión), así que filtrar por él escondería la cola a quien puede
+    // tomarla. Se toma por el path de handleTakeQueueItem con su propio guard.
     const queueHead = candidates.find((c) => c.row.kind === 'queue')
 
     if (activeMine) {

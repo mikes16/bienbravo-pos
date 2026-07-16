@@ -260,6 +260,66 @@ describe('deriveHoyViewModel', () => {
     expect(vm.cta?.actionLabel).toMatch(/pedro/i)
   })
 
+  // CTA es POR-OPERADOR: "atender" solo debe disparar trabajo del viewer.
+  // Regresión: `nextMine` tomaba la "siguiente" cita de TODA la sucursal, así
+  // que el barbero logueado veía "Atender a X" de la cita de otro barbero.
+  it('CTA no ofrece atender una cita pendiente de OTRO barbero cuando el viewer no tiene ninguna', () => {
+    const vm = deriveHoyViewModel(
+      baseInput({
+        appointments: [
+          {
+            id: 'a-other',
+            status: 'CONFIRMED',
+            staffUser: { id: 'other-staff', fullName: 'Luis' },
+            customer: { id: 'c1', fullName: 'Ramiro', email: null, phone: null },
+            items: [{ label: 'corte', priceCents: 0, qty: 1 }],
+            startAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+          } as unknown as Appointment,
+        ],
+      }),
+    )
+    // La fila del otro barbero SÍ aparece (contexto de piso)...
+    expect(vm.rows).toHaveLength(1)
+    expect(vm.rows[0].isMine).toBe(false)
+    // ...pero el CTA por-operador NO debe ofrecer atenderla. Sin nada propio
+    // pendiente ni cola sin dueño, cae a "nueva-venta".
+    expect(vm.cta.variant).toBe('nueva-venta')
+    expect(vm.cta.actionLabel).not.toMatch(/ramiro/i)
+  })
+
+  it('CTA atender apunta a MI cita pendiente aunque una de otro barbero venga antes en la fila', () => {
+    const vm = deriveHoyViewModel(
+      baseInput({
+        appointments: [
+          {
+            id: 'a-other-early',
+            status: 'CONFIRMED',
+            staffUser: { id: 'other-staff', fullName: 'Luis' },
+            customer: { id: 'c1', fullName: 'Ramiro', email: null, phone: null },
+            items: [{ label: 'corte', priceCents: 0, qty: 1 }],
+            startAt: '2026-05-04T11:00:00Z',
+          } as unknown as Appointment,
+          {
+            id: 'a-mine-late',
+            status: 'CONFIRMED',
+            staffUser: { id: STAFF_ID, fullName: 'Eli Cruz' },
+            customer: { id: 'c2', fullName: 'Beto', email: null, phone: null },
+            items: [{ label: 'corte', priceCents: 0, qty: 1 }],
+            startAt: '2026-05-04T12:00:00Z',
+          } as unknown as Appointment,
+        ],
+      }),
+    )
+    // El CTA apunta a la cita del viewer, no a la más temprana del piso.
+    expect(vm.cta.variant).toBe('atender')
+    expect(vm.cta.actionLabel).toMatch(/beto/i)
+    expect(vm.cta.targetId).toBe('a-mine-late')
+    // La marca "siguiente" de la LISTA sí sigue siendo la cita más temprana del
+    // piso (Ramiro), sin importar de quién sea — verifica que no rompimos eso.
+    const nextRow = vm.rows.find((r) => r.kind === 'next')
+    expect(nextRow?.customerName).toBe('Ramiro')
+  })
+
   it('CTA = atender al siguiente when only queue walk-in', () => {
     const vm = deriveHoyViewModel(
       baseInput({
