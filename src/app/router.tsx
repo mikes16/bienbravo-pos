@@ -87,6 +87,10 @@ export const router = createBrowserRouter([
       { path: '/mis-ventas', element: <Navigate to="/my-day" replace /> },
     ],
   },
-  { path: '/dev/hello-pos', element: lazyRoute('/dev/hello-pos', HelloPosPage) },
+  // Pantalla de verificación con catálogo INVENTADO — solo existe en dev; en
+  // prod la ruta cae al catch-all (evita exhibir precios ficticios por URL).
+  ...(import.meta.env.DEV
+    ? [{ path: '/dev/hello-pos', element: lazyRoute('/dev/hello-pos', HelloPosPage) }]
+    : []),
   { path: '*', element: <Navigate to="/" replace /> },
 ])
