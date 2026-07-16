@@ -70,6 +70,104 @@ function makeClientReturning(payload: Record<string, unknown>) {
   return new ApolloClient({ link, cache: new InMemoryCache() })
 }
 
+// Captura las variables enviadas a la mutation para verificar el payload que el
+// repo arma (saleId, items, payments del delta, tipCents, registerSessionId).
+function makeCapturingClient(payload: Record<string, unknown>) {
+  const captured: { variables: Record<string, unknown> | null } = { variables: null }
+  const link = new ApolloLink(
+    (operation) =>
+      new Observable((observer) => {
+        captured.variables = operation.variables
+        observer.next({ data: payload })
+        observer.complete()
+      }),
+  )
+  const client = new ApolloClient({ link, cache: new InMemoryCache() })
+  return { client, captured }
+}
+
+describe('ApolloCheckoutRepository.getAppointmentPrepayState', () => {
+  it('mapea los items de la venta prepagada a prepaidItems (filtra TIP) + prepaidTotalCents', async () => {
+    const client = makeClientReturning({
+      appointment: {
+        __typename: 'Appointment',
+        id: 'appt-1',
+        staffNote: 'Cliente alérgico',
+        sale: {
+          __typename: 'Sale',
+          id: 'sale-1',
+          source: 'BOOKING_PREPAY_LINK',
+          paymentStatus: 'PAID',
+          paidTotalCents: 50000,
+          totalCents: 50000,
+          items: [
+            { __typename: 'SaleItem', id: 'i1', itemType: 'SERVICE', name: 'Corte', qty: 1, unitPriceCents: 50000, totalCents: 50000, serviceId: 'svc-1', productId: null, catalogComboId: null, staffUserId: 'b1' },
+            { __typename: 'SaleItem', id: 'i2', itemType: 'TIP', name: 'Propina', qty: 1, unitPriceCents: 5000, totalCents: 5000, serviceId: null, productId: null, catalogComboId: null, staffUserId: 'b1' },
+          ],
+          payments: [
+            { __typename: 'PaymentTransaction', provider: 'STRIPE', processedAt: '2026-07-01T12:00:00.000Z', createdAt: '2026-07-01T12:00:00.000Z', note: null },
+          ],
+        },
+      },
+    })
+    const repo = new ApolloCheckoutRepository(client)
+    const state = await repo.getAppointmentPrepayState('appt-1')
+    expect(state.isPrepaid).toBe(true)
+    expect(state.prepaidSaleId).toBe('sale-1')
+    expect(state.prepaidTotalCents).toBe(50000)
+    expect(state.staffNote).toBe('Cliente alérgico')
+    // La línea TIP queda fuera; solo el servicio pagado se muestra como PAGADO.
+    expect(state.prepaidItems).toEqual([
+      { id: 'i1', name: 'Corte', qty: 1, unitPriceCents: 50000, totalCents: 50000, serviceId: 'svc-1', productId: null, catalogComboId: null, staffUserId: 'b1' },
+    ])
+  })
+
+  it('sin venta prepagada devuelve el default (prepaidItems vacío, prepaidTotalCents null)', async () => {
+    const client = makeClientReturning({
+      appointment: { __typename: 'Appointment', id: 'appt-1', staffNote: null, sale: null },
+    })
+    const repo = new ApolloCheckoutRepository(client)
+    const state = await repo.getAppointmentPrepayState('appt-1')
+    expect(state.isPrepaid).toBe(false)
+    expect(state.prepaidItems).toEqual([])
+    expect(state.prepaidTotalCents).toBeNull()
+  })
+})
+
+describe('ApolloCheckoutRepository.addItemsToAppointmentSale', () => {
+  it('envía saleId + items + payments del delta + tipCents + registerSessionId y devuelve el Sale', async () => {
+    const { client, captured } = makeCapturingClient({
+      addItemsToAppointmentSale: {
+        __typename: 'Sale',
+        id: 'sale-1',
+        status: 'PAID',
+        paymentStatus: 'PAID',
+        totalCents: 78000,
+        paidTotalCents: 78000,
+      },
+    })
+    const repo = new ApolloCheckoutRepository(client)
+    const result = await repo.addItemsToAppointmentSale({
+      saleId: 'sale-1',
+      items: [
+        { serviceId: 'svc-corte', productId: null, catalogComboId: null, qty: 1, unitPriceCents: 28000, staffUserId: 'b1' },
+      ],
+      payments: [{ provider: 'CASH', amountCents: 28000 }],
+      tipCents: 0,
+      registerSessionId: 'sess-1',
+    })
+    expect(result).toMatchObject({ id: 'sale-1', status: 'PAID', paymentStatus: 'PAID', totalCents: 78000, paidTotalCents: 78000 })
+    const input = captured.variables?.input as Record<string, unknown>
+    expect(input.saleId).toBe('sale-1')
+    expect(input.registerSessionId).toBe('sess-1')
+    expect(input.tipCents).toBe(0)
+    expect(input.payments).toEqual([{ provider: 'CASH', amountCents: 28000 }])
+    expect(input.items).toEqual([
+      { serviceId: 'svc-corte', productId: null, catalogComboId: null, qty: 1, unitPriceCents: 28000, staffUserId: 'b1' },
+    ])
+  })
+})
+
 describe('ApolloCheckoutRepository.getComboPricing', () => {
   it('mapea id + precio resuelto + isExcluded de catalogCombos.pricingFor', async () => {
     const client = makeClientReturning({

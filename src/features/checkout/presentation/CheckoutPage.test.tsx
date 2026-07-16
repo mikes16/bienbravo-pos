@@ -309,7 +309,7 @@ describe('CheckoutPage (integration)', () => {
   // directamente (la eviction real vive en ApolloCheckoutRepository, probada
   // ahí contra el cache de Apollo); aquí verificamos que CheckoutPage llame
   // al repo (no a un `useMutation` sin evict) con el saleId correcto.
-  it('prepaid appointment close: calls repo.closeAppointmentSale (which evicts Hoy/Mi Día) and navigates home', async () => {
+  it('prepaid appointment close (sin extras): calls repo.closeAppointmentSale (which evicts Hoy/Mi Día) and navigates home', async () => {
     const user = userEvent.setup()
     const repos = makeRepos()
     repos.checkout.getAppointmentPrepayState = vi.fn().mockResolvedValue({
@@ -318,17 +318,163 @@ describe('CheckoutPage (integration)', () => {
       prepaidSaleId: 'sale-prepaid-99',
       prepaidMethod: 'STRIPE',
       prepaidAt: '2026-07-01T12:00:00.000Z',
+      staffNote: null,
+      prepaidItems: [
+        { id: 'pi-1', itemType: 'SERVICE', name: 'Corte', qty: 1, unitPriceCents: 28000, totalCents: 28000, serviceId: 'svc-corte', productId: null, catalogComboId: null, staffUserId: 'b1' },
+      ],
+      prepaidTotalCents: 28000,
     })
     repos.checkout.closeAppointmentSale = vi.fn().mockResolvedValue(undefined)
     renderWithProviders(<CheckoutPage />, {
       initialRoute: '/checkout?completeAppointmentId=appt-1',
       repos: { ...repos, auth: new TestAuthRepo() },
     })
-    const closeBtn = await screen.findByRole('button', { name: /cerrar cita y completar servicio/i }, { timeout: 3000 })
+    // Sin extras en el carrito → el CTA es "Finalizar servicio" (cierre en $0).
+    const closeBtn = await screen.findByRole('button', { name: /finalizar servicio/i }, { timeout: 3000 })
     await user.click(closeBtn)
     await waitFor(() => {
       expect(repos.checkout.closeAppointmentSale).toHaveBeenCalledWith('sale-prepaid-99')
     })
+  })
+
+  /* ── Cita PREPAGADA: items PAGADO read-only + extras cobrables por delta +
+        finalizar en $0. El API devuelve appointment.sale con items; el checkout
+        los pinta PAGADO (no suman al total a cobrar) y el operador puede agregar
+        extras que se cobran por el delta vía addItemsToAppointmentSale. ── */
+
+  // El viewer (staff-1) debe estar en el roster para poder acreditar los extras
+  // — el default barber de una venta libre es el operador logueado.
+  const PREPAID_ROSTER = [
+    { id: 'staff-1', fullName: 'Carlos Barbero', photoUrl: null },
+    ...BARBERS,
+  ]
+  function makePrepaidRepos(prepayState: Record<string, unknown>) {
+    const repos = makeRepos()
+    repos.checkout.getBarbers = vi.fn().mockResolvedValue(PREPAID_ROSTER)
+    repos.checkout.getAvailableBarbers = vi
+      .fn()
+      .mockResolvedValue(PREPAID_ROSTER.map((b) => ({ ...b, hasClockedIn: true, isOccupied: false })))
+    repos.checkout.getAppointmentPrepayState = vi.fn().mockResolvedValue(prepayState)
+    return repos
+  }
+  const PREPAID_ITEM = {
+    id: 'pi-1', itemType: 'SERVICE', name: 'Corte VIP de la cita', qty: 1,
+    unitPriceCents: 50000, totalCents: 50000, serviceId: 'svc-vip', productId: null,
+    catalogComboId: null, staffUserId: 'b1',
+  }
+  const PREPAID_STATE = {
+    isPrepaid: true, hasPendingLink: false, prepaidSaleId: 'sale-prepaid-99',
+    prepaidMethod: 'STRIPE', prepaidAt: '2026-07-01T12:00:00.000Z', staffNote: null,
+    prepaidItems: [PREPAID_ITEM], prepaidTotalCents: 50000,
+  }
+
+  it('prepaid: pinta las líneas pagadas como PAGADO read-only (sin controles) y CTA finalizar', async () => {
+    const repos = makePrepaidRepos(PREPAID_STATE)
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeAppointmentId=appt-1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    // La línea pagada se muestra con su nombre + chip PAGADO + precio.
+    expect(await screen.findByText('Corte VIP de la cita', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText('Pagado')).toBeInTheDocument()
+    expect(screen.getAllByText('$500').length).toBeGreaterThan(0)
+    // NO tiene controles: no es una fila editable (sin "toca para modificar"),
+    // sin botón de quitar la línea pagada.
+    expect(screen.queryByRole('button', { name: /toca para modificar/i })).not.toBeInTheDocument()
+    // Sin extras → el CTA es "Finalizar servicio", no "Cobrar".
+    expect(screen.getByRole('button', { name: /finalizar servicio/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^cobrar/i })).not.toBeInTheDocument()
+  })
+
+  it('prepaid: la nota de la cita se ve también en el flujo prepago', async () => {
+    const repos = makePrepaidRepos({ ...PREPAID_STATE, staffNote: 'Cliente alérgico a la loción' })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeAppointmentId=appt-1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    expect(await screen.findByText(/cliente alérgico a la loción/i, {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('prepaid: "A cobrar" = solo los extras (no lo pagado); muestra "Pagado antes"', async () => {
+    const user = userEvent.setup()
+    const repos = makePrepaidRepos(PREPAID_STATE)
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeAppointmentId=appt-1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    // Agrega un extra ($280). El total a cobrar debe ser $280, NO $780.
+    await user.click(screen.getAllByText('Corte')[0])
+    // CTA "Cobrar extras" con el delta de los extras ($280), nunca el prepagado.
+    expect(await screen.findByRole('button', { name: /cobrar extras.*280/i }, { timeout: 3000 })).toBeInTheDocument()
+    // "Pagado antes" muestra el monto prepagado ($500) — transparencia.
+    expect(screen.getByText(/pagado antes/i)).toBeInTheDocument()
+    expect(screen.getAllByText('$500').length).toBeGreaterThan(0)
+    // "A cobrar" (label del total) presente; el total combinado ($780) NO aparece.
+    expect(screen.getByText(/a cobrar/i)).toBeInTheDocument()
+    expect(screen.queryByText('$780')).not.toBeInTheDocument()
+  })
+
+  it('prepaid: cobrar extras → addItemsToAppointmentSale con saleId, items, payments del delta y registerSessionId', async () => {
+    const user = userEvent.setup()
+    const repos = makePrepaidRepos(PREPAID_STATE)
+    repos.checkout.addItemsToAppointmentSale = vi.fn().mockResolvedValue({
+      id: 'sale-prepaid-99', status: 'PAID', paymentStatus: 'PAID', totalCents: 78000, paidTotalCents: 78000,
+    })
+    repos.checkout.closeAppointmentSale = vi.fn().mockResolvedValue(undefined)
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeAppointmentId=appt-1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    // El operador elige el barbero que atiende el extra (Antonio / b1) — así la
+    // línea extra se acredita a ese barbero, como en una venta normal.
+    await user.click(await screen.findByRole('button', { name: /cambiar barbero: carlos barbero/i }, { timeout: 3000 }))
+    const barberSheet = await screen.findByRole('dialog', { name: /seleccionar barbero/i })
+    await user.click(within(barberSheet).getByRole('button', { name: /antonio/i }))
+    await screen.findByRole('button', { name: /cambiar barbero: antonio/i }, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    // Cobrar extras → wizard de pago normal → efectivo $280.
+    await user.click(await screen.findByRole('button', { name: /cobrar extras/i }, { timeout: 3000 }))
+    await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
+    await user.click(screen.getByRole('button', { name: /confirmar/i }))
+    await waitFor(() => {
+      expect(repos.checkout.addItemsToAppointmentSale).toHaveBeenCalled()
+    })
+    const call = (repos.checkout.addItemsToAppointmentSale as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(call.saleId).toBe('sale-prepaid-99')
+    expect(call.registerSessionId).toBe('sess-1')
+    expect(call.tipCents).toBe(0)
+    // Pagos SOLO por el delta de los extras ($280), no por el total de la venta.
+    expect(call.payments).toEqual([{ provider: 'CASH', amountCents: 28000 }])
+    // Una línea extra: el corte resuelto a $280, acreditado al barbero elegido (b1).
+    expect(call.items).toEqual([
+      { serviceId: 'svc-corte', productId: null, catalogComboId: null, qty: 1, unitPriceCents: 28000, staffUserId: 'b1' },
+    ])
+    // NO se llamó createSale ni closeAppointmentSale — es la ruta de extras.
+    expect(repos.checkout.createSale).not.toHaveBeenCalled()
+    expect(repos.checkout.closeAppointmentSale).not.toHaveBeenCalled()
+  })
+
+  it('prepaid: un rechazo del server al cobrar extras se muestra al operador', async () => {
+    const user = userEvent.setup()
+    const repos = makePrepaidRepos(PREPAID_STATE)
+    repos.checkout.addItemsToAppointmentSale = vi
+      .fn()
+      .mockRejectedValue(new Error('Stock insuficiente: Cera para cabello'))
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout?completeAppointmentId=appt-1',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    await user.click(await screen.findByRole('button', { name: /cobrar extras/i }, { timeout: 3000 }))
+    await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
+    await user.click(screen.getByRole('button', { name: /confirmar/i }))
+    // El error del server (español) aparece — nunca se traga en silencio.
+    await waitFor(() => expect(screen.getAllByText(/stock insuficiente/i).length).toBeGreaterThan(0))
   })
 
   it('sin categorías muestra EmptyState accionable en lugar del grid', async () => {

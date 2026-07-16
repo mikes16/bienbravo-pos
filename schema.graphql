@@ -2,6 +2,14 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input AddItemsToAppointmentSaleInput {
+  items: [POSSaleItemInput!]!
+  payments: [POSPaymentInput!]!
+  registerSessionId: ID
+  saleId: ID!
+  tipCents: Int
+}
+
 enum AlertSeverity {
   critical
   info
@@ -1014,6 +1022,7 @@ type MintedRotatingToken {
 }
 
 type Mutation {
+  addItemsToAppointmentSale(input: AddItemsToAppointmentSaleInput!): Sale!
   addProductImage(productId: ID!, publicId: String!, url: String!): Product!
   applyCouponToDraftSale(input: ApplyCouponToDraftSaleInput!): DraftSaleWithDiscount!
   archiveCoupon(id: ID!): Coupon!

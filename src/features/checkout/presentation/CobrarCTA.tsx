@@ -5,9 +5,15 @@ interface CobrarCTAProps {
   totalCents: number
   disabled: boolean
   onTap: () => void
+  /**
+   * Verbo del CTA. Default "Cobrar" (venta normal). En el cobro de extras de una
+   * cita prepagada se pasa "Cobrar extras" — el monto que se muestra es solo el
+   * delta de los extras, nunca lo ya prepagado.
+   */
+  label?: string
 }
 
-export function CobrarCTA({ totalCents, disabled, onTap }: CobrarCTAProps) {
+export function CobrarCTA({ totalCents, disabled, onTap, label = 'Cobrar' }: CobrarCTAProps) {
   return (
     <TouchButton
       variant="primary"
@@ -16,7 +22,7 @@ export function CobrarCTA({ totalCents, disabled, onTap }: CobrarCTAProps) {
       onClick={onTap}
       className="rounded-none uppercase tracking-[0.06em]"
     >
-      {totalCents === 0 ? 'Cobrar →' : `Cobrar · ${formatMoney(totalCents)} →`}
+      {totalCents === 0 ? `${label} →` : `${label} · ${formatMoney(totalCents)} →`}
     </TouchButton>
   )
 }

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { useCheckout } from '../application/useCheckout'
 import { computeTotals } from '../lib/cart'
-import { prepayMethodLabel } from '../lib/prepayMethodLabel'
 import { CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION } from '../data/checkout.repository'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { CustomerNameTakenException } from '@/shared/lib/customer-errors'
@@ -14,6 +13,7 @@ import { BarberSelectorSheet } from './BarberSelectorSheet'
 import { CustomerChip } from './CustomerChip'
 import { CustomerLookupSheet } from './CustomerLookupSheet'
 import { CartList } from './CartList'
+import { PaidLinesSection } from './PaidLinesSection'
 import { CartTotals } from './CartTotals'
 import { CobrarCTA } from './CobrarCTA'
 import { CouponsBlock } from './CouponsBlock'
@@ -31,7 +31,7 @@ export function CheckoutPage() {
   const ck = useCheckout()
   const { addToast } = useToast()
   const { viewer } = usePosAuth()
-  const { locationName, locationTimezone } = useLocation()
+  const { locationName } = useLocation()
   const { checkout } = useRepositories()
   // Permiso server-side dual: el API también valida pos.discount.apply en
   // applyCouponToDraftSale. Esconder el bloque en el cliente es solo UX —
@@ -144,6 +144,10 @@ export function CheckoutPage() {
     ? ck.barbers.find((b) => b.id === attendingBarberId) ?? null
     : null
   const cartItemCount = ck.cartState.lines.reduce((sum, l) => sum + l.qty, 0)
+  // Extras = líneas nuevas del carrito (las PAGADO viven fuera de cartState).
+  // Decide el CTA de la cita prepagada: sin extras → finalizar $0; con extras
+  // → cobrar el delta.
+  const hasExtras = ck.cartState.lines.length > 0
   // Total real a cobrar = subtotal - cupones. El API recalcula en el server
   // al cerrar venta, pero el cajero necesita ver el monto correcto en CTA
   // y PaymentSheet (validación de pagos vs total).
@@ -193,54 +197,13 @@ export function CheckoutPage() {
     )
   }
 
-  // Cita ya prepagada (admin manual o Stripe link confirmado): el cajero solo
-  // confirma entrega del servicio, no se cobra. Tiene prioridad sobre el caso
-  // "no hay barberos" — si la cita está pagada, el cajero debe poder cerrarla
-  // aunque el roster esté vacío.
-  if (ck.isPrepaid && ck.prepaidSaleId) {
-    const totalCents = ck.cartState.lines.reduce(
-      (sum, l) => sum + l.unitPriceCents * l.qty,
-      0,
-    )
-    const prepaidDate = ck.prepaidAt
-      ? new Intl.DateTimeFormat('es-MX', { timeZone: locationTimezone }).format(new Date(ck.prepaidAt))
-      : null
-    const methodLabel = prepayMethodLabel(ck.prepaidMethod)
-    return (
-      <div className="flex h-full flex-col bg-[var(--color-carbon)]">
-        <PrepayHeader
-          customer={ck.cartState.customer}
-          lines={ck.cartState.lines}
-          onBack={() => navigate('/hoy')}
-        />
-        <div className="flex flex-1 items-center justify-center p-6">
-          <div className="w-full max-w-md border border-[var(--color-bone)] bg-[var(--color-bone)] p-8 text-[var(--color-carbon)]">
-            <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-carbon)]/60">
-              Prepagado
-            </div>
-            <div className="mb-4 font-mono text-4xl font-extrabold tabular-nums">
-              {formatMoney(totalCents)}
-            </div>
-            <p className="text-[15px] leading-snug text-[var(--color-carbon)]/80">
-              Esta cita ya fue cobrada por adelantado
-              {prepaidDate ? ` el ${prepaidDate}` : ''}
-              {methodLabel ? ` vía ${methodLabel}` : ''}.
-            </p>
-          </div>
-        </div>
-        <div className="border-t border-[var(--color-leather-muted)]/40 p-4">
-          <button
-            type="button"
-            onClick={handleCloseSale}
-            disabled={closing}
-            className="w-full cursor-pointer bg-[var(--color-success)] py-4 font-mono text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {closing ? 'Cerrando…' : 'Cerrar cita y completar servicio'}
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // Cita ya prepagada (admin manual o Stripe link confirmado): NO se maneja
+  // con un branch aparte. El cobro de cita prepagada usa el MISMO flujo de
+  // checkout (catálogo + carrito) que una venta normal, con dos diferencias que
+  // se resuelven inline abajo: (1) las líneas ya pagadas se pintan read-only
+  // como PAGADO encima del carrito (PaidLinesSection), y (2) el CTA finaliza en
+  // $0 (closeAppointmentSale) si no hay extras, o cobra solo el delta
+  // (addItemsToAppointmentSale) si el operador agregó extras. Ver `cartContent`.
 
   // Link de prepago pendiente (cliente recibió Stripe link pero no pagó). El
   // cajero puede cancelar el link y cobrar en persona (cae al flujo normal
@@ -287,8 +250,11 @@ export function CheckoutPage() {
 
   // Loaded but no barbers — surface this so the operator can act on it
   // instead of staring at a stuck screen. Common causes: location has no
-  // active barbers configured, or the load itself errored.
-  if (!defaultBarber) {
+  // active barbers configured, or the load itself errored. Excepción: una cita
+  // prepagada debe poder finalizarse ($0) aunque el roster esté vacío — ahí el
+  // flujo sigue (la AtendiendoHeader se oculta si no hay barbero; los extras
+  // requieren un barbero, pero cerrar en $0 no).
+  if (!defaultBarber && !ck.isPrepaid) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-5 px-6 py-10">
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bravo)]">
@@ -331,7 +297,11 @@ export function CheckoutPage() {
         </div>
       )}
       <div className="flex flex-col gap-3 p-4">
-        <AtendiendoHeader barber={defaultBarber} onTap={() => setBarberSheetOpen(true)} />
+        {/* AtendiendoHeader solo cuando hay un barbero — en una cita prepagada
+            con roster vacío se oculta y el operador aún puede finalizar en $0. */}
+        {defaultBarber && (
+          <AtendiendoHeader barber={defaultBarber} onTap={() => setBarberSheetOpen(true)} />
+        )}
         <CustomerChip
           customer={ck.cartState.customer}
           // Sin customers.read, deshabilitar la búsqueda. El cliente actual
@@ -341,6 +311,16 @@ export function CheckoutPage() {
           onClear={() => ck.dispatch({ type: 'setCustomer', customer: null })}
         />
       </div>
+      {/* Líneas ya pagadas de la cita (read-only PAGADO). Vacío/null en venta
+          normal → PaidLinesSection no renderiza nada. */}
+      <PaidLinesSection lines={ck.prepaidLines} />
+      {ck.isPrepaid && (
+        <div className="px-4 pb-1 pt-3">
+          <span className="font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
+            Extras
+          </span>
+        </div>
+      )}
       <CartList
         lines={ck.cartState.lines}
         barbers={ck.barbers}
@@ -350,16 +330,22 @@ export function CheckoutPage() {
         onSetBarber={(lineId, barberId) => void ck.changeLineBarber(lineId, barberId)}
         onRemove={(lineId) => ck.dispatch({ type: 'removeLine', lineId })}
       />
-      <CouponsBlock
-        appliedCoupons={ck.appliedCoupons}
-        couponError={ck.couponError}
-        onApply={ck.applyCoupon}
-        onRemove={ck.removeCoupon}
-        canApply={canApplyCoupon}
-      />
+      {/* Cupones NO aplican al cobro de extras de una cita prepagada: la
+          mutation addItemsToAppointmentSale cobra el delta exacto y no acepta
+          códigos, así que ocultamos el bloque para no inducir un mismatch. */}
+      {!ck.isPrepaid && (
+        <CouponsBlock
+          appliedCoupons={ck.appliedCoupons}
+          couponError={ck.couponError}
+          onApply={ck.applyCoupon}
+          onRemove={ck.removeCoupon}
+          canApply={canApplyCoupon}
+        />
+      )}
       <CartTotals
         subtotalCents={totals.subtotalCents}
-        discountTotalCents={ck.discountTotalCents}
+        discountTotalCents={ck.isPrepaid ? 0 : ck.discountTotalCents}
+        prepaidTotalCents={ck.isPrepaid ? ck.prepaidTotalCents : null}
       />
       {ck.error && (
         <div role="alert" className="mx-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
@@ -367,11 +353,36 @@ export function CheckoutPage() {
         </div>
       )}
       {canCreateSale && canCloseSale ? (
-        <CobrarCTA
-          totalCents={totalAfterDiscountCents}
-          disabled={ck.cartState.lines.length === 0 || ck.submitting}
-          onTap={() => setPaymentSheetOpen(true)}
-        />
+        ck.isPrepaid ? (
+          hasExtras ? (
+            // Cobrar SOLO el delta de los extras → wizard de pago normal →
+            // addItemsToAppointmentSale. El monto es el de los extras (+propina
+            // en el wizard), nunca lo ya prepagado.
+            <CobrarCTA
+              label="Cobrar extras"
+              totalCents={totalAfterDiscountCents}
+              disabled={ck.submitting}
+              onTap={() => setPaymentSheetOpen(true)}
+            />
+          ) : (
+            // Sin extras: finalizar la cita en $0 → closeAppointmentSale directo
+            // (sin wizard de pago). La propina sin extras no la soporta el API.
+            <button
+              type="button"
+              onClick={handleCloseSale}
+              disabled={closing}
+              className="w-full cursor-pointer bg-[var(--color-success)] py-4 font-mono text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-bone)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {closing ? 'Finalizando…' : 'Finalizar servicio'}
+            </button>
+          )
+        ) : (
+          <CobrarCTA
+            totalCents={totalAfterDiscountCents}
+            disabled={ck.cartState.lines.length === 0 || ck.submitting}
+            onTap={() => setPaymentSheetOpen(true)}
+          />
+        )
       ) : (
         <div className="mx-4 mt-3 border border-dashed border-[var(--color-leather-muted)] p-4 text-center">
           <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
@@ -449,18 +460,22 @@ export function CheckoutPage() {
           </>
         )}
 
-        {/* Mobile-only sticky bottom CTA bar. Tap to open the cart sheet. */}
-        {cartItemCount > 0 && (
+        {/* Mobile-only sticky bottom CTA bar. Tap to open the cart sheet. En una
+            cita prepagada la barra aparece aunque no haya extras, para que el
+            operador pueda abrir el carrito y finalizar el servicio en móvil. */}
+        {(cartItemCount > 0 || ck.isPrepaid) && (
           <button
             type="button"
             onClick={() => setCartSheetOpen(true)}
             className="flex shrink-0 items-center justify-between border-t border-[var(--color-bravo)] bg-[var(--color-bravo)] px-5 py-4 text-[var(--color-bone)] transition-colors hover:bg-[var(--color-bravo-hover)] sm:hidden"
           >
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
-              {cartItemCount} {cartItemCount === 1 ? 'item' : 'items'} · {formatMoney(totalAfterDiscountCents)}
+              {ck.isPrepaid && cartItemCount === 0
+                ? 'Cita prepagada'
+                : `${cartItemCount} ${cartItemCount === 1 ? 'item' : 'items'} · ${formatMoney(totalAfterDiscountCents)}`}
             </span>
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
-              Ver carrito →
+              {ck.isPrepaid && cartItemCount === 0 ? 'Finalizar →' : 'Ver carrito →'}
             </span>
           </button>
         )}
@@ -546,10 +561,11 @@ export function CheckoutPage() {
         onClose={() => setPaymentSheetOpen(false)}
         onConfirm={async (input) => {
           // input: { payments: [{ provider, amountCents }], tipCents }
-          const result = await ck.submit({
-            payments: input.payments,
-            tipCents: input.tipCents,
-          })
+          // Cita prepagada con extras → cobra SOLO el delta vía
+          // addItemsToAppointmentSale. Venta normal → createPOSSale.
+          const result = ck.isPrepaid
+            ? await ck.submitExtras({ payments: input.payments, tipCents: input.tipCents })
+            : await ck.submit({ payments: input.payments, tipCents: input.tipCents })
           if (result) setPaymentSheetOpen(false)
         }}
       />

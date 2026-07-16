@@ -144,6 +144,22 @@ export interface SaleItemInput {
   staffUserId: string | null
 }
 
+/**
+ * Entrada para `addItemsToAppointmentSale`: extras cobrados SOBRE una cita ya
+ * prepagada. `items` son las líneas nuevas (mismo shape que createPOSSale),
+ * `payments` cubren EXACTAMENTE el delta (bruto de extras + propina), NO el
+ * total de la venta. `saleId` es la venta prepagada objetivo.
+ */
+export interface AddItemsToAppointmentSaleInput {
+  saleId: string
+  items: SaleItemInput[]
+  /** Pagos que cubren SOLO el delta (extras + propina). */
+  payments: CheckoutPayment[]
+  tipCents: number
+  /** Caja abierta a la que se atribuye el delta cobrado (espejo de createSale). */
+  registerSessionId: string | null
+}
+
 export interface SaleResult {
   id: string
   status: string

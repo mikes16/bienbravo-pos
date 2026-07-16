@@ -1,8 +1,9 @@
 import type { AuthRepository } from '@/core/auth/auth.repository.ts'
 import type { PosViewer, PosStaffUser, PosLocation, PosPinLockoutStatus } from '@/core/auth/auth.types.ts'
 import type { Repositories } from '@/core/repositories/registry.ts'
-import type { CheckoutRepository, CustomerResult, SaleDetail, ServicePricingOverlay } from '@/features/checkout/data/checkout.repository.ts'
+import type { AppointmentPrepayState, CheckoutRepository, CustomerResult, SaleDetail, ServicePricingOverlay } from '@/features/checkout/data/checkout.repository.ts'
 import type {
+  AddItemsToAppointmentSaleInput,
   CatalogCategory,
   CatalogCombo,
   CatalogProduct,
@@ -204,6 +205,13 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     // sobre-escriben con vi.fn para verificar la llamada.
   }
 
+  async addItemsToAppointmentSale(_input: AddItemsToAppointmentSaleInput): Promise<SaleResult> {
+    // Default realista: la venta se cierra en PAID. Tests del flujo de cobro
+    // de extras sobre-escriben con vi.fn para verificar el payload (saleId,
+    // items, payments del delta, tipCents, registerSessionId).
+    return { id: 'sale-extras-1', status: 'PAID', paymentStatus: 'PAID', totalCents: 0, paidTotalCents: 0 }
+  }
+
   async searchCustomers(_query: string, _limit = 10): Promise<CustomerResult[]> {
     return []
   }
@@ -252,17 +260,10 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return null
   }
 
-  async getAppointmentPrepayState(_appointmentId: string): Promise<{
-    isPrepaid: boolean
-    hasPendingLink: boolean
-    prepaidSaleId: string | null
-    prepaidMethod: null
-    prepaidAt: string | null
-    staffNote: string | null
-  }> {
-    // Default: no prepago, sin nota de cita. Tests específicos del flujo de
-    // prepago / nota de cita pueden sobre-escribir con vi.spyOn al armar su
-    // escenario.
+  async getAppointmentPrepayState(_appointmentId: string): Promise<AppointmentPrepayState> {
+    // Default: no prepago, sin nota de cita ni items pagados. Tests específicos
+    // del flujo de prepago / nota de cita / extras pueden sobre-escribir con
+    // vi.spyOn al armar su escenario.
     return {
       isPrepaid: false,
       hasPendingLink: false,
@@ -270,6 +271,8 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
       prepaidMethod: null,
       prepaidAt: null,
       staffNote: null,
+      prepaidItems: [],
+      prepaidTotalCents: null,
     }
   }
 

@@ -11,6 +11,7 @@ import type {
   CatalogCombo,
   StockLevel,
   CreateSaleInput,
+  AddItemsToAppointmentSaleInput,
   SaleResult,
 } from '../domain/checkout.types.ts'
 
@@ -81,9 +82,11 @@ const WALKINS_FOR_LOOKUP_QUERY = graphql(`
 `) as any
 
 // Carga el appointment + su sale asociado para detectar estado prepago en el
-// checkout (Task 15 del plan "Prepago de cita"). El POS solo necesita el
-// sale derivado (paymentStatus + source + primer payment) — no la lista
-// completa de items/payments. CheckoutScreen consume los flags derivados.
+// checkout (Task 15 del plan "Prepago de cita"). Además de los flags derivados
+// (paymentStatus + source + primer payment), traemos los `items` de la venta
+// prepagada: en el flujo de cobro de cita prepagada el checkout los pinta como
+// líneas read-only marcadas PAGADO (precio visible, NO suma al total a cobrar),
+// y el operador agrega extras cobrables por delta encima de ellas.
 const APPOINTMENT_CHECKOUT_INFO_QUERY = graphql(`
   query PosAppointmentCheckoutInfo($id: ID!) {
     appointment(id: $id) {
@@ -97,6 +100,24 @@ const APPOINTMENT_CHECKOUT_INFO_QUERY = graphql(`
         paymentStatus
         paidTotalCents
         totalCents
+        # Líneas ya pagadas de la venta prepagada. Se muestran como PAGADO
+        # (read-only) en el carrito del cobro de cita. El campo name es el
+        # ResolveField nullable del API — cuando viene null, el POS resuelve el
+        # nombre contra el catálogo local por serviceId/productId/catalogComboId.
+        # itemType deja fuera las líneas TIP (propina prepagada no es un
+        # "servicio pagado" que mostrar como línea).
+        items {
+          id
+          itemType
+          name
+          qty
+          unitPriceCents
+          totalCents
+          serviceId
+          productId
+          catalogComboId
+          staffUserId
+        }
         payments {
           provider
           processedAt
@@ -343,6 +364,24 @@ export const CLOSE_APPOINTMENT_SALE_MUTATION = graphql(`
   }
 `)
 
+// Appendea extras (servicios/productos/combos adicionales) a una venta
+// prepagada y cobra SOLO el delta (bruto de los extras + propina). El API
+// valida precios/exclusiones como createPOSSale, reparte la propina, descuenta
+// inventario, actualiza la caja por el delta, cierra la venta (OPEN→PAID) y
+// completa la cita. `items` NO puede venir vacío (para eso está
+// closeAppointmentSale) y `payments` debe cubrir exactamente el delta.
+export const ADD_ITEMS_TO_APPOINTMENT_SALE_MUTATION = graphql(`
+  mutation AddItemsToAppointmentSale($input: AddItemsToAppointmentSaleInput!) {
+    addItemsToAppointmentSale(input: $input) {
+      id
+      status
+      paymentStatus
+      totalCents
+      paidTotalCents
+    }
+  }
+`)
+
 // Cancela un link de prepago pendiente cuando el cajero decide cobrar en
 // persona. Namespaced FromPos para evitar colisión con el equivalente del
 // admin si algún día comparten Apollo cache.
@@ -515,6 +554,34 @@ export interface AppointmentPrepayState {
   // appointment que el estado prepago (una sola query) — co-localizada aquí
   // para no gastar un round trip extra. null cuando la cita no tiene nota.
   staffNote: string | null
+  // Líneas YA pagadas de la venta prepagada (sin las líneas TIP). El checkout
+  // de cita prepagada las pinta read-only marcadas PAGADO — precio visible pero
+  // NO suma al "total a cobrar". Vacío cuando no hay venta prepagada. El nombre
+  // puede venir null del API → el POS lo resuelve contra el catálogo local.
+  prepaidItems: PrepaidSaleItem[]
+  // Total ya cobrado de la venta prepagada (paidTotalCents). Se muestra discreto
+  // como "Pagado antes: $X" en los totales del cobro de extras. null si no hay
+  // venta prepagada.
+  prepaidTotalCents: number | null
+}
+
+/**
+ * Una línea ya pagada de la venta prepagada, para pintarla read-only (PAGADO)
+ * en el carrito del cobro de cita. `name` puede venir null (ResolveField
+ * nullable del API) — el consumidor lo resuelve contra el catálogo local por
+ * `serviceId`/`productId`/`catalogComboId`. `staffUserId` es informativo (no se
+ * puede reasignar una línea ya pagada).
+ */
+export interface PrepaidSaleItem {
+  id: string
+  name: string | null
+  qty: number
+  unitPriceCents: number
+  totalCents: number
+  serviceId: string | null
+  productId: string | null
+  catalogComboId: string | null
+  staffUserId: string | null
 }
 
 /* ── Coupon DTOs ── */
@@ -673,6 +740,18 @@ export interface CheckoutRepository {
    * Día/Caja dejen de mostrar el snapshot de antes de cerrar la cita.
    */
   closeAppointmentSale(saleId: string): Promise<void>
+  /**
+   * Appendea extras a una venta prepagada y cobra SOLO el delta (extras +
+   * propina) — ver `addItemsToAppointmentSale` en el schema del API. El servidor
+   * valida precios/exclusiones como createPOSSale, reparte la propina, descuenta
+   * inventario, actualiza la caja por el delta, cierra la venta (OPEN→PAID) y
+   * completa la cita, todo en una transacción. Igual que `createSale`/
+   * `closeAppointmentSale`, evicta staffDayEarnings/registers/posCajaStatusHome/
+   * posInventoryLevels para que Hoy/Mi Día/Caja dejen de mostrar el snapshot
+   * previo. `items` NO puede venir vacío (usa `closeAppointmentSale` para cerrar
+   * en $0) y `payments` debe cubrir exactamente el delta.
+   */
+  addItemsToAppointmentSale(input: AddItemsToAppointmentSaleInput): Promise<SaleResult>
   searchCustomers(query: string, limit?: number): Promise<CustomerResult[]>
   /**
    * Find-or-create real (spec identidad-clientes): el API ya no requiere
@@ -1108,6 +1187,38 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     cache.gc()
   }
 
+  async addItemsToAppointmentSale(input: AddItemsToAppointmentSaleInput): Promise<SaleResult> {
+    const { data } = await this.#client.mutate<{ addItemsToAppointmentSale: SaleResult }>({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mutation: ADD_ITEMS_TO_APPOINTMENT_SALE_MUTATION as any,
+      variables: {
+        input: {
+          saleId: input.saleId,
+          items: input.items,
+          payments: input.payments.map((p) => ({
+            provider: p.provider,
+            amountCents: p.amountCents,
+          })),
+          tipCents: input.tipCents,
+          registerSessionId: input.registerSessionId,
+        },
+      },
+    })
+    // Mismo evict que createSale: cobrar extras cierra la venta prepagada,
+    // descuenta inventario de los productos extra y suma el delta a la caja —
+    // todo server-side. Sin evictar, Hoy/Mi Día/Caja y el stock se quedan en el
+    // snapshot previo (mismo bug family que A10 / sobreventa en display).
+    const cache = this.#client.cache
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'staffDayEarnings' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'registers' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'posCajaStatusHome' })
+    cache.evict({ id: 'ROOT_QUERY', fieldName: 'posInventoryLevels' })
+    cache.gc()
+    const result = data?.addItemsToAppointmentSale
+    if (!result) throw new Error('No se pudo cobrar los extras.')
+    return result
+  }
+
   async applyCoupon(args: ApplyCouponArgs): Promise<DraftSaleWithDiscount | null> {
     // `as any` mirror del patrón usado para CLOSE_APPOINTMENT_SALE_MUTATION
     // y CANCEL_APPOINTMENT_PREPAY_LINK_MUTATION arriba — client-preset emite
@@ -1243,6 +1354,18 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
           paymentStatus: string
           paidTotalCents: number
           totalCents: number
+          items: Array<{
+            id: string
+            itemType: string
+            name: string | null
+            qty: number
+            unitPriceCents: number
+            totalCents: number
+            serviceId: string | null
+            productId: string | null
+            catalogComboId: string | null
+            staffUserId: string | null
+          }> | null
           payments: Array<{
             provider: PaymentProvider
             processedAt: string | null
@@ -1261,6 +1384,21 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     const firstPayment = sale?.payments?.[0] ?? null
     const prepaidMethod = firstPayment?.provider ?? null
     const prepaidAt = firstPayment?.processedAt ?? firstPayment?.createdAt ?? null
+    // Líneas ya pagadas para el display PAGADO. Se dejan fuera las TIP: la
+    // propina prepagada no es un "servicio pagado" que mostrar como línea.
+    const prepaidItems: PrepaidSaleItem[] = (sale?.items ?? [])
+      .filter((it) => it.itemType !== 'TIP')
+      .map((it) => ({
+        id: it.id,
+        name: it.name ?? null,
+        qty: it.qty,
+        unitPriceCents: it.unitPriceCents,
+        totalCents: it.totalCents,
+        serviceId: it.serviceId ?? null,
+        productId: it.productId ?? null,
+        catalogComboId: it.catalogComboId ?? null,
+        staffUserId: it.staffUserId ?? null,
+      }))
     return {
       isPrepaid,
       hasPendingLink,
@@ -1268,6 +1406,8 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       prepaidMethod,
       prepaidAt,
       staffNote: appointment?.staffNote ?? null,
+      prepaidItems,
+      prepaidTotalCents: sale?.paidTotalCents ?? null,
     }
   }
 

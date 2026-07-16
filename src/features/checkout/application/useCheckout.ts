@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
@@ -129,6 +129,8 @@ export function useCheckout() {
     prepaidMethod: null,
     prepaidAt: null,
     staffNote: null,
+    prepaidItems: [],
+    prepaidTotalCents: null,
   }
   const [prepayState, setPrepayState] = useState<AppointmentPrepayState>(DEFAULT_PREPAY_STATE)
 
@@ -634,6 +636,88 @@ export function useCheckout() {
     }
   }
 
+  // Cobro de EXTRAS sobre una cita prepagada: appendea las líneas nuevas del
+  // carrito a la MISMA venta prepagada y cobra SOLO el delta (extras + propina)
+  // vía addItemsToAppointmentSale. Espejo de `submit` pero contra la venta
+  // prepagada — reusa el mismo gate de barberos-con-turno, el mismo
+  // registerSessionId y el mismo camino de éxito (successSale → recibo). Las
+  // líneas PAGADO (read-only) NUNCA entran aquí: viven fuera de `cartState.lines`,
+  // así que `cartState.lines` ES exactamente el set de extras a cobrar.
+  const submitExtras = async (payment: {
+    payments: CheckoutPayment[]
+    tipCents: number
+  }): Promise<SaleResult | null> => {
+    if (!locationId || cartState.lines.length === 0 || submitting) return null
+    if (!prepayState.prepaidSaleId) return null
+    if (!registerSessionId) {
+      setError('No hay caja abierta. Abre caja primero.')
+      return null
+    }
+    // Mismo re-check A1/FIX3 que `submit`: ningún barbero acreditado en las
+    // líneas extra puede estar sin turno al momento de cobrar.
+    const unavailableBarberId = findUnavailableCreditedBarberId(cartState, barbers)
+    if (unavailableBarberId) {
+      const unavailableBarber = barbers.find((b) => b.id === unavailableBarberId)
+      setError(
+        unavailableBarber
+          ? `El barbero ${unavailableBarber.fullName} no tiene turno iniciado — pídele que fiche entrada.`
+          : 'Uno de los barberos asignados ya no está disponible. Vuelve a asignarlo antes de cobrar.',
+      )
+      return null
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await checkout.addItemsToAppointmentSale({
+        saleId: prepayState.prepaidSaleId,
+        registerSessionId,
+        items: cartState.lines.map((l) => ({
+          serviceId: l.kind === 'service' ? l.itemId : null,
+          productId: l.kind === 'product' ? l.itemId : null,
+          catalogComboId: l.kind === 'combo' ? l.itemId : null,
+          qty: l.qty,
+          unitPriceCents: l.unitPriceCents,
+          staffUserId: l.staffUserId ?? (cartState.defaultBarberId || null),
+        })),
+        tipCents: payment.tipCents,
+        payments: payment.payments,
+      })
+      // Recibo del cobro normal, pero con SOLO el delta (extras + propina) —
+      // es lo que se cobró ahora. El total prepagado ya se mostró como PAGADO.
+      const extrasGrossCents = cartState.lines.reduce((s, l) => s + l.unitPriceCents * l.qty, 0)
+      const reconstructed: SaleResult = {
+        id: result.id,
+        totalCents: extrasGrossCents + payment.tipCents,
+        payments: payment.payments,
+        createdAt: new Date().toISOString(),
+        customer: cartState.customer
+          ? { id: cartState.customer.id, fullName: cartState.customer.fullName, email: null, phone: null }
+          : null,
+        items: cartState.lines.map((l, idx) => {
+          const barber = l.staffUserId ? barbers.find((b) => b.id === l.staffUserId) : null
+          return {
+            id: `extra-${idx}`,
+            name: l.name,
+            qty: l.qty,
+            unitPriceCents: l.unitPriceCents,
+            totalCents: l.unitPriceCents * l.qty,
+            staffUser: barber ? { id: barber.id, fullName: barber.fullName } : null,
+          }
+        }),
+      }
+      setSuccessSale(reconstructed)
+      dispatch({ type: 'clear' })
+      setAppliedCoupons([])
+      setCouponError(null)
+      return reconstructed
+    } catch (e) {
+      setError((e as { message?: string }).message ?? 'No se pudo cobrar los extras.')
+      return null
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   // Ruta ÚNICA de resolución de precio por barbero (barbero > sucursal > base):
   // resuelve el precio del servicio O COMBO para `staffUserId` y lo fija en la
   // línea. Compartida por changeLineBarber (el operador cambia el barbero de una
@@ -758,6 +842,29 @@ export function useCheckout() {
     }
   }
 
+  // Líneas PAGADO (read-only) de la venta prepagada, listas para render. El
+  // `name` puede venir null del API → se resuelve contra el catálogo local por
+  // serviceId/productId/catalogComboId. NO viven en `cartState.lines` (una
+  // sección aparte): así el total a cobrar, los cupones, el submit y el gate de
+  // barberos siguen operando SOLO sobre los extras, sin filtros especiales.
+  const prepaidLines = useMemo(() => {
+    return (prepayState.prepaidItems ?? []).map((it) => {
+      const catalogId = it.serviceId ?? it.productId ?? it.catalogComboId
+      const resolvedName =
+        it.name ??
+        (catalogId ? catalogItems.find((c) => c.id === catalogId)?.name : null) ??
+        'Concepto'
+      return {
+        id: it.id,
+        name: resolvedName,
+        qty: it.qty,
+        unitPriceCents: it.unitPriceCents,
+        totalCents: it.totalCents,
+        staffUserId: it.staffUserId,
+      }
+    })
+  }, [prepayState.prepaidItems, catalogItems])
+
   // ¿El overlay corresponde al atendiendo actual? Si sí, sus precios/exclusión
   // son la verdad más fresca para el grid. Si no (o aún no ha cargado), el grid
   // cae al estático.
@@ -788,6 +895,9 @@ export function useCheckout() {
     searchCustomers,
     createCustomer,
     submit,
+    // Cobro de extras sobre una cita prepagada (delta) — appendea a la venta
+    // prepagada vía addItemsToAppointmentSale. Lo usa el CTA "Cobrar extras".
+    submitExtras,
     submitting,
     error,
     successSale,
@@ -802,6 +912,10 @@ export function useCheckout() {
     prepaidSaleId: prepayState.prepaidSaleId,
     prepaidMethod: prepayState.prepaidMethod,
     prepaidAt: prepayState.prepaidAt,
+    // Líneas ya pagadas de la cita (read-only PAGADO) + total prepagado. El
+    // checkout de cita prepagada las pinta encima del carrito de extras.
+    prepaidLines,
+    prepaidTotalCents: prepayState.prepaidTotalCents,
     // Nota interna de la cita cuando el cobro viene de una cita
     // (completeAppointmentId). null en ventas libres / walk-in / cliente
     // preseleccionado sin cita. El checkout la muestra como aviso al entrar.
