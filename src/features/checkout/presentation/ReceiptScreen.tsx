@@ -29,6 +29,8 @@ interface PaymentEntry {
 interface SaleData {
   id: string
   totalCents: number
+  /** Propina cobrada, ya incluida en `totalCents`. */
+  tipCents?: number | null
   payments: PaymentEntry[]
   createdAt: string
   customer: CustomerLite | null

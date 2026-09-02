@@ -1549,6 +1549,7 @@ type Query {
   permissions: [String!]!
   posAvailableBarbers(locationId: ID!): [PosAvailableBarber!]!
   posCajaStatusHome(locationId: ID!): PosCajaStatusHome!
+  posDaySales(date: String!, locationId: ID!): [Sale!]!
   posInventoryLevels(limit: Int, locationId: ID!): [InventoryLevel!]!
   posPinLockoutStatus(email: String!): PosPinLockoutStatus!
   posPublicLocations: [PosPublicLocation!]!

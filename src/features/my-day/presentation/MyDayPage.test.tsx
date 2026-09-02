@@ -123,6 +123,7 @@ function saleDetail(saleId: string, customerName: string, itemName: string): Sal
     subtotalCents: 30000,
     taxTotalCents: 0,
     totalCents: 30000,
+    tipCents: 0,
     customer: { id: `c-${saleId}`, fullName: customerName },
     payments: [{ provider: 'CASH', amountCents: 30000 }],
     items: [
@@ -249,6 +250,7 @@ describe('MyDayPage', () => {
       subtotalCents: 30000,
       taxTotalCents: 0,
       totalCents: 30000,
+      tipCents: 0,
       customer: { id: 'c1', fullName: 'Juan Pérez' },
       payments: [{ provider: 'CASH', amountCents: 30000 }],
       items: [

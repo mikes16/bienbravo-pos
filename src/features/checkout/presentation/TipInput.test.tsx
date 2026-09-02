@@ -20,10 +20,23 @@ describe('TipInput', () => {
     expect(onChange).toHaveBeenCalledWith(15000)
   })
 
-  it('clicking Otro reveals input', async () => {
-    const user = userEvent.setup()
+  it('Otro is selected by default with an empty $0 input', () => {
     render(<TipInput totalCents={100000} tipCents={0} onChange={() => {}} />)
-    await user.click(screen.getByText(/otro/i))
-    expect(screen.getByRole('spinbutton')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /otro/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('spinbutton', { name: /otra propina/i })).toHaveValue(null)
+  })
+
+  it('renders Otro and Cierre before the presets', () => {
+    render(<TipInput totalCents={100000} tipCents={0} onChange={() => {}} />)
+    const labels = screen.getAllByRole('button').map((b) => b.textContent)
+    expect(labels).toEqual(['Otro', 'Cierre', '10%', '15%', '20%'])
+  })
+
+  it('typing in Otro reports the tip in cents', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<TipInput totalCents={100000} tipCents={0} onChange={onChange} />)
+    await user.type(screen.getByRole('spinbutton', { name: /otra propina/i }), '25')
+    expect(onChange).toHaveBeenLastCalledWith(2500)
   })
 })

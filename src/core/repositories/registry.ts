@@ -5,6 +5,7 @@ import { type RegisterRepository, ApolloRegisterRepository } from '@/features/re
 import { type ClockRepository, ApolloClockRepository } from '@/features/clock/data/clock.repository.ts'
 import { type AgendaRepository, ApolloAgendaRepository } from '@/features/agenda/data/agenda.repository.ts'
 import { type WalkInsRepository, ApolloWalkInsRepository } from '@/features/walkins/data/walkins.repository.ts'
+import { type DaySalesRepository, ApolloDaySalesRepository } from '@/features/day-sales/data/day-sales.repository.ts'
 
 export interface Repositories {
   auth: AuthRepository
@@ -13,6 +14,7 @@ export interface Repositories {
   clock: ClockRepository
   agenda: AgendaRepository
   walkins: WalkInsRepository
+  daySales: DaySalesRepository
 }
 
 export function createRepositories(client: ApolloClient): Repositories {
@@ -23,5 +25,6 @@ export function createRepositories(client: ApolloClient): Repositories {
     clock: new ApolloClockRepository(client),
     agenda: new ApolloAgendaRepository(client),
     walkins: new ApolloWalkInsRepository(client),
+    daySales: new ApolloDaySalesRepository(client),
   }
 }

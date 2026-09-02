@@ -3,13 +3,8 @@ import { Navigate, Outlet, useLocation as useRouterLocation } from 'react-router
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useOperatorStatus } from '@/core/auth/useOperatorStatus.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
-import {
-  StopwatchIcon,
-  GameCalendarIcon,
-  TwoCoinsIcon,
-  StrongboxIcon,
-} from '@/shared/pos-ui/icons'
-import { BottomTabNav } from '@/shared/pos-ui'
+import { visibleTabs, firstAllowedRoute, isRouteAllowed, activeTabFor } from '@/core/permissions/posTabs.ts'
+import { BottomTabNav, type BottomTabNavTab } from '@/shared/pos-ui'
 import { ToastViewport } from '@/core/toast/ToastViewport'
 import { IdentityStripV2 } from './IdentityStripV2.tsx'
 import { routePrefetchers } from './router.tsx'
@@ -21,6 +16,25 @@ function useLiveClock() {
     return () => clearInterval(id)
   }, [])
   return now
+}
+
+/**
+ * El viewer no tiene permiso para NINGÚN tab. Se le dice claro qué pasa y
+ * quién lo arregla; el candado del header sigue disponible para cambiar de
+ * operador. El API protege los datos igual — esto es solo la UI honesta.
+ */
+function NoModulesView() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-bravo)]">
+        Sin módulos habilitados
+      </p>
+      <p className="max-w-md text-[15px] text-[var(--color-bone)]">
+        Tu rol no tiene permiso para ver ninguna pantalla del POS. Pide al admin que revise
+        los permisos de tabs de tu rol.
+      </p>
+    </div>
+  )
 }
 
 export function PosShell() {
@@ -36,22 +50,27 @@ export function PosShell() {
   if (loading) return null
   if (!viewer || isLocked) return <Navigate to="/" replace />
 
+  const permissions = viewer.permissions
   const path = routerLoc.pathname
-  let activeTo = '/hoy'
-  if (path.startsWith('/reloj') || path.startsWith('/clock')) activeTo = '/reloj'
-  else if (path.startsWith('/mis-ventas') || path.startsWith('/my-day')) activeTo = '/mis-ventas'
-  else if (path.startsWith('/caja') || path.startsWith('/register')) activeTo = '/caja'
-  else if (path.startsWith('/hoy') || path.startsWith('/home')) activeTo = '/hoy'
+  const home = firstAllowedRoute(permissions)
+
+  // Guard de ruta: un path de un tab que el viewer no tiene redirige al
+  // primer tab permitido (p.ej. deep-link o tab que le acaban de quitar).
+  // Sin ningún tab, se queda donde está y ve la vista "sin módulos".
+  if (!isRouteAllowed(path, permissions) && home) {
+    return <Navigate to={home} replace />
+  }
 
   // Cada tab dispara el dynamic import del chunk en hover/touchstart antes
   // del click — al tap, el chunk ya está en cache del browser y la
   // navegación se siente instant. Hoy no necesita prefetch (eager loaded).
-  const tabs = [
-    { to: '/reloj', icon: StopwatchIcon, label: 'Reloj', prefetch: routePrefetchers['/reloj'] },
-    { to: '/hoy', icon: GameCalendarIcon, label: 'Hoy' },
-    { to: '/mis-ventas', icon: TwoCoinsIcon, label: 'Mis ventas', prefetch: routePrefetchers['/mis-ventas'] },
-    { to: '/caja', icon: StrongboxIcon, label: 'Caja', prefetch: routePrefetchers['/caja'] },
-  ]
+  const tabs: BottomTabNavTab[] = visibleTabs(permissions).map((t) => ({
+    to: t.to,
+    icon: t.icon,
+    label: t.label,
+    prefetch: routePrefetchers[t.to],
+  }))
+  const activeTo = activeTabFor(path) ?? home ?? '/hoy'
 
   return (
     <div className="flex h-full flex-col">
@@ -65,9 +84,9 @@ export function PosShell() {
         timezone={locationTimezone}
       />
       <main className="flex-1 overflow-hidden">
-        <Outlet />
+        {home ? <Outlet /> : <NoModulesView />}
       </main>
-      <BottomTabNav tabs={tabs} activeTo={activeTo} />
+      {tabs.length > 0 && <BottomTabNav tabs={tabs} activeTo={activeTo} />}
       <ToastViewport />
     </div>
   )

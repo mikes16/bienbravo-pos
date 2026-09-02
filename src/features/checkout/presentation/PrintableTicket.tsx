@@ -26,6 +26,8 @@ interface PaymentEntry {
 interface SaleData {
   id: string
   totalCents: number
+  /** Propina cobrada, ya incluida en `totalCents`. */
+  tipCents?: number | null
   payments: PaymentEntry[]
   createdAt: string
   customer: CustomerLite | null
@@ -43,6 +45,12 @@ interface Props {
    * mantenerlo puro/testeable sin necesitar LocationProvider en sus tests.
    */
   timezone: string
+  /**
+   * Reimpresión desde "Ventas del día". Imprime una marca visible bajo el
+   * header para que un ticket reimpreso nunca pase por original (auditoría
+   * de caja / devoluciones).
+   */
+  reprint?: boolean
 }
 
 const PROVIDER_LABEL: Record<ApiProvider, string> = {
@@ -70,8 +78,9 @@ function shortSaleCode(id: string): string {
  * Si se imprime en hoja Letter/A4, el @page de index.css lo escala
  * razonablemente — el ticket queda al inicio de la página, no estirado.
  */
-export function PrintableTicket({ sale, locationName, operatorName, timezone }: Props) {
+export function PrintableTicket({ sale, locationName, operatorName, timezone, reprint = false }: Props) {
   const code = shortSaleCode(sale.id)
+  const tipCents = sale.tipCents ?? 0
 
   return (
     <div className="bb-print-receipt" aria-hidden>
@@ -80,6 +89,7 @@ export function PrintableTicket({ sale, locationName, operatorName, timezone }: 
         <div className="bb-print-brand">BIENBRAVO</div>
         <div className="bb-print-meta">Barbería</div>
         {locationName && <div className="bb-print-meta">{locationName}</div>}
+        {reprint && <div className="bb-print-reprint">*** Reimpresión ***</div>}
       </div>
 
       <div className="bb-print-rule" />
@@ -128,6 +138,21 @@ export function PrintableTicket({ sale, locationName, operatorName, timezone }: 
       </div>
 
       <div className="bb-print-rule" />
+
+      {/* Desglose subtotal + propina — solo cuando hubo propina, para que
+          quede claro qué se cobró y por qué. */}
+      {tipCents > 0 && (
+        <>
+          <div className="bb-print-meta-row">
+            <span>Subtotal</span>
+            <span>{formatMoney(sale.totalCents - tipCents)}</span>
+          </div>
+          <div className="bb-print-meta-row">
+            <span>Propina</span>
+            <span>+{formatMoney(tipCents)}</span>
+          </div>
+        </>
+      )}
 
       {/* Total */}
       <div className="bb-print-total">

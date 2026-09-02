@@ -825,7 +825,9 @@ export interface SaleDetailDiscount {
  * Forma mapeada que consume `SaleTicketBody` (vía `SaleDetailSheet`). Es
  * compatible con `SaleTicketData` del componente compartido — mismos campos
  * `id/totalCents/payments/customer/items` — más `subtotalCents`,
- * `taxTotalCents`, `createdAt` y la lista de `discounts` (couponApplications).
+ * `taxTotalCents`, `createdAt`, la lista de `discounts` (couponApplications)
+ * y `tipCents` (suma de las líneas TIP, que se sacan de `items` para que el
+ * ticket las muestre como desglose y no como un concepto más).
  */
 export interface SaleDetail {
   id: string
@@ -833,6 +835,7 @@ export interface SaleDetail {
   subtotalCents: number
   taxTotalCents: number
   totalCents: number
+  tipCents: number
   customer: { id: string; fullName: string } | null
   payments: SaleDetailPayment[]
   items: SaleDetailItem[]
@@ -1422,19 +1425,28 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     const sale = data?.sale
     if (!sale) return null
 
+    // La propina vive en el API como líneas `TIP` (una por barbero). Para el
+    // ticket se suman en `tipCents` y se sacan de la lista de conceptos: el
+    // cliente ve subtotal + propina = total, no "1 × Propina" entre los cortes.
+    const tipCents = sale.items
+      .filter((it) => it.itemType === 'TIP')
+      .reduce((sum, it) => sum + it.totalCents, 0)
+
     // El query no selecciona `id` por item (no existe necesidad en el API
     // para este caso), así que sintetizamos una key estable por índice para
     // el render. Las ventas son inmutables, el orden no cambia.
-    const items: SaleDetailItem[] = sale.items.map((it, idx) => ({
-      id: `${sale.id}-item-${idx}`,
-      name: it.name ?? ITEM_TYPE_FALLBACK[it.itemType] ?? 'Concepto',
-      qty: it.qty,
-      unitPriceCents: it.unitPriceCents,
-      totalCents: it.totalCents,
-      staffUser: it.staffUser
-        ? { id: it.staffUser.id, fullName: it.staffUser.fullName }
-        : null,
-    }))
+    const items: SaleDetailItem[] = sale.items
+      .filter((it) => it.itemType !== 'TIP')
+      .map((it, idx) => ({
+        id: `${sale.id}-item-${idx}`,
+        name: it.name ?? ITEM_TYPE_FALLBACK[it.itemType] ?? 'Concepto',
+        qty: it.qty,
+        unitPriceCents: it.unitPriceCents,
+        totalCents: it.totalCents,
+        staffUser: it.staffUser
+          ? { id: it.staffUser.id, fullName: it.staffUser.fullName }
+          : null,
+      }))
 
     const payments: SaleDetailPayment[] = (sale.payments ?? []).map((p) => ({
       provider: p.provider,
@@ -1453,6 +1465,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       subtotalCents: sale.subtotalCents,
       taxTotalCents: sale.taxTotalCents,
       totalCents: sale.totalCents,
+      tipCents,
       customer: sale.customer
         ? { id: sale.customer.id, fullName: sale.customer.fullName }
         : null,

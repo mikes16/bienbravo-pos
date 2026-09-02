@@ -75,6 +75,10 @@ export interface SaleTicketData {
   /** Cupones aplicados. Cuando hay alguno, se renderiza la sección de
    *  descuentos entre los items y el total. */
   discounts?: SaleTicketDiscount[]
+  /** Propina cobrada (ya incluida en `totalCents`). Cuando es > 0 se muestra
+   *  el desglose subtotal + propina = total, para que el cliente vea qué se
+   *  cobró y por qué. */
+  tipCents?: number | null
 }
 
 function formatPayments(payments: SaleTicketPayment[]): string {
@@ -94,6 +98,8 @@ interface SaleTicketBodyProps {
 export function SaleTicketBody({ sale }: SaleTicketBodyProps) {
   const discounts = sale.discounts ?? []
   const hasDiscounts = discounts.length > 0
+  const tipCents = sale.tipCents ?? 0
+  const hasTip = tipCents > 0
 
   return (
     <>
@@ -142,6 +148,27 @@ export function SaleTicketBody({ sale }: SaleTicketBodyProps) {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {hasTip && (
+        <div className="flex flex-col gap-1.5 border-t border-[var(--color-leather-muted)]/40 pt-3">
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+              Subtotal
+            </span>
+            <span className="tabular-nums text-[13px] font-bold text-[var(--color-bone)]">
+              {formatMoney(sale.totalCents - tipCents)}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+              Propina
+            </span>
+            <span className="tabular-nums text-[13px] font-bold text-[var(--color-bravo)]">
+              +{formatMoney(tipCents)}
+            </span>
+          </div>
         </div>
       )}
 

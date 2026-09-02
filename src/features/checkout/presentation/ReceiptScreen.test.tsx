@@ -30,6 +30,29 @@ describe('ReceiptScreen', () => {
     expect(screen.getAllByText(/antonio/i).length).toBeGreaterThan(0)
   })
 
+  it('shows subtotal + propina breakdown when the sale carried a tip', () => {
+    const saleWithTip = {
+      ...SALE,
+      totalCents: 30000,
+      tipCents: 2000,
+      payments: [{ provider: 'CARD_TERMINAL' as const, amountCents: 30000 }],
+      items: [
+        { id: 'i1', name: 'Corte Especializado', qty: 1, unitPriceCents: 28000, totalCents: 28000, staffUser: { id: 'b1', fullName: 'Brandon' } },
+      ],
+    }
+    renderWithProviders(<ReceiptScreen sale={saleWithTip} onListo={() => {}} />)
+    // Preview en pantalla + PrintableTicket → cada texto aparece 2 veces.
+    expect(screen.getAllByText(/^subtotal$/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^propina$/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('+$20').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('$300').length).toBeGreaterThan(0)
+  })
+
+  it('hides the propina breakdown when there was no tip', () => {
+    renderWithProviders(<ReceiptScreen sale={{ ...SALE, tipCents: 0 }} onListo={() => {}} />)
+    expect(screen.queryByText(/^propina$/i)).not.toBeInTheDocument()
+  })
+
   it('Imprimir CTA calls window.print', async () => {
     const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
     const user = userEvent.setup()

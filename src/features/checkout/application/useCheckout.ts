@@ -50,6 +50,8 @@ type CheckoutContext =
 export interface SaleResult {
   id: string
   totalCents: number
+  /** Propina cobrada, ya incluida en `totalCents`. El recibo la desglosa. */
+  tipCents: number
   payments: CheckoutPayment[]
   createdAt: string
   customer: Customer | null
@@ -604,6 +606,7 @@ export function useCheckout() {
       const reconstructed: SaleResult = {
         id: result.id,
         totalCents: result.totalCents,
+        tipCents: payment.tipCents,
         payments: payment.payments,
         createdAt: new Date().toISOString(),
         customer: cartState.customer
@@ -688,6 +691,7 @@ export function useCheckout() {
       const reconstructed: SaleResult = {
         id: result.id,
         totalCents: extrasGrossCents + payment.tipCents,
+        tipCents: payment.tipCents,
         payments: payment.payments,
         createdAt: new Date().toISOString(),
         customer: cartState.customer

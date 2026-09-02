@@ -760,7 +760,7 @@ function EarningsBreakdownRow({
   return (
     <div className="grid grid-cols-3 gap-3">
       <BreakdownCard
-        label="Cortes & Barba"
+        label="Servicios"
         valueCents={serviceCommissionCents}
         totalCents={totalCommissionCents}
       />

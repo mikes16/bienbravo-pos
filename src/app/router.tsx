@@ -15,6 +15,7 @@ const importClock = () => import('@/features/clock/index.ts')
 const importAgenda = () => import('@/features/agenda/index.ts')
 const importWalkIns = () => import('@/features/walkins/index.ts')
 const importMyDay = () => import('@/features/my-day/index.ts')
+const importDaySales = () => import('@/features/day-sales/index.ts')
 const importHelloPos = () => import('@/features/_dev/HelloPosPage')
 
 const CheckoutPage = lazy(() => importCheckout().then(m => ({ default: m.CheckoutPage })))
@@ -25,6 +26,7 @@ const ClockPage = lazy(() => importClock().then(m => ({ default: m.ClockPage }))
 const AgendaPage = lazy(() => importAgenda().then(m => ({ default: m.AgendaPage })))
 const WalkInsPage = lazy(() => importWalkIns().then(m => ({ default: m.WalkInsPage })))
 const MyDayPage = lazy(() => importMyDay().then(m => ({ default: m.MyDayPage })))
+const DaySalesPage = lazy(() => importDaySales().then(m => ({ default: m.DaySalesPage })))
 const HelloPosPage = lazy(() => importHelloPos().then(m => ({ default: m.HelloPosPage })))
 
 /**
@@ -43,6 +45,8 @@ export const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/walkins': importWalkIns,
   '/my-day': importMyDay,
   '/mis-ventas': importMyDay,
+  '/day-sales': importDaySales,
+  '/ventas-dia': importDaySales,
 }
 
 /**
@@ -85,6 +89,8 @@ export const router = createBrowserRouter([
       { path: '/walkins', element: lazyRoute('/walkins', WalkInsPage) },
       { path: '/my-day', element: lazyRoute('/my-day', MyDayPage) },
       { path: '/mis-ventas', element: <Navigate to="/my-day" replace /> },
+      { path: '/day-sales', element: lazyRoute('/day-sales', DaySalesPage) },
+      { path: '/ventas-dia', element: <Navigate to="/day-sales" replace /> },
     ],
   },
   // Pantalla de verificación con catálogo INVENTADO — solo existe en dev; en

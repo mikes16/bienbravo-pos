@@ -214,3 +214,30 @@ describe('ApolloCheckoutRepository.resolveComboPriceForBarber', () => {
     expect(resolved.isExcluded).toBe(true)
   })
 })
+
+describe('ApolloCheckoutRepository.getSaleDetail', () => {
+  it('suma las líneas TIP en tipCents y las saca de items', async () => {
+    const client = makeClientReturning({
+      sale: {
+        __typename: 'Sale',
+        id: 'sale-1',
+        createdAt: '2026-09-02T15:56:00.000Z',
+        subtotalCents: 28000,
+        taxTotalCents: 0,
+        totalCents: 30000,
+        customer: null,
+        payments: [{ __typename: 'PaymentTransaction', provider: 'CARD_TERMINAL', amountCents: 30000 }],
+        items: [
+          { __typename: 'SaleItem', itemType: 'SERVICE', qty: 1, unitPriceCents: 28000, totalCents: 28000, name: 'Corte Especializado', staffUser: { __typename: 'User', id: 'b1', fullName: 'Brandon' } },
+          { __typename: 'SaleItem', itemType: 'TIP', qty: 1, unitPriceCents: 2000, totalCents: 2000, name: 'Propina', staffUser: { __typename: 'User', id: 'b1', fullName: 'Brandon' } },
+        ],
+        couponApplications: [],
+      },
+    })
+    const repo = new ApolloCheckoutRepository(client)
+    const detail = await repo.getSaleDetail('sale-1')
+    expect(detail?.tipCents).toBe(2000)
+    expect(detail?.totalCents).toBe(30000)
+    expect(detail?.items.map((i) => i.name)).toEqual(['Corte Especializado'])
+  })
+})

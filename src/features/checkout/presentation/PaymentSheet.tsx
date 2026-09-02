@@ -129,7 +129,7 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
       }}
     >
       <div
-        className="w-full max-w-2xl border-t border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-6 py-5"
+        className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto overscroll-contain border-t border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-6 py-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-baseline justify-between gap-4">

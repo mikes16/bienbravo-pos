@@ -19,6 +19,8 @@ import type { AgendaRepository } from '@/features/agenda/data/agenda.repository.
 import type { Appointment, AppointmentStatus } from '@/features/agenda/domain/agenda.types.ts'
 import type { WalkInsRepository } from '@/features/walkins/data/walkins.repository.ts'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types.ts'
+import type { DaySalesRepository } from '@/features/day-sales/data/day-sales.repository.ts'
+import type { DaySale } from '@/features/day-sales/domain/day-sales.types.ts'
 
 export const MOCK_STAFF: PosStaffUser = {
   id: 'staff-1',
@@ -50,6 +52,12 @@ export const MOCK_VIEWER: PosViewer = {
     'pos.refund.approve',
     'pos.register.open',
     'pos.register.close',
+    // Tabs del POS (cada tab inferior se gatea por su permiso)
+    'pos.tab.clock',
+    'pos.tab.today',
+    'pos.tab.my_sales',
+    'pos.tab.register',
+    'pos.sales.day.read',
     // Citas
     'appointments.read',
     'appointments.create',
@@ -359,6 +367,13 @@ export class InMemoryWalkInsRepository implements WalkInsRepository {
   }
 }
 
+export class InMemoryDaySalesRepository implements DaySalesRepository {
+  sales: DaySale[] = []
+  async getDaySales(): Promise<DaySale[]> {
+    return this.sales
+  }
+}
+
 export function createMockRepositories(overrides?: Partial<Repositories>): Repositories {
   return {
     auth: new InMemoryAuthRepository(),
@@ -367,6 +382,7 @@ export function createMockRepositories(overrides?: Partial<Repositories>): Repos
     clock: new InMemoryClockRepository(),
     agenda: new InMemoryAgendaRepository(),
     walkins: new InMemoryWalkInsRepository(),
+    daySales: new InMemoryDaySalesRepository(),
     ...overrides,
   }
 }

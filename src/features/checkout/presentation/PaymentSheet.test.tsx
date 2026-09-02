@@ -11,6 +11,13 @@ describe('PaymentSheet', () => {
     expect(screen.getByRole('button', { name: /transferencia/i })).toBeInTheDocument()
   })
 
+  it('panel is height-capped and scrollable so small viewports do not clip the header', () => {
+    render(<PaymentSheet open totalCents={100000} onClose={() => {}} onConfirm={() => {}} />)
+    const panel = screen.getByRole('dialog').firstElementChild as HTMLElement
+    expect(panel).toHaveClass('overflow-y-auto')
+    expect(panel.className).toMatch(/max-h-\[/)
+  })
+
   it('does not render when closed', () => {
     render(<PaymentSheet open={false} totalCents={100000} onClose={() => {}} onConfirm={() => {}} />)
     expect(screen.queryByRole('button', { name: /efectivo/i })).not.toBeInTheDocument()
@@ -29,7 +36,8 @@ describe('PaymentSheet', () => {
     const user = userEvent.setup()
     render(<PaymentSheet open totalCents={100000} onClose={() => {}} onConfirm={() => {}} />)
     await user.click(screen.getByRole('button', { name: /tarjeta/i }))
-    expect(screen.getByText(/propina/i)).toBeInTheDocument()
+    expect(screen.getByText(/propina \(opcional\)/i)).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: /otra propina/i })).toBeInTheDocument()
   })
 
   it('Confirmar fires onConfirm with payments array + tip (CARD)', async () => {

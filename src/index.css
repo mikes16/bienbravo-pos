@@ -248,6 +248,14 @@
     text-transform: uppercase;
   }
 
+  .bb-print-reprint {
+    margin-top: 1.5mm;
+    font-size: 10pt;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
   .bb-print-rule {
     border-top: 1px dashed #000;
     margin: 2.5mm 0;

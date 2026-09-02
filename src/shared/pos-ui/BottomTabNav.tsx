@@ -24,9 +24,12 @@ export function BottomTabNav({ tabs, activeTo, className }: BottomTabNavProps) {
   return (
     <nav
       className={cn(
-        'grid grid-cols-4 border-t border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)]',
+        'grid border-t border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)]',
         className,
       )}
+      // Los tabs dependen de los permisos del viewer: las columnas se
+      // reparten entre los que existen, no en 4 fijas.
+      style={{ gridTemplateColumns: `repeat(${Math.max(tabs.length, 1)}, minmax(0, 1fr))` }}
     >
       {tabs.map((tab) => {
         const isActive = activeTo === tab.to

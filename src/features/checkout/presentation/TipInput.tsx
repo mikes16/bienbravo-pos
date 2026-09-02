@@ -15,6 +15,9 @@ type Mode = 'none' | 'preset' | 'custom-tip' | 'fixed-total'
 
 const PRESETS = [10, 15, 20]
 
+const SELECTED_CLASS =
+  'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]'
+
 /**
  * Propinas en el POS.
  *
@@ -25,11 +28,14 @@ const PRESETS = [10, 15, 20]
  *    y el sistema deriva la propina como `total - subtotal`. Caso real
  *    constante en barbería ("redondéamelo a tantos").
  *
+ * "Otro" arranca seleccionado con $0: lo más común es que no haya propina,
+ * así el cajero solo teclea el monto si el cliente deja algo.
+ *
  * Panel de desglose visible siempre que hay propina, así el cajero ve a
  * ojo de qué se trata: subtotal + propina = total a cobrar.
  */
 export function TipInput({ totalCents, tipCents, onChange }: TipInputProps) {
-  const [mode, setMode] = useState<Mode>('none')
+  const [mode, setMode] = useState<Mode>('custom-tip')
   const [customTipPesos, setCustomTipPesos] = useState(0)
   const [fixedTotalPesos, setFixedTotalPesos] = useState(0)
 
@@ -79,6 +85,24 @@ export function TipInput({ totalCents, tipCents, onChange }: TipInputProps) {
       </span>
 
       <div className="flex gap-2">
+        <TouchButton
+          variant="secondary"
+          size="min"
+          onClick={selectCustomTip}
+          aria-pressed={mode === 'custom-tip'}
+          className={cn('flex-1', mode === 'custom-tip' && SELECTED_CLASS)}
+        >
+          Otro
+        </TouchButton>
+        <TouchButton
+          variant="secondary"
+          size="min"
+          onClick={selectFixedTotal}
+          aria-pressed={mode === 'fixed-total'}
+          className={cn('flex-1', mode === 'fixed-total' && SELECTED_CLASS)}
+        >
+          Cierre
+        </TouchButton>
         {PRESETS.map((p) => {
           const cents = Math.round((totalCents * p) / 100)
           const isSelected = mode === 'preset' && tipCents === cents
@@ -88,40 +112,13 @@ export function TipInput({ totalCents, tipCents, onChange }: TipInputProps) {
               variant="secondary"
               size="min"
               onClick={() => selectPreset(p)}
-              className={cn(
-                'flex-1 tabular-nums',
-                isSelected &&
-                  'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]',
-              )}
+              aria-pressed={isSelected}
+              className={cn('flex-1 tabular-nums', isSelected && SELECTED_CLASS)}
             >
               {p}%
             </TouchButton>
           )
         })}
-        <TouchButton
-          variant="secondary"
-          size="min"
-          onClick={selectCustomTip}
-          className={cn(
-            'flex-1',
-            mode === 'custom-tip' &&
-              'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]',
-          )}
-        >
-          Otro
-        </TouchButton>
-        <TouchButton
-          variant="secondary"
-          size="min"
-          onClick={selectFixedTotal}
-          className={cn(
-            'flex-1',
-            mode === 'fixed-total' &&
-              'border-[var(--color-bravo)] bg-[var(--color-bravo)]/[0.08] text-[var(--color-bone)]',
-          )}
-        >
-          Cierre
-        </TouchButton>
       </div>
 
       {/* Input para "Otro" — propina directa en pesos */}

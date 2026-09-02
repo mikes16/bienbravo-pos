@@ -5,6 +5,7 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { PinLoginException } from '@/core/auth/auth.types'
+import { firstAllowedRoute } from '@/core/permissions/posTabs'
 import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
 import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS } from '@/features/home/data/home.queries'
 import { LockShell } from './LockShell'
@@ -19,7 +20,10 @@ export function LockPage() {
   const navigate = useNavigate()
   const { auth, agenda, clock, walkins } = useRepositories()
   const { setLocationId, locationName, locationTimezone } = useLocation()
-  const { pinLogin, isAuthenticated, isLocked } = usePosAuth()
+  const { pinLogin, isAuthenticated, isLocked, viewer } = usePosAuth()
+  // Destino post-login: el primer tab que el viewer puede ver. Si no tiene
+  // ninguno, PosShell muestra la vista "sin módulos" en /hoy.
+  const homeRoute = firstAllowedRoute(viewer?.permissions ?? []) ?? '/hoy'
   const { state, setState, actions } = useLockState()
   const apollo = useApolloClient()
 
@@ -31,7 +35,7 @@ export function LockPage() {
   useEffect(() => {
     if (state.kind !== 'INITIAL_LOAD') return
     if (isAuthenticated && !isLocked) {
-      navigate('/hoy', { replace: true })
+      navigate(homeRoute, { replace: true })
       return
     }
     const storedLocationId = actions.getStoredLocationId()
@@ -40,7 +44,7 @@ export function LockPage() {
       return
     }
     setState({ kind: 'BARBER_SELECTOR', locationId: storedLocationId, barbers: [], statuses: new Map(), loading: true })
-  }, [state.kind, isAuthenticated, isLocked, navigate, setState, actions])
+  }, [state.kind, isAuthenticated, isLocked, navigate, setState, actions, homeRoute])
 
   // 2) Fetch locations when entering PAIRING (loading=true)
   const pairingLoading = state.kind === 'PAIRING' ? state.loading : null
@@ -217,9 +221,9 @@ export function LockPage() {
   // 5) On successful auth, navigate to home
   useEffect(() => {
     if (isAuthenticated && !isLocked) {
-      navigate('/hoy', { replace: true })
+      navigate(homeRoute, { replace: true })
     }
-  }, [isAuthenticated, isLocked, navigate])
+  }, [isAuthenticated, isLocked, navigate, homeRoute])
 
   // 6) Render based on state.kind
   if (state.kind === 'INITIAL_LOAD') {
