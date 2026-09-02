@@ -40,3 +40,11 @@ Thumbs.db
 
 # brainstorming companion
 /.superpowers
+
+# harness-base
+# Runtime del harness — no se comitea (install.sh lo anexa al .gitignore destino)
+.harness/runs/
+.harness/run.lock
+.harness/curation-active
+.harness/lint-cache.json
+.harness/plan/

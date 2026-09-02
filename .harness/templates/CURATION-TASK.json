@@ -1,0 +1,41 @@
+{
+  "tasks": [
+    {
+      "title": "Curar la memoria del harness",
+      "description": "Curar .harness/memory/ sin perder información: (1) fusionar lecciones duplicadas de LESSONS.md sumando sus contadores (xN); (2) mover a .harness/memory/archive/ las decisiones marcadas SUSTITUIDA y las lecciones (x1) que no se repiten desde hace tiempo; (3) promover las lecciones (x3) o más a la sección 'Convenciones fijas' de PROJECT.md, dejando en LESSONS.md una línea que remite a PROJECT.md; (4) refrescar la sección 'Estructura' de PROJECT.md contra el árbol real del proyecto. Nada se borra: lo que sale de un archivo por tope se archiva en archive/ con fecha. Al terminar, los tres archivos deben quedar dentro de sus topes (PROJECT 60, DECISIONS 80, LESSONS 60 líneas) y con el formato de entrada válido.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "PROJECT.md, DECISIONS.md y LESSONS.md dentro de topes y con formato de entradas válido",
+          "check": "node .harness/scripts/harness.mjs lint-memory",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/memory/PROJECT.md",
+          "reason": "archivo a curar: refrescar Estructura y recibir Convenciones fijas"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "archivo a curar: archivar entradas SUSTITUIDA"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/memory/LESSONS.md",
+          "reason": "archivo a curar: fusionar duplicadas, archivar (x1) viejas, promover (x3)+"
+        }
+      ],
+      "files": [
+        ".harness/memory/PROJECT.md",
+        ".harness/memory/DECISIONS.md",
+        ".harness/memory/LESSONS.md"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "curation"
+    }
+  ]
+}

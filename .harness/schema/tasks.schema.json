@@ -1,0 +1,67 @@
+{
+  "type": "object",
+  "required": ["version", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id", "title", "description", "acceptance_criteria", "context", "files",
+          "depends_on", "priority", "type", "status", "attempts", "redispatches",
+          "split_from", "review_feedback"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^T-\\d{3}[a-z]?$" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "maxLength": 1200 },
+          "acceptance_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "required": ["id", "desc", "check", "kind"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^AC-\\d+$" },
+                "desc": { "type": "string" },
+                "check": { "type": "string" },
+                "kind": { "enum": ["test", "build", "lint", "manual"] }
+              }
+            }
+          },
+          "context": {
+            "type": "array",
+            "maxItems": 7,
+            "items": {
+              "type": "object",
+              "required": ["type", "path", "reason"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "enum": ["spec", "decision", "code_pattern", "interface", "doc"] },
+                "path": { "type": "string" },
+                "reason": { "type": "string", "maxLength": 140 }
+              }
+            }
+          },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^T-\\d{3}[a-z]?$" }
+          },
+          "priority": { "type": "integer", "minimum": 1 },
+          "type": { "enum": ["feature", "fix", "chore", "curation"] },
+          "status": { "enum": ["pending", "in_progress", "in_review", "done", "blocked", "split"] },
+          "attempts": { "type": "integer", "minimum": 0 },
+          "redispatches": { "type": "integer", "minimum": 0 },
+          "split_from": { "type": ["string", "null"] },
+          "review_feedback": { "type": "array" }
+        }
+      }
+    }
+  }
+}

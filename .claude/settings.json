@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Task", "Edit", "Write", "Read", "Grep", "Glob",
+      "Bash(node .harness/scripts/harness.mjs:*)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git add:*)",
+      "Bash(git commit:*)", "Bash(git checkout:*)", "Bash(git clean:*)",
+      "Bash(npm test:*)", "Bash(npm run:*)", "Bash(npm ci:*)"
+    ]
+  },
+  "env": { "BASH_MAX_TIMEOUT_MS": "600000" },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/protect-paths.sh" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact|resume",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/reentry-reminder.sh" }
+        ]
+      }
+    ]
+  }
+}

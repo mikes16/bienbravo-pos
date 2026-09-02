@@ -1,0 +1,20 @@
+export const MAX_ATTEMPTS = 3;
+export const MAX_REDISPATCHES = 2;
+export const CRITERIA_MIN = 1, CRITERIA_MAX = 5;
+export const DESCRIPTION_MAX = 1200;          // chars
+export const CONTEXT_MAX = 7;
+export const REASON_MAX = 140;                // chars
+export const SCOPE_TOLERANCE = 2;             // archivos extra test/fixture
+export const HANDOFF_MAX_LINES = 60;
+export const REPORT_CLIP_LINES = 30;
+export const MEMORY_LIMITS = { 'PROJECT.md': 60, 'DECISIONS.md': 80, 'LESSONS.md': 60 };
+export const MEMORY_SOFT_RATIO = 0.8;
+export const LOCK_STALE_MINUTES = 30;
+export const DEDUP_OVERLAP = 0.8;             // solapamiento de tokens add-lesson
+export const STATUSES = ['pending', 'in_progress', 'in_review', 'done', 'blocked', 'split'];
+export const TASK_TYPES = ['feature', 'fix', 'chore', 'curation'];
+export const CRITERIA_KINDS = ['test', 'build', 'lint', 'manual'];
+export const CONTEXT_TYPES = ['spec', 'decision', 'code_pattern', 'interface', 'doc'];
+export const LESSON_TAGS = ['test', 'estilo', 'api', 'deps', 'build', 'datos', 'seguridad'];
+export const ID_PATTERN = /^T-\d{3}[a-z]?$/;
+export const HARNESS_EXCLUDES = [':(exclude)tasks.json', ':(exclude).harness'];
