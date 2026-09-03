@@ -1,4 +1,246 @@
 {
   "version": 1,
-  "tasks": []
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Prefetch en idle solo de rutas cuyo tab tiene el viewer",
+      "description": "`src/app/useIdleRoutePrefetch.ts` precarga tras el primer paint TODOS los chunks de `routePrefetchers`, incluidos los de tabs que el viewer no puede ver (p. ej. `day-sales` para un Barbero POS sin `pos.sales.day.read`). Cambiar el hook para recibir `permissions: readonly string[]` y precargar solo las rutas permitidas según `isRouteAllowed(path, permissions)` de `src/core/permissions/posTabs.ts` (las rutas que no pertenecen a ningún tab, p. ej. `/checkout`... nota: `/checkout` sí pertenece a Hoy; usa la función, no una lista a mano). Con permisos vacíos no precarga nada. Actualizar el caller (`src/app/App.tsx`) para pasar `viewer?.permissions ?? []` desde `usePosAuth`. Test nuevo `src/app/useIdleRoutePrefetch.test.ts`: mockear `./router` con `vi.mock` + `vi.hoisted` exponiendo `routePrefetchers` con spies para `/caja`, `/day-sales` y `/reloj`; verificar que con `['pos.tab.register']` solo se llama el de `/caja`, y que con `[]` no se llama ninguno. `requestIdleCallback` no existe en jsdom: el hook ya cae a `setTimeout`; usa `vi.useFakeTimers()` y `vi.runAllTimers()`. No cambiar `routePrefetchers` ni `router.tsx`.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El hook solo precarga rutas permitidas y nada sin permisos",
+          "check": "npm test -- src/app/useIdleRoutePrefetch",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Gating de tabs y PosShell sin regresión",
+          "check": "npm test -- src/app/PosShell.test.tsx src/core/permissions",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck + build de Vite en verde",
+          "check": "npm run build",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "interface",
+          "path": "src/core/permissions/posTabs.ts",
+          "reason": "isRouteAllowed/visibleTabs son la fuente de verdad de qué ruta pertenece a qué tab y permiso"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/app/PosShell.tsx",
+          "reason": "Cómo se obtiene viewer.permissions y se gatean tabs; imitar, no modificar"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/app/PosShell.test.tsx",
+          "reason": "Patrón de test con renderWithProviders y viewer con permisos acotados"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-02-pos-tab-permissions-ventas-dia-design.md",
+          "reason": "Diseño del gating por tab: un tab oculto no debería ni descargarse"
+        }
+      ],
+      "files": [
+        "src/app/useIdleRoutePrefetch.ts",
+        "src/app/useIdleRoutePrefetch.test.ts",
+        "src/app/App.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-002",
+      "title": "DaySalesPage sin setState síncrono dentro del efecto de carga",
+      "description": "`src/features/day-sales/presentation/DaySalesPage.tsx` dispara `react-hooks/set-state-in-effect`: el efecto de mount llama `load({ showSpinner: true, force: false })`, que hace `setLoading(true)` de forma síncrona dentro del efecto. Refactorizar sin cambiar comportamiento visible: el estado inicial ya es `loading = true`, así que el mount NO necesita volver a ponerlo (llamar `load` con `showSpinner: false` en el mount, o separar `setLoading` de `load`), y los refetch por evento/focus siguen en silencio. Mantener: banner de error si falla, chips de barbero, sheet y reimpresión. Meta: `npm run lint -- src/features/day-sales --max-warnings=0` en verde (hoy hay 2 warnings; revisa también el otro y corrígelo si es del feature). No tocar tests salvo que un cambio los requiera; los 5 tests de `DaySalesPage.test.tsx` deben seguir pasando.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El feature day-sales pasa lint sin warnings",
+          "check": "npm run lint -- src/features/day-sales --max-warnings=0",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Tests del feature siguen en verde",
+          "check": "npm test -- src/features/day-sales",
+          "kind": "test"
+        }
+      ],
+      "context": [
+        {
+          "type": "code_pattern",
+          "path": "src/features/my-day/presentation/MyDayPage.tsx",
+          "reason": "Página hermana con el mismo patrón de carga (mount + focus + subscription); mantener paridad"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/PROFILE.md",
+          "reason": "Convención: useEffect solo sincroniza con sistemas externos; estado derivado en render"
+        }
+      ],
+      "files": [
+        "src/features/day-sales/presentation/DaySalesPage.tsx",
+        "src/features/day-sales/presentation/DaySalesPage.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 2,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-003",
+      "title": "Sincronizar el schema del API y regenerar los tipos GraphQL (staffWorkingWindows)",
+      "description": "El API expone una query nueva `staffWorkingWindows(staffUserId: ID!, locationId: ID!, date: String!): [StaffWorkingWindow!]!` (ventanas {startMin,endMin} del día con los overrides del roster aplicados). El POS necesita los tipos generados para consumirla. PRERREQUISITO: el archivo `../bienbravo-api/src/graphql/schema.generated.graphql` debe contener `staffWorkingWindows`; verifícalo con grep ANTES de empezar. Si NO está, el API aún no regeneró su schema: reporta FAILED con BLOCKER 'API sin schema regenerado' y no toques nada (PROHIBIDO editar schema.graphql a mano o inventar el tipo). Si está: `npm run sync-schema` (copia el schema del API a ./schema.graphql), `npm run codegen` (regenera src/core/graphql/generated/), `npm run typecheck`. No modificar ningún otro archivo; los cambios en generated/ son los que emite codegen tal cual.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "schema.graphql trae la query nueva",
+          "check": "grep -q \"staffWorkingWindows\" schema.graphql",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Los tipos generados incluyen StaffWorkingWindow",
+          "check": "grep -q \"StaffWorkingWindow\" src/core/graphql/generated/graphql.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "El proyecto sigue tipando",
+          "check": "npm run typecheck",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": "CLAUDE.md",
+          "reason": "flujo oficial sync-schema → codegen → commit de generated/"
+        },
+        {
+          "type": "code_pattern",
+          "path": "scripts/sync-schema.mjs",
+          "reason": "de dónde copia el schema (sibling ../bienbravo-api)"
+        },
+        {
+          "type": "interface",
+          "path": "codegen.ts",
+          "reason": "config de codegen: salida en src/core/graphql/generated/"
+        }
+      ],
+      "files": [
+        "schema.graphql",
+        "src/core/graphql/generated/gql.ts",
+        "src/core/graphql/generated/graphql.ts",
+        "src/core/graphql/generated/index.ts",
+        "src/core/graphql/generated/fragment-masking.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-004",
+      "title": "Reloj del POS: leer las ventanas reales del día (staffWorkingWindows) en vez de la plantilla",
+      "description": "Bug: el reloj toma la entrada programada de shiftTemplates (plantilla semanal), asi que las excepciones del roster (ShiftOverride DAY_OFF/CUSTOM_HOURS) nunca llegan al POS y el retardo discrepa del de nomina. La query staffWorkingWindows devuelve las ventanas del dia con overrides aplicados (mismo motor que payroll). Cambios: (1) clock.repository.ts: reemplazar SHIFT_TEMPLATES/getShiftTemplates por getWorkingWindows(staffUserId, locationId, date YYYY-MM-DD, opts?: {force?: boolean}): Promise<WorkingWindow[]> con la query StaffWorkingWindows y el mismo patron cache-first / force = network-only; exportar WorkingWindow {startMin; endMin}; eliminar ShiftTemplate. (2) useClock.ts: refresh() pasa localDayInTz(new Date(), locationTimezone); sin ventanas = 'Sin turno programado'; con ventanas, scheduledStartMin = startMin de la primera y scheduledEndMin = endMin de la ultima. (3) mocks/repositories.ts: getWorkingWindows devuelve []. (4) ClockPage.test.tsx: la opcion templates pasa a windows; test nuevo: windows [{startMin:720,endMin:1140}] a las 10:00 locales muestra 'Tu horario empieza a las 12:00'; el test de focus aserta force:true. (5) ClockPage.tsx: solo comentarios.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Tests del reloj en verde, incluido el nuevo de ventanas con override",
+          "check": "npm test -- src/features/clock",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El repositorio del reloj usa la query nueva",
+          "check": "grep -q \"staffWorkingWindows\" src/features/clock/data/clock.repository.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "No queda ninguna referencia a shiftTemplates en el reloj ni en los mocks",
+          "check": "test -z \"$(grep -rl shiftTemplates src/features/clock src/test/mocks)\"",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Tipado completo del proyecto",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-5",
+          "desc": "Lint limpio en los archivos tocados",
+          "check": "npx eslint src/features/clock src/test/mocks",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "interface",
+          "path": "src/features/clock/data/clock.repository.ts",
+          "reason": "repositorio a cambiar: patrón cache-first/force y forma de las queries"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/clock/application/useClock.ts",
+          "reason": "cálculo de shiftStatus que debe usar ventanas en vez de dayOfWeek"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/clock/presentation/ClockPage.test.tsx",
+          "reason": "cómo se mockean repos y fake timers para asertar la hora programada"
+        },
+        {
+          "type": "interface",
+          "path": "src/test/mocks/repositories.ts",
+          "reason": "InMemoryClockRepository debe implementar el método nuevo"
+        },
+        {
+          "type": "interface",
+          "path": "src/shared/lib/date.ts",
+          "reason": "localDayInTz para el argumento date en la tz de la sucursal"
+        }
+      ],
+      "files": [
+        "src/features/clock/data/clock.repository.ts",
+        "src/features/clock/application/useClock.ts",
+        "src/features/clock/presentation/ClockPage.test.tsx",
+        "src/features/clock/presentation/ClockPage.tsx",
+        "src/test/mocks/repositories.ts"
+      ],
+      "depends_on": [
+        "T-003"
+      ],
+      "priority": 1,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    }
+  ]
 }

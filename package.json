@@ -13,13 +13,30 @@
     "size": "size-limit",
     "sync-schema": "node scripts/sync-schema.mjs",
     "codegen": "graphql-codegen --config codegen.ts",
-    "codegen:watch": "graphql-codegen --config codegen.ts --watch"
+    "codegen:watch": "graphql-codegen --config codegen.ts --watch",
+    "typecheck": "tsc -b"
   },
   "size-limit": [
-    { "name": "Bundle inicial JS (brotli)", "path": "dist/assets/main-*.js", "limit": "105 kB" },
-    { "name": "Apollo vendor (brotli)", "path": "dist/assets/vendor-apollo-*.js", "limit": "60 kB" },
-    { "name": "Router vendor (brotli)", "path": "dist/assets/vendor-router-*.js", "limit": "36 kB" },
-    { "name": "CSS de la app (brotli)", "path": "dist/assets/index-*.css", "limit": "16 kB" }
+    {
+      "name": "Bundle inicial JS (brotli)",
+      "path": "dist/assets/main-*.js",
+      "limit": "105 kB"
+    },
+    {
+      "name": "Apollo vendor (brotli)",
+      "path": "dist/assets/vendor-apollo-*.js",
+      "limit": "60 kB"
+    },
+    {
+      "name": "Router vendor (brotli)",
+      "path": "dist/assets/vendor-router-*.js",
+      "limit": "36 kB"
+    },
+    {
+      "name": "CSS de la app (brotli)",
+      "path": "dist/assets/index-*.css",
+      "limit": "16 kB"
+    }
   ],
   "dependencies": {
     "@apollo/client": "^4.1.5",
