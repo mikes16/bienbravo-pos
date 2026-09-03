@@ -42,6 +42,8 @@ input ApplyCouponToDraftSaleInput {
 }
 
 type Appointment {
+  cancellationReason: String
+  cancelledAt: DateTime
   customer: Customer
   endAt: DateTime!
   id: ID!
@@ -205,9 +207,24 @@ type CancelAppointmentByTokenResult {
   refundAllowed: Boolean!
 }
 
+type CancelAppointmentCascadeResult {
+  appointmentId: ID!
+  inventoryRestored: Boolean!
+  ok: Boolean!
+  overrideUsed: Boolean!
+  refundedCents: Int!
+  saleOutcome: CancelCascadeSaleOutcome!
+}
+
 type CancelAppointmentResult {
   ok: Boolean!
   refundAllowed: Boolean!
+}
+
+enum CancelCascadeSaleOutcome {
+  NONE
+  REFUNDED
+  VOIDED
 }
 
 type CatalogCategory {
@@ -1034,6 +1051,7 @@ type Mutation {
   bulkUpdateProductStatus(ids: [ID!]!, status: ProductStatus!): BulkProductResult!
   cancelAppointment(appointmentId: ID!, overridePolicy: Boolean): CancelAppointmentResult!
   cancelAppointmentByToken(token: String!): CancelAppointmentByTokenResult!
+  cancelAppointmentCascade(appointmentId: ID!, overridePolicy: Boolean, reason: String!): CancelAppointmentCascadeResult!
   cancelAppointmentPrepayLink(saleId: ID!): Boolean!
   cancelOrder(orderId: ID!): Order!
   checkIn(appointmentId: ID!): Appointment!
@@ -1174,6 +1192,7 @@ type Mutation {
   upsertStaffServicePrice(input: UpsertStaffServicePriceInput!): StaffServicePrice!
   verifyPosLocationAccess(locationId: ID!, password: String!): Boolean!
   voidSale(saleId: ID!): Sale!
+  voidTimeClockEvent(id: ID!, reason: String): TimeClockEvent!
 }
 
 type Order {
@@ -1311,6 +1330,7 @@ type PosAvailableBarber {
 type PosCajaStatusHome {
   accumulatedCents: Int
   isOpen: Boolean!
+  isStale: Boolean!
   openedAt: DateTime
 }
 
@@ -1612,10 +1632,11 @@ type Query {
   staffShiftOverridesAllLocations(fromDate: String!, locationIds: [ID!]!, staffUserIds: [ID!]!, toDate: String!): [ShiftOverride!]!
   staffShiftTemplatesAllLocations(locationIds: [ID!]!, staffUserIds: [ID!]!): [ShiftTemplate!]!
   staffVacations(locationId: ID, staffUserId: ID): [StaffVacation!]!
+  staffWorkingWindows(date: String!, locationId: ID!, staffUserId: ID!): [StaffWorkingWindow!]!
   stockLocation(id: ID!): StockLocation
   stockLocations: [StockLocation!]!
   suggestedNextWalkIn(input: SuggestedNextWalkInInput!): WalkIn
-  timeClockEvents(fromDate: String!, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
+  timeClockEvents(fromDate: String!, includeVoided: Boolean = false, locationId: ID, staffUserId: ID!, toDate: String!): [TimeClockEvent!]!
   upcomingAppointmentsPublic(kioskToken: String!): [PublicAppointmentEntry!]!
   verifyKioskToken(token: String!): VerifiedKioskToken!
   viewer: Viewer!
@@ -2373,6 +2394,11 @@ type StaffVacation {
   startDate: String!
 }
 
+type StaffWorkingWindow {
+  endMin: Int!
+  startMin: Int!
+}
+
 type StockLocation {
   id: ID!
   locationId: ID
@@ -2407,14 +2433,44 @@ input SuggestedNextWalkInInput {
 type TimeClockEvent {
   at: DateTime!
   id: ID!
+
+  """
+  Solo en la primera ENTRADA no anulada de cada día/sucursal; null en salidas y anuladas.
+  """
+  lateness: TimeClockLateness
   locationId: ID!
   staffUserId: ID!
   type: TimeClockEventType!
+  voidReason: String
+
+  """Si no es null, el evento fue anulado por un admin y no cuenta."""
+  voidedAt: DateTime
+  voidedByStaffUserId: ID
 }
 
 enum TimeClockEventType {
   CLOCK_IN
   CLOCK_OUT
+}
+
+type TimeClockLateness {
+  """LatenessExcuse de ese día, si existe."""
+  excuseId: ID
+
+  """minutes > thresholdMinutes: la tardanza dispara castigo salvo excusa."""
+  isLate: Boolean!
+
+  """Día local (YYYY-MM-DD) en la tz de la sucursal del evento."""
+  localDate: String!
+
+  """Minutos de retardo (0 si llegó a tiempo o sin turno)."""
+  minutes: Int!
+
+  """Inicio programado del turno; null si ese día no tenía turno."""
+  scheduledStartAt: DateTime
+
+  """Tolerancia aplicada (override por empleado > regla de sucursal > 10)."""
+  thresholdMinutes: Int!
 }
 
 enum TokenSlot {

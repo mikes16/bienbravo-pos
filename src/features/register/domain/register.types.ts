@@ -39,3 +39,11 @@ export interface SaleLedgerEntry {
   appointmentId: string | null
   walkInId: string | null
 }
+
+/** Snapshot mínimo de la caja de la sucursal para el gate del shell. */
+export interface CajaStatus {
+  isOpen: boolean
+  /** El API decide: la sesión abierta es de un día local anterior (sin corte). */
+  isStale: boolean
+  openedAt: string | null
+}

@@ -13,7 +13,7 @@ import type {
   StockLevel,
 } from '@/features/checkout/domain/checkout.types.ts'
 import type { RegisterRepository } from '@/features/register/data/register.repository.ts'
-import type { Register, RegisterSession, CloseSessionInput } from '@/features/register/domain/register.types.ts'
+import type { Register, RegisterSession, CloseSessionInput, CajaStatus } from '@/features/register/domain/register.types.ts'
 import type { ClockRepository, TimeClockEvent, ShiftTemplate } from '@/features/clock/data/clock.repository.ts'
 import type { AgendaRepository } from '@/features/agenda/data/agenda.repository.ts'
 import type { Appointment, AppointmentStatus } from '@/features/agenda/domain/agenda.types.ts'
@@ -306,6 +306,9 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
 export class InMemoryRegisterRepository implements RegisterRepository {
   async getRegisters(_locationId: string, _opts?: { force?: boolean }): Promise<Register[]> {
     return [{ id: 'reg-1', name: 'Caja 1', isActive: true, locationId: 'loc-1', openSession: null }]
+  }
+  async getCajaStatus(): Promise<CajaStatus> {
+    return { isOpen: false, isStale: false, openedAt: null }
   }
   async openSession(_registerId: string, openingCashCents: number): Promise<RegisterSession> {
     return { id: 'sess-1', status: 'OPEN', openedAt: new Date().toISOString(), closedAt: null, openingCashCents, expectedCashCents: openingCashCents, expectedCardCents: 0, expectedTransferCents: 0, countedCashCents: null, countedCardCents: null, countedTransferCents: null }

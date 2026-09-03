@@ -1,6 +1,6 @@
 import { type ApolloClient } from '@apollo/client'
 import { graphql } from '@/core/graphql/generated'
-import type { Register, RegisterSession, CloseSessionInput } from '../domain/register.types.ts'
+import type { Register, RegisterSession, CloseSessionInput, CajaStatus } from '../domain/register.types.ts'
 
 const REGISTERS_QUERY = graphql(`
   query PosRegisters($locationId: ID!) {
@@ -11,6 +11,19 @@ const REGISTERS_QUERY = graphql(`
         openingCashCents
         expectedCashCents expectedCardCents expectedTransferCents
       }
+    }
+  }
+`)
+
+// Gate del shell: ¿hay caja abierta y desde cuándo? Reusa el root field
+// `posCajaStatusHome` (mismo que Hoy) con un nombre de operación distinto para
+// que codegen no choque. Las mutations de abrir/cerrar ya evictan ese field.
+const CAJA_GATE_STATUS_QUERY = graphql(`
+  query PosCajaGateStatus($locationId: ID!) {
+    posCajaStatusHome(locationId: $locationId) {
+      isOpen
+      isStale
+      openedAt
     }
   }
 `)
@@ -38,6 +51,8 @@ const CLOSE_SESSION = graphql(`
 
 export interface RegisterRepository {
   getRegisters(locationId: string, opts?: { force?: boolean }): Promise<Register[]>
+  /** Siempre por red: decide si el shell bloquea al operador. */
+  getCajaStatus(locationId: string): Promise<CajaStatus>
   openSession(registerId: string, openingCashCents: number): Promise<RegisterSession>
   closeSession(input: CloseSessionInput): Promise<RegisterSession>
 }
@@ -63,6 +78,19 @@ export class ApolloRegisterRepository implements RegisterRepository {
       fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     return data!.registers.filter((r: Register) => r.isActive)
+  }
+
+  async getCajaStatus(locationId: string): Promise<CajaStatus> {
+    // network-only: es un gate de correctness (¿la caja abierta es de ayer?),
+    // no una lista pintada rápido. Un snapshot viejo aquí es justo el bug que
+    // el gate existe para atrapar.
+    const { data } = await this.#client.query({
+      query: CAJA_GATE_STATUS_QUERY,
+      variables: { locationId },
+      fetchPolicy: 'network-only',
+    })
+    const status = data!.posCajaStatusHome
+    return { isOpen: status.isOpen, isStale: status.isStale, openedAt: status.openedAt ?? null }
   }
 
   async openSession(registerId: string, openingCashCents: number): Promise<RegisterSession> {

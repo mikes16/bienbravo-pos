@@ -63,6 +63,8 @@ export type ApplyCouponToDraftSaleInput = {
 
 export type Appointment = {
   __typename?: 'Appointment';
+  cancellationReason?: Maybe<Scalars['String']['output']>;
+  cancelledAt?: Maybe<Scalars['DateTime']['output']>;
   customer?: Maybe<Customer>;
   endAt: Scalars['DateTime']['output'];
   id: Scalars['ID']['output'];
@@ -240,11 +242,27 @@ export type CancelAppointmentByTokenResult = {
   refundAllowed: Scalars['Boolean']['output'];
 };
 
+export type CancelAppointmentCascadeResult = {
+  __typename?: 'CancelAppointmentCascadeResult';
+  appointmentId: Scalars['ID']['output'];
+  inventoryRestored: Scalars['Boolean']['output'];
+  ok: Scalars['Boolean']['output'];
+  overrideUsed: Scalars['Boolean']['output'];
+  refundedCents: Scalars['Int']['output'];
+  saleOutcome: CancelCascadeSaleOutcome;
+};
+
 export type CancelAppointmentResult = {
   __typename?: 'CancelAppointmentResult';
   ok: Scalars['Boolean']['output'];
   refundAllowed: Scalars['Boolean']['output'];
 };
+
+export enum CancelCascadeSaleOutcome {
+  None = 'NONE',
+  Refunded = 'REFUNDED',
+  Voided = 'VOIDED'
+}
 
 export type CatalogCategory = {
   __typename?: 'CatalogCategory';
@@ -1116,6 +1134,7 @@ export type Mutation = {
   bulkUpdateProductStatus: BulkProductResult;
   cancelAppointment: CancelAppointmentResult;
   cancelAppointmentByToken: CancelAppointmentByTokenResult;
+  cancelAppointmentCascade: CancelAppointmentCascadeResult;
   cancelAppointmentPrepayLink: Scalars['Boolean']['output'];
   cancelOrder: Order;
   checkIn: Appointment;
@@ -1256,6 +1275,7 @@ export type Mutation = {
   upsertStaffServicePrice: StaffServicePrice;
   verifyPosLocationAccess: Scalars['Boolean']['output'];
   voidSale: Sale;
+  voidTimeClockEvent: TimeClockEvent;
 };
 
 
@@ -1325,6 +1345,13 @@ export type MutationCancelAppointmentArgs = {
 
 export type MutationCancelAppointmentByTokenArgs = {
   token: Scalars['String']['input'];
+};
+
+
+export type MutationCancelAppointmentCascadeArgs = {
+  appointmentId: Scalars['ID']['input'];
+  overridePolicy?: InputMaybe<Scalars['Boolean']['input']>;
+  reason: Scalars['String']['input'];
 };
 
 
@@ -2084,6 +2111,12 @@ export type MutationVoidSaleArgs = {
   saleId: Scalars['ID']['input'];
 };
 
+
+export type MutationVoidTimeClockEventArgs = {
+  id: Scalars['ID']['input'];
+  reason?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type Order = {
   __typename?: 'Order';
   createdAt: Scalars['DateTime']['output'];
@@ -2231,6 +2264,7 @@ export type PosCajaStatusHome = {
   __typename?: 'PosCajaStatusHome';
   accumulatedCents?: Maybe<Scalars['Int']['output']>;
   isOpen: Scalars['Boolean']['output'];
+  isStale: Scalars['Boolean']['output'];
   openedAt?: Maybe<Scalars['DateTime']['output']>;
 };
 
@@ -2550,6 +2584,7 @@ export type Query = {
   staffShiftOverridesAllLocations: Array<ShiftOverride>;
   staffShiftTemplatesAllLocations: Array<ShiftTemplate>;
   staffVacations: Array<StaffVacation>;
+  staffWorkingWindows: Array<StaffWorkingWindow>;
   stockLocation?: Maybe<StockLocation>;
   stockLocations: Array<StockLocation>;
   suggestedNextWalkIn?: Maybe<WalkIn>;
@@ -3245,6 +3280,13 @@ export type QueryStaffVacationsArgs = {
 };
 
 
+export type QueryStaffWorkingWindowsArgs = {
+  date: Scalars['String']['input'];
+  locationId: Scalars['ID']['input'];
+  staffUserId: Scalars['ID']['input'];
+};
+
+
 export type QueryStockLocationArgs = {
   id: Scalars['ID']['input'];
 };
@@ -3257,6 +3299,7 @@ export type QuerySuggestedNextWalkInArgs = {
 
 export type QueryTimeClockEventsArgs = {
   fromDate: Scalars['String']['input'];
+  includeVoided?: InputMaybe<Scalars['Boolean']['input']>;
   locationId?: InputMaybe<Scalars['ID']['input']>;
   staffUserId: Scalars['ID']['input'];
   toDate: Scalars['String']['input'];
@@ -4098,6 +4141,12 @@ export type StaffVacation = {
   startDate: Scalars['String']['output'];
 };
 
+export type StaffWorkingWindow = {
+  __typename?: 'StaffWorkingWindow';
+  endMin: Scalars['Int']['output'];
+  startMin: Scalars['Int']['output'];
+};
+
 export type StockLocation = {
   __typename?: 'StockLocation';
   id: Scalars['ID']['output'];
@@ -4151,15 +4200,37 @@ export type TimeClockEvent = {
   __typename?: 'TimeClockEvent';
   at: Scalars['DateTime']['output'];
   id: Scalars['ID']['output'];
+  /** Solo en la primera ENTRADA no anulada de cada día/sucursal; null en salidas y anuladas. */
+  lateness?: Maybe<TimeClockLateness>;
   locationId: Scalars['ID']['output'];
   staffUserId: Scalars['ID']['output'];
   type: TimeClockEventType;
+  voidReason?: Maybe<Scalars['String']['output']>;
+  /** Si no es null, el evento fue anulado por un admin y no cuenta. */
+  voidedAt?: Maybe<Scalars['DateTime']['output']>;
+  voidedByStaffUserId?: Maybe<Scalars['ID']['output']>;
 };
 
 export enum TimeClockEventType {
   ClockIn = 'CLOCK_IN',
   ClockOut = 'CLOCK_OUT'
 }
+
+export type TimeClockLateness = {
+  __typename?: 'TimeClockLateness';
+  /** LatenessExcuse de ese día, si existe. */
+  excuseId?: Maybe<Scalars['ID']['output']>;
+  /** minutes > thresholdMinutes: la tardanza dispara castigo salvo excusa. */
+  isLate: Scalars['Boolean']['output'];
+  /** Día local (YYYY-MM-DD) en la tz de la sucursal del evento. */
+  localDate: Scalars['String']['output'];
+  /** Minutos de retardo (0 si llegó a tiempo o sin turno). */
+  minutes: Scalars['Int']['output'];
+  /** Inicio programado del turno; null si ese día no tenía turno. */
+  scheduledStartAt?: Maybe<Scalars['DateTime']['output']>;
+  /** Tolerancia aplicada (override por empleado > regla de sucursal > 10). */
+  thresholdMinutes: Scalars['Int']['output'];
+};
 
 export enum TokenSlot {
   Current = 'CURRENT',
@@ -4895,6 +4966,13 @@ export type PosRegistersQueryVariables = Exact<{
 
 export type PosRegistersQuery = { __typename?: 'Query', registers: Array<{ __typename?: 'Register', id: string, name: string, isActive: boolean, locationId: string, openSession?: { __typename?: 'RegisterSession', id: string, status: RegisterSessionStatus, openedAt: string, openingCashCents: number, expectedCashCents: number, expectedCardCents: number, expectedTransferCents: number } | null }> };
 
+export type PosCajaGateStatusQueryVariables = Exact<{
+  locationId: Scalars['ID']['input'];
+}>;
+
+
+export type PosCajaGateStatusQuery = { __typename?: 'Query', posCajaStatusHome: { __typename?: 'PosCajaStatusHome', isOpen: boolean, isStale: boolean, openedAt?: string | null } };
+
 export type OpenRegisterSessionMutationVariables = Exact<{
   registerId: Scalars['ID']['input'];
   openingCashCents?: InputMaybe<Scalars['Int']['input']>;
@@ -5046,6 +5124,7 @@ export const PosHomeWalkInQueueUpdatedDocument = {"kind":"Document","definitions
 export const PosHomeAppointmentUpdatedDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeAppointmentUpdated"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"appointmentUpdated"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"appointmentId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeAppointmentUpdatedSubscription, PosHomeAppointmentUpdatedSubscriptionVariables>;
 export const PosHomeSaleEventDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"subscription","name":{"kind":"Name","value":"PosHomeSaleEvent"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"slug"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"saleEvent"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"slug"},"value":{"kind":"Variable","name":{"kind":"Name","value":"slug"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"kind"}},{"kind":"Field","name":{"kind":"Name","value":"saleId"}},{"kind":"Field","name":{"kind":"Name","value":"locationSlug"}},{"kind":"Field","name":{"kind":"Name","value":"occurredAt"}}]}}]}}]} as unknown as DocumentNode<PosHomeSaleEventSubscription, PosHomeSaleEventSubscriptionVariables>;
 export const PosRegistersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosRegisters"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"registers"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"locationId"}},{"kind":"Field","name":{"kind":"Name","value":"openSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosRegistersQuery, PosRegistersQueryVariables>;
+export const PosCajaGateStatusDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosCajaGateStatus"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"posCajaStatusHome"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"isOpen"}},{"kind":"Field","name":{"kind":"Name","value":"isStale"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}}]}}]}}]} as unknown as DocumentNode<PosCajaGateStatusQuery, PosCajaGateStatusQueryVariables>;
 export const OpenRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"OpenRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"openRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"registerId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"registerId"}}},{"kind":"Argument","name":{"kind":"Name","value":"openingCashCents"},"value":{"kind":"Variable","name":{"kind":"Name","value":"openingCashCents"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"openedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<OpenRegisterSessionMutation, OpenRegisterSessionMutationVariables>;
 export const CloseRegisterSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CloseRegisterSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CloseRegisterSessionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"closeRegisterSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"closedAt"}},{"kind":"Field","name":{"kind":"Name","value":"openingCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"countedTransferCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCashCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedCardCents"}},{"kind":"Field","name":{"kind":"Name","value":"expectedTransferCents"}}]}}]}}]} as unknown as DocumentNode<CloseRegisterSessionMutation, CloseRegisterSessionMutationVariables>;
 export const PosWalkInsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PosWalkIns"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"fromDate"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"toDate"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"walkIns"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"locationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"locationId"}}},{"kind":"Argument","name":{"kind":"Name","value":"fromDate"},"value":{"kind":"Variable","name":{"kind":"Name","value":"fromDate"}}},{"kind":"Argument","name":{"kind":"Name","value":"toDate"},"value":{"kind":"Variable","name":{"kind":"Name","value":"toDate"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"customerName"}},{"kind":"Field","name":{"kind":"Name","value":"customerPhone"}},{"kind":"Field","name":{"kind":"Name","value":"customerEmail"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"assignedAt"}},{"kind":"Field","name":{"kind":"Name","value":"sortOrder"}},{"kind":"Field","name":{"kind":"Name","value":"pausedAt"}},{"kind":"Field","name":{"kind":"Name","value":"assignedStaffUser"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}}]}},{"kind":"Field","name":{"kind":"Name","value":"customer"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"phone"}}]}},{"kind":"Field","name":{"kind":"Name","value":"preferredStaffUserId"}},{"kind":"Field","name":{"kind":"Name","value":"preferredStaffUser"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"fullName"}},{"kind":"Field","name":{"kind":"Name","value":"photoUrl"}}]}},{"kind":"Field","name":{"kind":"Name","value":"requestedService"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"requestedServices"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"baseDurationMin"}}]}},{"kind":"Field","name":{"kind":"Name","value":"requestedCatalogCombo"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"sale"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"totalCents"}}]}}]}}]}}]} as unknown as DocumentNode<PosWalkInsQuery, PosWalkInsQueryVariables>;
