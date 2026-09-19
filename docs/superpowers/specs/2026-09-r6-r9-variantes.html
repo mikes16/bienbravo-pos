@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BienBravo · Variantes R6 y R9</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bravo: #c41e3a;
+    --carbon: #0f0e0e;
+    --carbon-elevated: #1a1918;
+    --carbon-panel: #252422;
+    --cuero: #2a221f;
+    --leather: #8b7355;
+    --leather-muted: #5c4d3d;
+    --bone: #e8e4df;
+    --bone-muted: #9a958f;
+    --success: #6b8a73;
+    --display: "Barlow Condensed", system-ui, sans-serif;
+    --sans: "Manrope", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #090808; color: var(--bone); font-family: var(--sans); line-height: 1.5; padding: 40px 16px 96px; }
+  .page { max-width: 1120px; margin: 0 auto; }
+  .doc-eyebrow, .eyebrow { font-family: var(--sans); font-weight: 500; font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--bone-muted); }
+  h1 { font-family: var(--display); font-weight: 800; font-size: clamp(40px, 7vw, 72px); line-height: .92; letter-spacing: -.02em; text-transform: uppercase; margin: 12px 0 16px; }
+  h1 em { font-style: normal; color: var(--bravo); }
+  .lede { max-width: 62ch; color: var(--bone-muted); font-size: 15px; }
+  .lede strong { color: var(--bone); font-weight: 600; }
+  section { margin-top: 72px; }
+  h2 { font-family: var(--display); font-weight: 800; font-size: 40px; line-height: 1; text-transform: uppercase; letter-spacing: -.01em; }
+  .quote { margin-top: 12px; max-width: 70ch; border-left: 2px solid var(--leather-muted); padding-left: 16px; color: var(--bone-muted); font-size: 14px; }
+  .variant { margin-top: 40px; }
+  .variant-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 12px; }
+  .tag { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; padding: 4px 10px; border: 1px solid var(--leather-muted); color: var(--bone-muted); }
+  .tag.rec { border-color: var(--bravo); color: var(--bone); background: rgba(196, 30, 58, .16); }
+  .variant-head h3 { font-family: var(--display); font-weight: 700; font-size: 26px; text-transform: uppercase; letter-spacing: .01em; }
+  .note { margin-top: 12px; max-width: 78ch; font-size: 14px; color: var(--bone-muted); }
+  .note strong { color: var(--bone); font-weight: 600; }
+
+  /* ---------- Marco del admin ---------- */
+  .frame { background: var(--carbon); border: 1px solid rgba(92, 77, 61, .45); overflow: hidden; }
+  .hero { position: relative; padding: 32px 40px; border-bottom: 1px solid rgba(92, 77, 61, .3); background-image: radial-gradient(ellipse 70% 80% at 0% 0%, rgba(42, 34, 31, .55), transparent 60%); }
+  .hero-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px 24px; }
+  .hero-top .eyebrow span.on { color: var(--leather); }
+  .hero-top .eyebrow i { font-style: normal; color: var(--leather-muted); margin: 0 6px; }
+  .filters { display: flex; gap: 8px; }
+  .filters span { font-size: 12px; color: var(--bone-muted); border: 1px solid var(--leather-muted); padding: 5px 10px; border-radius: 4px; }
+  .num { font-family: var(--display); font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.02em; line-height: .88; font-weight: 800; color: var(--bone); }
+  .num .cur { color: var(--leather); }
+  .num .cts { font-weight: 700; color: var(--bone-muted); }
+  .compare { margin-top: 6px; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--success); }
+  .slots { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px 24px; font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--bone-muted); }
+  .slots b { letter-spacing: 0; text-transform: none; color: var(--bone); font-weight: 700; margin-left: 8px; }
+  .slots b.zero { color: var(--leather-muted); }
+  .slots .dot { color: var(--leather-muted); }
+  .row { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 24px 48px; }
+  dl.stats { display: flex; flex-wrap: wrap; gap: 16px 40px; }
+  dl.stats dd { margin-top: 4px; }
+  .below { padding: 14px 40px; display: flex; gap: 32px; color: var(--leather-muted); font-family: var(--mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; }
+
+  /* B */
+  .b-grid { margin-top: 20px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px 56px; align-items: end; }
+  .b-cash { border-left: 1px solid rgba(92, 77, 61, .5); padding-left: 32px; }
+  .b-cash .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .split { margin-top: 16px; display: flex; height: 6px; background: var(--cuero); }
+  .split i { display: block; height: 100%; }
+  .split .c1 { background: var(--bone); }
+  .split .c2 { background: var(--leather); }
+  .split-legend { margin-top: 8px; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--bone-muted); }
+
+  /* C */
+  .ledger { margin-top: 28px; display: grid; grid-template-columns: 1.5fr 1.5fr 1fr 1fr 1fr; border: 1px solid rgba(92, 77, 61, .5); }
+  .ledger > div { padding: 14px 18px; border-left: 1px solid rgba(92, 77, 61, .5); }
+  .ledger > div:first-child { border-left: 0; }
+  .ledger .major { background: rgba(42, 34, 31, .55); }
+  .ledger dd { margin-top: 6px; }
+
+  /* ---------- Marco del POS ---------- */
+  .pos { background: var(--carbon); border: 1px solid rgba(92, 77, 61, .45); display: flex; flex-direction: column; min-height: 380px; }
+  .strip { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; padding: 0 20px; background: var(--carbon-elevated); border-bottom: 1px solid var(--leather-muted); }
+  .brand { font-size: 13px; font-weight: 700; letter-spacing: .08em; }
+  .brand small { margin-left: 12px; font-family: var(--mono); font-size: 10px; letter-spacing: .18em; color: var(--bone-muted); text-transform: uppercase; }
+  .strip-right { display: flex; align-items: center; gap: 16px; }
+  .badge { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--bone-muted); display: flex; align-items: center; gap: 6px; }
+  .badge::before { content: ""; width: 7px; height: 7px; background: var(--success); }
+  .clock { text-align: right; font-size: 14px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .clock small { display: block; margin-top: 3px; font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .18em; color: var(--bone-muted); }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--leather-muted); background: var(--cuero); font-size: 11px; font-weight: 700; flex: none; }
+  .lock { width: 36px; height: 36px; display: grid; place-items: center; color: var(--bone-muted); flex: none; }
+  .lock svg { width: 16px; height: 16px; }
+  .lock-btn { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 1px solid var(--leather-muted); border-radius: 4px; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--bone); }
+  .lock-btn svg { width: 15px; height: 15px; }
+  .pos-body { flex: 1; }
+  .hello { padding: 12px 20px 8px; font-size: 13px; color: var(--bone-muted); }
+  .hello strong { color: var(--bone); }
+  .commission { display: flex; align-items: baseline; gap: 16px; padding: 0 20px 12px; border-bottom: 1px solid rgba(92, 77, 61, .4); }
+  .commission .cap { font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .2em; color: var(--bone-muted); }
+  .commission .sub { font-size: 11px; color: var(--bone-muted); }
+  .listhead { display: flex; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid rgba(92, 77, 61, .4); font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--bone-muted); }
+  .listhead b { color: var(--bravo); }
+  .empty { padding: 36px 20px; text-align: center; font-size: 13px; color: var(--bone-muted); }
+  .cta { margin: 0 20px; background: var(--bravo); color: #fff; display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; font-weight: 700; font-size: 14px; }
+  .cta.as { font-family: var(--display); font-size: 22px; letter-spacing: .02em; text-transform: uppercase; }
+  .cta.as small { font-family: var(--mono); font-size: 10px; letter-spacing: .18em; opacity: .85; display: block; font-weight: 600; }
+  .tabs { margin-top: 12px; display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--leather-muted); background: var(--carbon-elevated); }
+  .tabs span { padding: 12px 4px; text-align: center; font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--bone-muted); }
+  .tabs span.on { color: var(--bone); background: var(--cuero); box-shadow: inset 0 2px 0 var(--bravo); }
+
+  .who { display: flex; align-items: center; gap: 12px; }
+  .who-name { font-family: var(--display); font-weight: 800; font-size: 28px; line-height: .9; letter-spacing: .01em; text-transform: uppercase; }
+  .who-name small { display: block; margin-top: 4px; font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .2em; color: var(--bone-muted); }
+  .band { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; background: var(--cuero); border-bottom: 1px solid var(--leather-muted); border-left: 4px solid var(--bravo); }
+  .band .who-name { font-size: 36px; }
+  .legend { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--bone-muted); }
+  .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; }
+
+  .decide { margin-top: 72px; border-top: 1px solid var(--leather-muted); padding-top: 24px; }
+  .decide ol { margin-top: 12px; padding-left: 20px; color: var(--bone-muted); font-size: 15px; max-width: 78ch; }
+  .decide li { margin-top: 8px; }
+  .decide strong { color: var(--bone); font-weight: 600; }
+
+  @media (max-width: 760px) {
+    .hero { padding: 24px 16px; }
+    .below { padding: 12px 16px; }
+    .b-grid { grid-template-columns: 1fr; }
+    .b-cash { border-left: 0; padding-left: 0; border-top: 1px solid rgba(92, 77, 61, .5); padding-top: 20px; }
+    .ledger { grid-template-columns: 1fr 1fr; }
+    .ledger > div { border-left: 0; border-top: 1px solid rgba(92, 77, 61, .5); }
+    .who-name { font-size: 22px; }
+    .badge, .clock { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="doc-eyebrow">BienBravo · Feedback de Aarón · 18 sep 2026</p>
+  <h1>Variantes <em>R6</em> y <em>R9</em></h1>
+  <p class="lede">Dos decisiones visuales antes de escribir las tareas. Todas las variantes usan el sistema que ya existe (Carbón, Hueso, Cuero, Rojo Bravo, numerales en Barlow Condensed): <strong>solo cambia la jerarquía</strong>. Los datos son los del video del 9 de septiembre.</p>
+
+  <!-- ============================ R6 ============================ -->
+  <section>
+    <p class="doc-eyebrow">R6 · Admin · Finanzas → Ventas y "Hoy"</p>
+    <h2>Efectivo y tarjeta que se lean</h2>
+    <p class="quote">"Siento que esto está demasiado grande, y muchas veces yo le pongo más atención, más que al número total, a cuánto efectivo hay y cuánta tarjeta hay… de repente se me pierde y no alcanzo a ver bien el número."</p>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag">Actual</span><h3>Como está hoy</h3></div>
+      <div class="frame">
+        <div class="hero">
+          <div class="hero-top">
+            <p class="eyebrow">Finanzas<i>·</i><span class="on">Ventas</span><i>·</i>Sucursal Centro ▾<i>·</i>Hoy · 09 sep</p>
+            <div class="filters"><span>Todos los barberos ▾</span><span>9 sep ▾</span></div>
+          </div>
+          <div class="row">
+            <div>
+              <div><span class="num" style="font-size:128px"><span class="cur">$</span>3,720</span> <span class="num cts" style="font-size:40px">.00</span></div>
+              <p class="eyebrow" style="margin-top:12px">Vendido hoy</p>
+              <p class="compare">▲ 564% vs. ayer · $560.00</p>
+            </div>
+            <dl class="stats">
+              <div><dt class="eyebrow">Ventas</dt><dd class="num" style="font-size:36px">14</dd></div>
+              <div><dt class="eyebrow">Ticket promedio</dt><dd class="num" style="font-size:36px">$265.71</dd></div>
+            </dl>
+          </div>
+          <div class="slots">
+            <span>Efectivo<b>$2,140.00</b></span><span class="dot">·</span>
+            <span>Tarjeta<b>$1,580.00</b></span><span class="dot">·</span>
+            <span>Transfer.<b class="zero">—</b></span><span class="dot">·</span>
+            <span>Propinas<b>$100.00</b></span><span class="dot">·</span>
+            <span>Descuentos<b class="zero">—</b></span>
+          </div>
+        </div>
+        <div class="below"><span>Por barbero</span><span>Top conceptos</span><span>Ingresos por hora</span></div>
+      </div>
+      <p class="note">Total a 128 px; efectivo y tarjeta a 11 px. La relación es de casi 12 a 1.</p>
+    </div>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag rec">A · Recomendada</span><h3>Cuatro numerales</h3></div>
+      <div class="frame">
+        <div class="hero">
+          <div class="hero-top">
+            <p class="eyebrow">Finanzas<i>·</i><span class="on">Ventas</span><i>·</i>Sucursal Centro ▾<i>·</i>Hoy · 09 sep</p>
+            <div class="filters"><span>Todos los barberos ▾</span><span>9 sep ▾</span></div>
+          </div>
+          <div class="row">
+            <div>
+              <div><span class="num" style="font-size:88px"><span class="cur">$</span>3,720</span> <span class="num cts" style="font-size:30px">.00</span></div>
+              <p class="eyebrow" style="margin-top:12px">Vendido hoy</p>
+              <p class="compare">▲ 564% vs. ayer · $560.00</p>
+            </div>
+            <dl class="stats" style="gap:16px 44px">
+              <div><dt class="eyebrow" style="color:var(--bone)">Efectivo</dt><dd class="num" style="font-size:48px">$2,140</dd></div>
+              <div><dt class="eyebrow" style="color:var(--bone)">Tarjeta</dt><dd class="num" style="font-size:48px">$1,580</dd></div>
+              <div style="border-left:1px solid rgba(92,77,61,.5);padding-left:44px"><dt class="eyebrow">Ventas</dt><dd class="num" style="font-size:32px;color:var(--bone-muted)">14</dd></div>
+              <div><dt class="eyebrow">Ticket promedio</dt><dd class="num" style="font-size:32px;color:var(--bone-muted)">$265.71</dd></div>
+            </dl>
+          </div>
+          <div class="slots" style="font-size:12px">
+            <span>Transfer.<b class="zero">—</b></span><span class="dot">·</span>
+            <span>Propinas<b>$100.00</b></span><span class="dot">·</span>
+            <span>Descuentos<b class="zero">—</b></span>
+          </div>
+        </div>
+        <div class="below"><span>Por barbero</span><span>Top conceptos</span><span>Ingresos por hora</span></div>
+      </div>
+      <p class="note"><strong>Qué cambia:</strong> el total baja de 128 a 88 px; efectivo y tarjeta suben de 11 a 48 px y pasan a ser los primeros numerales secundarios; ventas y ticket promedio quedan un escalón abajo. Es lo que pidió con "más balanceado". Si transferencias tiene monto, sube como tercer numeral.</p>
+    </div>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag">B</span><h3>Caja primero</h3></div>
+      <div class="frame">
+        <div class="hero">
+          <div class="hero-top">
+            <p class="eyebrow">Finanzas<i>·</i><span class="on">Ventas</span><i>·</i>Sucursal Centro ▾<i>·</i>Hoy · 09 sep</p>
+            <div class="filters"><span>Todos los barberos ▾</span><span>9 sep ▾</span></div>
+          </div>
+          <div class="b-grid">
+            <div>
+              <div><span class="num" style="font-size:76px"><span class="cur">$</span>3,720</span> <span class="num cts" style="font-size:26px">.00</span></div>
+              <p class="eyebrow" style="margin-top:12px">Vendido hoy · 14 ventas · ticket $265.71</p>
+              <p class="compare">▲ 564% vs. ayer · $560.00</p>
+            </div>
+            <div class="b-cash">
+              <div class="pair">
+                <div><p class="eyebrow" style="color:var(--bone)">Efectivo</p><p class="num" style="font-size:68px;margin-top:6px"><span class="cur">$</span>2,140</p></div>
+                <div><p class="eyebrow" style="color:var(--bone)">Tarjeta</p><p class="num" style="font-size:68px;margin-top:6px"><span class="cur">$</span>1,580</p></div>
+              </div>
+              <div class="split" role="img" aria-label="Efectivo 58 por ciento, tarjeta 42 por ciento"><i class="c1" style="width:57.5%"></i><i class="c2" style="width:42.5%"></i></div>
+              <div class="split-legend"><span>58% efectivo</span><span>42% tarjeta</span></div>
+            </div>
+          </div>
+          <div class="slots" style="font-size:12px">
+            <span>Transfer.<b class="zero">—</b></span><span class="dot">·</span>
+            <span>Propinas<b>$100.00</b></span><span class="dot">·</span>
+            <span>Descuentos<b class="zero">—</b></span>
+          </div>
+        </div>
+        <div class="below"><span>Por barbero</span><span>Top conceptos</span><span>Ingresos por hora</span></div>
+      </div>
+      <p class="note"><strong>Qué cambia:</strong> efectivo y tarjeta casi al mismo tamaño que el total, con una barra de proporción. Es la que mejor se lee de lejos, pero es la que más se aleja del patrón "un numeral gigante" que comparten Caja y Dashboard.</p>
+    </div>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag">C</span><h3>Renglón de libro</h3></div>
+      <div class="frame">
+        <div class="hero">
+          <div class="hero-top">
+            <p class="eyebrow">Finanzas<i>·</i><span class="on">Ventas</span><i>·</i>Sucursal Centro ▾<i>·</i>Hoy · 09 sep</p>
+            <div class="filters"><span>Todos los barberos ▾</span><span>9 sep ▾</span></div>
+          </div>
+          <div class="row">
+            <div>
+              <div><span class="num" style="font-size:112px"><span class="cur">$</span>3,720</span> <span class="num cts" style="font-size:36px">.00</span></div>
+              <p class="eyebrow" style="margin-top:12px">Vendido hoy</p>
+              <p class="compare">▲ 564% vs. ayer · $560.00</p>
+            </div>
+            <dl class="stats">
+              <div><dt class="eyebrow">Ventas</dt><dd class="num" style="font-size:36px">14</dd></div>
+              <div><dt class="eyebrow">Ticket promedio</dt><dd class="num" style="font-size:36px">$265.71</dd></div>
+            </dl>
+          </div>
+          <dl class="ledger">
+            <div class="major"><dt class="eyebrow" style="color:var(--bone)">Efectivo</dt><dd class="num" style="font-size:40px">$2,140.00</dd></div>
+            <div class="major"><dt class="eyebrow" style="color:var(--bone)">Tarjeta</dt><dd class="num" style="font-size:40px">$1,580.00</dd></div>
+            <div><dt class="eyebrow">Transfer.</dt><dd class="num" style="font-size:26px;color:var(--leather-muted)">—</dd></div>
+            <div><dt class="eyebrow">Propinas</dt><dd class="num" style="font-size:26px">$100.00</dd></div>
+            <div><dt class="eyebrow">Descuentos</dt><dd class="num" style="font-size:26px;color:var(--leather-muted)">—</dd></div>
+          </dl>
+        </div>
+        <div class="below"><span>Por barbero</span><span>Top conceptos</span><span>Ingresos por hora</span></div>
+      </div>
+      <p class="note"><strong>Qué cambia:</strong> el total casi no se toca; la fila mono se vuelve un renglón con celdas, efectivo y tarjeta a 40 px. Es el cambio más conservador, pero no atiende que el total le parece "demasiado grande" y el encabezado crece en alto.</p>
+    </div>
+  </section>
+
+  <!-- ============================ R9 ============================ -->
+  <section>
+    <p class="doc-eyebrow">R9 · POS · todas las pantallas</p>
+    <h2>¿De quién es esta sesión?</h2>
+    <p class="quote">"Aquí dice 'Hola, Aaron' pero bien chiquito… algún otro barbero despistadamente puede venirse aquí sin darse cuenta que está en el perfil de Aarón y cobrar un corte pensando que es de él."</p>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag">Actual</span><h3>Como está hoy</h3></div>
+      <div class="pos">
+        <div class="strip">
+          <span class="brand">BIENBRAVO<small>Sucursal Centro</small></span>
+          <div class="strip-right">
+            <span class="badge">En piso</span>
+            <span class="clock">18:36<small>MIÉ 9 SEP</small></span>
+            <span class="avatar">AC</span>
+            <span class="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+          </div>
+        </div>
+        <div class="pos-body">
+          <p class="hello">Hola, <strong>Aaron</strong>.</p>
+          <div class="commission"><span class="num" style="font-size:38px">$660</span><div><p class="cap">COMISIONES HOY</p><p class="sub">6 servicios</p></div></div>
+          <div class="listhead"><span>Hoy</span><b>+ Agregar walk-in</b></div>
+          <p class="empty">Hoy todavía no tienes movimiento</p>
+        </div>
+        <div class="cta"><span>Nueva venta</span><span>→</span></div>
+        <div class="tabs"><span>Reloj</span><span class="on">Hoy</span><span>Mis ventas</span><span>Ventas del día</span><span>Caja</span></div>
+      </div>
+      <p class="note">La identidad vive en dos lugares chicos: el saludo de 13 px (solo en "Hoy") y las iniciales de 36 px. En cobro no aparece el nombre.</p>
+    </div>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag rec">A · Recomendada</span><h3>Nombre en la barra</h3></div>
+      <div class="pos">
+        <div class="strip" style="min-height:68px">
+          <span class="brand">BIENBRAVO<small>Sucursal Centro</small></span>
+          <div class="strip-right">
+            <span class="clock">18:36<small>MIÉ 9 SEP</small></span>
+            <div class="who">
+              <span class="avatar" style="width:44px;height:44px;font-size:13px;border-color:var(--bone)">AC</span>
+              <span class="who-name">Aarón Cruz<small>EN PISO · SESIÓN ACTIVA</small></span>
+            </div>
+            <span class="lock-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Bloquear</span>
+          </div>
+        </div>
+        <div class="pos-body">
+          <div class="commission" style="padding-top:16px"><span class="num" style="font-size:38px">$660</span><div><p class="cap">COMISIONES HOY</p><p class="sub">6 servicios</p></div></div>
+          <div class="listhead"><span>Hoy</span><b>+ Agregar walk-in</b></div>
+          <p class="empty">Hoy todavía no tienes movimiento</p>
+        </div>
+        <div class="cta as"><span><small>Nueva venta</small>Cobrar como Aarón</span><span>→</span></div>
+        <div class="tabs"><span>Reloj</span><span class="on">Hoy</span><span>Mis ventas</span><span>Ventas del día</span><span>Caja</span></div>
+      </div>
+      <p class="note"><strong>Qué cambia:</strong> el nombre completo a 28 px en la barra superior, que ya es persistente en todas las pestañas, con el estado debajo; el candado pasa a ser un botón con texto "Bloquear"; el botón de cobro dice a nombre de quién se cobra. Desaparece el "Hola, Aaron" redundante. No gasta alto de pantalla.</p>
+    </div>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag">B</span><h3>Franja de operador</h3></div>
+      <div class="pos">
+        <div class="strip">
+          <span class="brand">BIENBRAVO<small>Sucursal Centro</small></span>
+          <div class="strip-right"><span class="badge">En piso</span><span class="clock">18:36<small>MIÉ 9 SEP</small></span></div>
+        </div>
+        <div class="band">
+          <div class="who">
+            <span class="avatar" style="width:48px;height:48px;font-size:14px">AC</span>
+            <span class="who-name"><small style="margin:0 0 4px">SESIÓN DE</small>Aarón Cruz</span>
+          </div>
+          <span class="lock-btn" style="background:var(--carbon)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>No soy Aarón</span>
+        </div>
+        <div class="pos-body">
+          <div class="commission" style="padding-top:14px"><span class="num" style="font-size:38px">$660</span><div><p class="cap">COMISIONES HOY</p><p class="sub">6 servicios</p></div></div>
+          <div class="listhead"><span>Hoy</span><b>+ Agregar walk-in</b></div>
+          <p class="empty" style="padding:20px">Hoy todavía no tienes movimiento</p>
+        </div>
+        <div class="cta as"><span><small>Nueva venta</small>Cobrar como Aarón</span><span>→</span></div>
+        <div class="tabs"><span>Reloj</span><span class="on">Hoy</span><span>Mis ventas</span><span>Ventas del día</span><span>Caja</span></div>
+      </div>
+      <p class="note"><strong>Qué cambia:</strong> una franja propia bajo la barra, con el nombre a 36 px y el botón "No soy Aarón" que bloquea. Es la más obvia y la que mejor invita a corregir, pero cuesta unos 72 px de alto en cada pantalla, y en el cobro el espacio vertical importa.</p>
+    </div>
+
+    <div class="variant">
+      <div class="variant-head"><span class="tag">C</span><h3>Color por barbero</h3></div>
+      <div class="pos" style="border-top:5px solid #d9a441">
+        <div class="strip" style="min-height:68px">
+          <span class="brand">BIENBRAVO<small>Sucursal Centro</small></span>
+          <div class="strip-right">
+            <span class="clock">18:36<small>MIÉ 9 SEP</small></span>
+            <div class="who">
+              <span class="avatar" style="width:44px;height:44px;font-size:13px;border:2px solid #d9a441;color:#d9a441">AC</span>
+              <span class="who-name" style="color:#d9a441">Aarón Cruz<small>EN PISO · SESIÓN ACTIVA</small></span>
+            </div>
+            <span class="lock-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Bloquear</span>
+          </div>
+        </div>
+        <div class="pos-body">
+          <div class="commission" style="padding-top:16px"><span class="num" style="font-size:38px">$660</span><div><p class="cap">COMISIONES HOY</p><p class="sub">6 servicios</p></div></div>
+          <div class="listhead"><span>Hoy</span><b>+ Agregar walk-in</b></div>
+          <p class="empty">Hoy todavía no tienes movimiento</p>
+        </div>
+        <div class="cta as"><span><small>Nueva venta</small>Cobrar como Aarón</span><span>→</span></div>
+        <div class="tabs"><span>Reloj</span><span class="on">Hoy</span><span>Mis ventas</span><span>Ventas del día</span><span>Caja</span></div>
+      </div>
+      <div class="legend"><span><i style="background:#d9a441"></i>Aarón</span><span><i style="background:#6f9bd1"></i>Kevin</span><span><i style="background:#7fb08a"></i>Ángel</span><span><i style="background:#a58bc9"></i>Sergio</span><span><i style="background:#d98a6a"></i>Eli</span></div>
+      <p class="note"><strong>Qué cambia:</strong> la variante A más un color fijo por barbero (borde superior, aro del avatar y nombre). Se reconoce de reojo desde lejos. Contras: con 12 barberos activos los colores empiezan a parecerse, no ayuda a quien no distingue bien colores, y agrega un dato que administrar por persona. El color nunca sería la única señal: el nombre sigue ahí.</p>
+    </div>
+  </section>
+
+  <div class="decide">
+    <p class="doc-eyebrow">Para decidir</p>
+    <ol>
+      <li><strong>R6:</strong> A, B o C. Recomendación: <strong>A</strong>. Atiende las dos quejas (total demasiado grande, efectivo y tarjeta ilegibles) sin romper el patrón de numeral protagonista que comparten Caja y Dashboard. Se aplica igual en "Hoy" y en Finanzas → Ventas.</li>
+      <li><strong>R9:</strong> A, B o C. Recomendación: <strong>A</strong>. Usa la barra que ya es persistente, no cuesta alto y suma el "Cobrar como Aarón" justo donde ocurre el error. Junto con el bloqueo a 15 s de R10 cubre el escenario que describió.</li>
+    </ol>
+  </div>
+
+</div>
+</body>
+</html>
