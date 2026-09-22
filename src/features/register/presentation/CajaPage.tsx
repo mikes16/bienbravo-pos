@@ -171,7 +171,14 @@ export function CajaPage() {
     return (
       <>
         <CajaOpenView
+          // La vista acepta `session: RegisterSession | null` ("no sé") y sabe
+          // pintar esqueletos; aquí nunca es null porque el early-return de
+          // arriba ya cubrió el caso sin dato alguno.
           session={openRegister.openSession}
+          // La frescura de la lectura la decide el hook ([D-049]) y viaja tal
+          // cual a las tres cifras esperadas: un refresco por aviso del canal
+          // las atenúa (`updating`), no las deja pasar por vigentes.
+          status={status}
           // TODO(ledger): el ledger real de ventas de la sesión aún no está
           // cableado al API — CajaOpenView oculta la sección "Ventas de hoy"
           // mientras esto sea []. Cablear leyendo las ventas de la sesión.
