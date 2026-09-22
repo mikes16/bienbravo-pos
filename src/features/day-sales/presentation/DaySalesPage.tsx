@@ -34,10 +34,13 @@ export function DaySalesPage() {
 
   const today = localDayInTz(new Date(), locationTimezone)
 
+  // Refetch silencioso compartido por subscription/focus/visibilitychange:
+  // nunca muestra spinner (esos disparan cuando la pantalla ya cargó una vez)
+  // y limpia el error previo dentro de su propio callback — nunca se invoca
+  // directo desde el cuerpo síncrono de un efecto (ver mount abajo).
   const load = useCallback(
-    (opts: { showSpinner: boolean; force: boolean }) => {
+    (opts: { force: boolean }) => {
       if (!locationId) return
-      if (opts.showSpinner) setLoading(true)
       setLoadError(null)
       daySales
         .getDaySales(locationId, localDayInTz(new Date(), locationTimezone), { force: opts.force })
@@ -51,15 +54,38 @@ export function DaySalesPage() {
     [daySales, locationId, locationTimezone],
   )
 
+  // Carga inicial: el efecto solo lanza el fetch, cero setState síncrono en
+  // su cuerpo (mismo patrón que LocationProvider). El estado inicial ya es
+  // loading=true / loadError=null, así que no hace falta repetirlo aquí;
+  // todo lo que escribe estado vive en los callbacks de la promesa, con
+  // `cancelled` en el cleanup para no pintar sobre un componente desmontado.
   useEffect(() => {
-    load({ showSpinner: true, force: false })
-  }, [load])
+    if (!locationId) return
+    let cancelled = false
+    daySales
+      .getDaySales(locationId, localDayInTz(new Date(), locationTimezone), { force: false })
+      .then((rows) => {
+        if (cancelled) return
+        setSales(rows)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setLoadError('No se pudieron cargar las ventas del día. Refresca o avisa al admin si persiste.')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [daySales, locationId, locationTimezone])
 
   useEffect(() => {
     if (!locationSlug) return
     const obs = apollo.subscribe({ query: POS_HOME_SALE_EVENT, variables: { slug: locationSlug } })
     const sub = obs.subscribe({
-      next: () => load({ showSpinner: false, force: true }),
+      next: () => load({ force: true }),
       error: (err) => {
         if (import.meta.env.DEV) {
           console.warn('[DaySalesPage] sale subscription error', err)
@@ -70,9 +96,9 @@ export function DaySalesPage() {
   }, [apollo, locationSlug, load])
 
   useEffect(() => {
-    const onFocus = () => load({ showSpinner: false, force: true })
+    const onFocus = () => load({ force: true })
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load({ showSpinner: false, force: true })
+      if (document.visibilityState === 'visible') load({ force: true })
     }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
