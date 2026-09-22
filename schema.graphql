@@ -202,6 +202,12 @@ type BulkSkipped {
   reason: String!
 }
 
+type BusinessSettings {
+  posAutoLockCheckoutSeconds: Int!
+  posAutoLockIdleSeconds: Int!
+  salesCorrectionWindowDays: Int!
+}
+
 type CancelAppointmentByTokenResult {
   ok: Boolean!
   refundAllowed: Boolean!
@@ -316,6 +322,11 @@ type CheckInAppointmentResult {
   startAt: DateTime
 }
 
+input ClearSaleItemCommissionOverrideInput {
+  reason: String!
+  saleItemId: ID!
+}
+
 input CloseRegisterSessionInput {
   countedCardCents: Int!
   countedCashCents: Int!
@@ -333,6 +344,12 @@ type CloudinaryUploadSignature {
   folder: String!
   signature: String!
   timestamp: Int!
+}
+
+input CorrectSalePaymentsInput {
+  payments: [POSPaymentInput!]!
+  reason: String!
+  saleId: ID!
 }
 
 type Coupon {
@@ -533,6 +550,7 @@ input CreatePOSSaleInput {
   locationId: ID!
   payments: [POSPaymentInput!]!
   registerSessionId: ID
+  staffSale: StaffSaleInput
   staffUserId: ID
   tipCents: Int
 }
@@ -558,6 +576,8 @@ input CreateProductInput {
   seoDescription: String
   seoTitle: String
   sku: String
+  staffPriceCents: Int
+  staffSaleEligible: Boolean
   status: ProductStatus
   tags: [String!]
   taxCode: String
@@ -577,6 +597,7 @@ input CreateProductVariantInput {
   option3: String
   priceCents: Int!
   sku: String
+  staffPriceCents: Int
 }
 
 input CreateResourceInput {
@@ -1057,6 +1078,7 @@ type Mutation {
   checkIn(appointmentId: ID!): Appointment!
   checkInAppointmentByCustomerIdPublic(customerId: ID!, locationSlug: String!, token: String!): CheckInAppointmentResult!
   checkInAppointmentPublic(kioskToken: String!, phone: String!): CheckInAppointmentResult!
+  clearSaleItemCommissionOverride(input: ClearSaleItemCommissionOverrideInput!): SaleItem!
   clearStaffPin(staffUserId: ID!): Boolean!
   clockIn(locationId: ID!): Boolean!
   clockOut(locationId: ID!): Boolean!
@@ -1065,6 +1087,7 @@ type Mutation {
   complete(appointmentId: ID!): Appointment!
   completeWalkIn(walkInId: ID!): Boolean!
   confirmAppointment(appointmentId: ID!): Appointment!
+  correctSalePayments(input: CorrectSalePaymentsInput!): Sale!
   createAppointmentPrepayLink(input: CreateAppointmentPrepayLinkInput!): PrepayLink!
   createBatchWalkInsPublic(inputs: [CreateWalkInPublicInput!]!, kioskToken: String!): [WalkInPublicResult!]!
   createBlogPost(input: CreateBlogPostInput!): BlogPost!
@@ -1130,6 +1153,7 @@ type Mutation {
   mintRotatingKioskToken(deviceToken: String!): MintedRotatingToken!
   noShow(appointmentId: ID!): Appointment!
   openRegisterSession(openingCashCents: Int, registerId: ID!): RegisterSession!
+  overrideSaleItemCommission(input: OverrideSaleItemCommissionInput!): SaleItem!
   pauseWalkIn(walkInId: ID!): WalkIn!
   publishBlogPost(id: ID!): BlogPost!
   reassignAppointment(appointmentId: ID!, staffUserId: ID!): Appointment!
@@ -1164,6 +1188,7 @@ type Mutation {
   unassignRoleFromStaff(kind: RoleKind, staffUserId: ID!): Boolean!
   unmarkPayoutEntryPaid(entryId: ID!): PayoutRun!
   updateBlogPost(id: ID!, input: UpdateBlogPostInput!): BlogPost!
+  updateBusinessSettings(input: UpdateBusinessSettingsInput!): BusinessSettings!
   updateCatalogCategory(id: ID!, input: UpdateCatalogCategoryInput!): CatalogCategory!
   updateCatalogCombo(id: ID!, input: UpdateCatalogComboInput!): CatalogCombo!
   updateCoupon(id: ID!, input: UpdateCouponInput!): Coupon!
@@ -1177,6 +1202,7 @@ type Mutation {
   updateShiftOverride(id: ID!, input: UpdateShiftOverrideInput!): ShiftOverride!
   updateStaff(id: ID!, input: UpdateStaffInput!): StaffUser!
   updateStaffMembership(id: ID!, input: UpdateStaffMembershipInput): StaffMembership!
+  updateStaffSalePolicy(input: UpdateStaffSalePolicyInput!): StaffSalePolicy!
   updateStockLocation(id: ID!, input: UpdateStockLocationInput!): StockLocation!
   upsertCatalogComboLocation(input: UpsertCatalogComboLocationInput!): CatalogComboLocation!
   upsertLatenessOverride(input: UpsertLatenessOverrideInput!): LatenessOverride!
@@ -1221,6 +1247,12 @@ type OrderItem {
   variantId: ID
 }
 
+input OverrideSaleItemCommissionInput {
+  commissionCents: Int!
+  reason: String!
+  saleItemId: ID!
+}
+
 input POSPaymentInput {
   amountCents: Int!
   provider: PaymentProvider!
@@ -1229,6 +1261,7 @@ input POSPaymentInput {
 input POSSaleItemInput {
   catalogComboId: ID
   productId: ID
+  productVariantId: ID
   qty: Int!
   serviceId: ID
   staffUserId: ID
@@ -1277,6 +1310,7 @@ type PayoutRun {
   id: ID!
   periodEnd: DateTime!
   periodStart: DateTime!
+  staleSince: DateTime
   status: String!
   totalsJson: JSON
 }
@@ -1334,6 +1368,20 @@ type PosCajaStatusHome {
   openedAt: DateTime
 }
 
+type PosDataEvent {
+  kind: PosDataEventKind!
+  locationSlug: String!
+  occurredAt: DateTime!
+}
+
+enum PosDataEventKind {
+  CATALOG
+  COMMISSION
+  PAYMENT
+  REGISTER
+  SETTINGS
+}
+
 type PosPinLockoutStatus {
   """Remaining attempts before next lockout. 8 if not in failure state."""
   attemptsRemaining: Int!
@@ -1355,6 +1403,11 @@ type PosRevenueSummary {
   salesCount: Int!
   totalCents: Int!
   transferCents: Int!
+}
+
+type PosSettings {
+  posAutoLockCheckoutSeconds: Int!
+  posAutoLockIdleSeconds: Int!
 }
 
 type PrepayLink {
@@ -1388,6 +1441,9 @@ type Product {
   seoTitle: String
   sku: String
   sortOrder: Int!
+  staffPriceCents: Int
+  staffPriceResolvedCents: Int
+  staffSaleEligible: Boolean!
   status: ProductStatus!
   tags: [String!]!
   taxCode: String
@@ -1433,6 +1489,8 @@ type ProductVariant {
   option3: String
   priceCents: Int!
   sku: String
+  staffPriceCents: Int
+  staffPriceResolvedCents: Int
 }
 
 enum ProductsSort {
@@ -1524,6 +1582,7 @@ type Query {
   blogPost(id: ID!): BlogPost
   blogPostBySlug(slug: String!): BlogPost
   blogPosts(limit: Int, offset: Int, publishedOnly: Boolean): [BlogPost!]!
+  businessSettings: BusinessSettings!
   catalogCategories(appliesTo: CategoryAppliesTo): [CatalogCategory!]!
   catalogCategory(id: ID!): CatalogCategory
   catalogCombo(id: ID!): CatalogCombo
@@ -1574,6 +1633,7 @@ type Query {
   posPinLockoutStatus(email: String!): PosPinLockoutStatus!
   posPublicLocations: [PosPublicLocation!]!
   posRevenueSummary(dateFrom: String!, dateTo: String!, locationId: ID!): PosRevenueSummary!
+  posSettings: PosSettings!
   product(id: ID!): Product
   products(locationId: ID): [Product!]!
   productsPaged(after: String, categoryId: String, first: Int! = 24, search: String, sort: ProductsSort! = UPDATED_DESC, status: ProductStatus): ProductConnection!
@@ -1601,6 +1661,7 @@ type Query {
   reportRegisterDiffs(dateFrom: String!, dateTo: String!, locationId: ID): ReportRegisterDiffs!
   reportRevenueMix(dateFrom: String!, dateTo: String!, locationId: ID): [ReportRevenueMixRow!]!
   reportStaffPerformance(dateFrom: String!, dateTo: String!, locationId: ID): [ReportStaffPerformanceRow!]!
+  reportStaffPurchases(dateFrom: String!, dateTo: String!, locationId: ID): [StaffPurchaseRow!]!
   reportTopProducts(dateFrom: String!, dateTo: String!, locationId: ID): [ReportTopProductRow!]!
   reportTrafficMix(dateFrom: String!, dateTo: String!, locationId: ID): [ReportTrafficMixRow!]!
   reportWeekOverWeek(dateFrom: String!, locationId: ID): ReportWeekOverWeek!
@@ -1608,7 +1669,7 @@ type Query {
   role(id: ID!): Role
   roles(kind: RoleKind): [Role!]!
   sale(id: ID!): Sale
-  sales(dateFrom: String!, dateTo: String!, limit: Int, locationId: ID, staffUserId: ID): [Sale!]!
+  sales(dateFrom: String!, dateTo: String!, limit: Int, locationId: ID, staffSaleOnly: Boolean, staffUserId: ID): [Sale!]!
   searchCustomers(limit: Int, query: String!): [Customer!]!
   service(id: ID!): Service
   serviceDistribution(filters: DashboardFiltersInput!): [ServiceDistributionRow!]!
@@ -1616,6 +1677,7 @@ type Query {
   shiftOverrides(fromDate: String!, locationId: ID!, toDate: String!): [ShiftOverride!]!
   shiftTemplates(locationId: ID!, staffUserId: ID!): [ShiftTemplate!]!
   staff(id: ID!): StaffUser
+  staffCommissionSummary(dateFrom: String!, dateTo: String!, locationId: ID): [StaffCommissionRow!]!
   staffCommissionToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffDayEarnings(date: String!, locationId: ID!, staffUserId: ID!): StaffDayEarnings!
   staffList: [StaffUser!]!
@@ -1627,6 +1689,8 @@ type Query {
   staffRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffRoleAssignments(staffUserId: ID): [StaffRoleAssignmentRow!]!
   staffRoleSummary(staffUserId: ID!): StaffRoleSummary!
+  staffSalePolicy: StaffSalePolicy!
+  staffSaleQuota(buyerStaffUserId: ID, locationId: ID!): StaffSaleQuota!
   staffSchedulingConfigs(locationId: ID, staffUserId: ID): [StaffSchedulingConfig!]!
   staffServiceRevenueToday(date: String!, locationId: ID!, staffUserId: ID!): Int!
   staffShiftOverridesAllLocations(fromDate: String!, locationIds: [ID!]!, staffUserIds: [ID!]!, toDate: String!): [ShiftOverride!]!
@@ -1703,6 +1767,7 @@ type Register {
 }
 
 type RegisterSession {
+  adjustments: [RegisterSessionAdjustment!]!
   closedAt: DateTime
   closedById: ID
   closedByName: String
@@ -1720,6 +1785,24 @@ type RegisterSession {
   openedByName: String
   openingCashCents: Int!
   status: RegisterSessionStatus!
+}
+
+type RegisterSessionAdjustment {
+  appliedToExpected: Boolean!
+  cardDeltaCents: Int!
+  cashDeltaCents: Int!
+  createdAt: DateTime!
+  createdByStaffUserId: ID
+  id: ID!
+  kind: RegisterSessionAdjustmentKind!
+  reason: String
+  saleId: ID!
+  transferDeltaCents: Int!
+}
+
+enum RegisterSessionAdjustmentKind {
+  PAYMENT_CORRECTION
+  SALE_VOID
 }
 
 type RegisterSessionConnection {
@@ -1933,12 +2016,19 @@ type ReportRegisterDiffDay {
 }
 
 type ReportRegisterDiffSession {
+  adjustmentCardCents: Int!
+  adjustmentCashCents: Int!
+  adjustmentTransferCents: Int!
   closedAt: DateTime!
   closedByName: String!
   countedTotalCents: Int!
   differenceCents: Int!
   expectedTotalCents: Int!
   locationName: String!
+  netDifferenceCardCents: Int!
+  netDifferenceCashCents: Int!
+  netDifferenceCents: Int!
+  netDifferenceTransferCents: Int!
   sessionId: ID!
 }
 
@@ -2078,22 +2168,33 @@ type RotateServiceTokenResult {
 
 type Sale {
   appointmentId: ID
+  buyerStaff: SaleBuyerStaff
   couponApplications: [SaleCouponApplication!]
   createdAt: DateTime!
   customer: Customer
   id: ID!
+  isStaffSale: Boolean!
   items: [SaleItem!]!
   locationId: ID!
   paidTotalCents: Int!
+  paymentCorrectable: Boolean
+  paymentCorrectionLockReason: String
+  paymentCorrections: [SalePaymentCorrection!]
   paymentStatus: SalePaymentStatus!
   payments: [PaymentTransaction!]
   source: String!
+  staffDiscountCents: Int!
   staffUserId: ID
   status: SaleStatus!
   subtotalCents: Int!
   taxTotalCents: Int!
   totalCents: Int!
   walkInId: ID
+}
+
+type SaleBuyerStaff {
+  fullName: String!
+  id: ID!
 }
 
 type SaleCouponApplication {
@@ -2118,10 +2219,18 @@ enum SaleEventKind {
 
 type SaleItem {
   catalogComboId: ID
+  commissionCents: Int
+  commissionEditable: Boolean
+  commissionIsOverridden: Boolean
+  commissionIsPenalized: Boolean
+  commissionLockReason: String
+  houseCents: Int
   id: ID!
   itemType: SaleItemType!
+  listUnitPriceCents: Int
   name: String
   productId: ID
+  productVariantId: ID
   qty: Int!
   serviceId: ID
   staffUser: StaffUser
@@ -2135,6 +2244,21 @@ enum SaleItemType {
   PRODUCT
   SERVICE
   TIP
+}
+
+type SalePaymentCorrection {
+  after: [SalePaymentCorrectionEntry!]!
+  before: [SalePaymentCorrectionEntry!]!
+  createdAt: DateTime!
+  createdByStaffUserId: ID
+  id: ID!
+  reason: String!
+  saleId: ID!
+}
+
+type SalePaymentCorrectionEntry {
+  amountCents: Int!
+  provider: PaymentProvider!
 }
 
 enum SalePaymentStatus {
@@ -2284,6 +2408,19 @@ type StaffComboPrice {
   staffUserId: ID!
 }
 
+type StaffCommissionRow {
+  penalized: Boolean!
+  photoUrl: String
+  productCommissionCents: Int!
+  revenueCents: Int!
+  serviceCommissionCents: Int!
+  serviceCount: Int!
+  staffName: String!
+  staffUserId: ID!
+  tipsCents: Int!
+  totalCommissionCents: Int!
+}
+
 enum StaffContextRole {
   ADMIN
   BARBER
@@ -2324,6 +2461,17 @@ type StaffPendingWorkload {
   walkIns: [PendingWorkloadWalkIn!]!
 }
 
+type StaffPurchaseRow {
+  discountCents: Int!
+  listAmountCents: Int!
+  month: String!
+  paidAmountCents: Int!
+  salesCount: Int!
+  staffName: String
+  staffUserId: ID!
+  units: Int!
+}
+
 type StaffRoleAssignmentRow {
   id: ID!
   locationId: ID
@@ -2352,6 +2500,37 @@ type StaffSaleEarnings {
   saleId: ID!
   soldAt: DateTime!
   tipCents: Int!
+}
+
+input StaffSaleInput {
+  buyerStaffUserId: ID!
+}
+
+type StaffSalePolicy {
+  allowServicesInTicket: Boolean!
+  enabled: Boolean!
+  generatesCommission: Boolean!
+  maxListAmountCentsPerStaffPerMonth: Int
+  maxUnitsPerProductPerStaffPerMonth: Int
+  maxUnitsPerStaffPerMonth: Int
+}
+
+type StaffSaleProductUnits {
+  productId: ID!
+  units: Int!
+}
+
+type StaffSaleQuota {
+  allowServicesInTicket: Boolean!
+  enabled: Boolean!
+  listAmountCentsLimit: Int
+  listAmountCentsRemaining: Int
+  listAmountCentsUsed: Int!
+  perProductLimit: Int
+  unitsByProduct: [StaffSaleProductUnits!]!
+  unitsLimit: Int
+  unitsRemaining: Int
+  unitsUsed: Int!
 }
 
 type StaffSchedulingConfig {
@@ -2421,6 +2600,7 @@ type StripePaymentIntentResult {
 
 type Subscription {
   appointmentUpdated(slug: String!): AppointmentEvent!
+  posDataChanged(slug: String!): PosDataEvent!
   saleEvent(slug: String!): SaleEvent!
   walkInQueueUpdated(slug: String!): WalkInQueueEvent!
 }
@@ -2482,6 +2662,12 @@ input UpdateBlogPostInput {
   contentJson: JSON
   slug: String
   title: String
+}
+
+input UpdateBusinessSettingsInput {
+  posAutoLockCheckoutSeconds: Int
+  posAutoLockIdleSeconds: Int
+  salesCorrectionWindowDays: Int
 }
 
 input UpdateCatalogCategoryInput {
@@ -2576,6 +2762,8 @@ input UpdateProductInput {
   seoDescription: String
   seoTitle: String
   sku: String
+  staffPriceCents: Int
+  staffSaleEligible: Boolean
   status: ProductStatus
   tags: [String!]
   taxCode: String
@@ -2635,6 +2823,15 @@ input UpdateStaffMembershipInput {
   isPrimary: Boolean
   locationId: ID
   startsAt: DateTime
+}
+
+input UpdateStaffSalePolicyInput {
+  allowServicesInTicket: Boolean
+  enabled: Boolean
+  generatesCommission: Boolean
+  maxListAmountCentsPerStaffPerMonth: Int
+  maxUnitsPerProductPerStaffPerMonth: Int
+  maxUnitsPerStaffPerMonth: Int
 }
 
 input UpdateStockLocationInput {
