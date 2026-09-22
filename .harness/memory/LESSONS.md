@@ -38,3 +38,4 @@
 - [test] (x1, T-032b) El rol implícito de <s>/<del> NO lo resuelve el motor de roles de Testing Library (getByRole('deletion') falla): si quieres consultar por rol un elemento semántico poco común, pon el role explícito en el mismo cambio.
 - [test] (x1, T-032c) Para afirmar 'el catálogo ya cargó' no uses una colección derivada que filtra (catalogItems con onlyCategorized descarta fixtures con categoryId null): aserta por un camino sin filtro, p. ej. agregar la línea y ver su precio.
 - [test] (x1, T-032d) El matcher por defecto de getByText sólo une nodos de texto DIRECTOS: una etiqueta corta repetida en el aria-label del botón contenedor NO hace ambigua la consulta; se puede asertar la etiqueta con getByText y el botón con getByRole(..., { name }) en el mismo test.
+- [build] (x1, T-047) En esta máquina (macOS/zsh) no existe el timeout de coreutils: envolver un check con él lo aborta con exit 127; acota los checks solo con el parámetro timeout del propio Bash.

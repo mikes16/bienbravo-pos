@@ -3714,6 +3714,61 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-048",
+      "title": "Curar la memoria del harness",
+      "description": "Curar .harness/memory/ sin perder información. Diagnóstico: DECISIONS.md está en 64/80 líneas = exactamente el tope blando (MEMORY_SOFT_RATIO 0.8) y el CLI re-encola una curación tras cada tarea mientras siga ≥ 64; las dos curaciones previas (T-046, T-047) no pudieron bajarlo porque no había entradas SUSTITUIDA. Meta de ESTA curación: dejar DECISIONS.md por DEBAJO de 64 líneas sin perder ninguna decisión. Cómo: (1) Consolida decisiones que expresan la misma regla en UNA entrada nueva que las cubra a todas. Candidatos (verifica leyendo el archivo): D-029/D-030 (provider u hook de core/ que puede montarse sin sesión no usa useLiveRefresh); D-018/D-025 (un fallo tira el dato sólo en dinero; lo vivo se conserva con aviso); D-019/D-049 (un cargador por clase de dato; el status vive en el hook); D-040/D-045 (GraphQLError con extensions.code vs texto); D-003/D-004/D-047 (lista de permitidos de persistencia y lista de evicción). Registra cada consolidada con `node .harness/scripts/harness.mjs add-decision --task=T-048 --substitutes=D-NNN \"<texto>\"`; si el CLI sólo admite un --substitutes por llamada, la consolidada nace con la primera sustitución y las demás entradas se marcan SUSTITUIDA con el formato exacto que valida lint-memory (mira SUBSTITUTED_RE en .harness/scripts/lib/memory.mjs). (2) Mueve las entradas SUSTITUIDA a .harness/memory/archive/DECISIONS-2026-09-22.md ÍNTEGRAS (los docblocks del código citan [D-NNN]: el id debe seguir resoluble vía archive) y deja en DECISIONS.md una sola línea puntero al archivo. (3) LESSONS.md (41/60) y PROJECT.md (46/60): sólo fusiona duplicadas reales y refresca Estructura si algo cambió; no promuevas nada que no llegue a (x3). Nada se borra. Al terminar: lint-memory OK y DECISIONS.md < 64 líneas. Si de verdad no se puede sin perder semántica, RESULT FAILED explicando qué decisiones no admiten consolidación.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "PROJECT.md, DECISIONS.md y LESSONS.md dentro de topes y con formato de entradas válido",
+          "check": "node .harness/scripts/harness.mjs lint-memory",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "DECISIONS.md queda por debajo del tope blando (64 líneas) para que el CLI deje de re-encolar curaciones",
+          "check": "test \"$(wc -l < .harness/memory/DECISIONS.md)\" -lt 64",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "Archivo a curar: consolidar decisiones solapadas y archivar las SUSTITUIDA (AC-2)"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/memory/LESSONS.md",
+          "reason": "Sólo fusionar duplicadas reales; está dentro del tope blando (AC-1)"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/memory/PROJECT.md",
+          "reason": "Refrescar Estructura sólo si cambió; recibe convenciones sólo con (x3)+ (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/scripts/lib/memory.mjs",
+          "reason": "DECISION_RE / SUBSTITUTED_RE: el formato exacto que valida lint-memory; MEMORY_SOFT_RATIO (AC-1, AC-2)"
+        }
+      ],
+      "files": [
+        ".harness/memory/PROJECT.md",
+        ".harness/memory/DECISIONS.md",
+        ".harness/memory/LESSONS.md",
+        ".harness/memory/archive/DECISIONS-2026-09-22.md"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "curation",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }
