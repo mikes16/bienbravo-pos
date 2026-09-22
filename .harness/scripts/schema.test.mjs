@@ -116,7 +116,7 @@ test('tasks.schema.json caps description, context and criteria per the core limi
   const sixCriteria = Array.from({ length: 6 }, (_, i) => (
     { id: `AC-${i + 1}`, desc: 'd', check: 'npm test', kind: 'test' }
   ));
-  assert.ok(validate({ version: 1, tasks: [validTask({ description: 'x'.repeat(1201) })] }, schema)
+  assert.ok(validate({ version: 1, tasks: [validTask({ description: 'x'.repeat(2401) })] }, schema)
     .some((e) => /maxLength/.test(e.message)));
   assert.ok(validate({ version: 1, tasks: [validTask({ context: ctx(8) })] }, schema)
     .some((e) => /maxItems/.test(e.message)));

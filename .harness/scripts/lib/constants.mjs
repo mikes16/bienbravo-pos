@@ -1,7 +1,7 @@
 export const MAX_ATTEMPTS = 3;
 export const MAX_REDISPATCHES = 2;
 export const CRITERIA_MIN = 1, CRITERIA_MAX = 5;
-export const DESCRIPTION_MAX = 1200;          // chars
+export const DESCRIPTION_MAX = 2400;          // chars
 export const CONTEXT_MAX = 7;
 export const REASON_MAX = 140;                // chars
 export const SCOPE_TOLERANCE = 2;             // archivos extra test/fixture

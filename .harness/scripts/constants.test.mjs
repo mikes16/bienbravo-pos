@@ -13,7 +13,7 @@ test('numeric core limits match the contract', () => {
   assert.equal(MAX_REDISPATCHES, 2);
   assert.equal(CRITERIA_MIN, 1);
   assert.equal(CRITERIA_MAX, 5);
-  assert.equal(DESCRIPTION_MAX, 1200);
+  assert.equal(DESCRIPTION_MAX, 2400);
   assert.equal(CONTEXT_MAX, 7);
   assert.equal(REASON_MAX, 140);
   assert.equal(SCOPE_TOLERANCE, 2);

@@ -55,9 +55,9 @@
       "depends_on": [],
       "priority": 1,
       "type": "fix",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
-      "redispatches": 0,
+      "redispatches": 1,
       "split_from": null,
       "review_feedback": []
     },
@@ -236,6 +236,1769 @@
       ],
       "priority": 1,
       "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-005",
+      "title": "El caché guardado en el dispositivo solo contiene catálogo y sesión (lista de permitidos)",
+      "description": "REGLA DEL DUEÑO: el dinero NUNCA se muestra desde caché ni se guarda en el dispositivo; con varias iPads cobrando, una cifra guardada está mal en cuanto otra iPad cobra. Hoy src/core/apollo/client.ts (attachCachePersistence) escribe TODO cache.extract() en localStorage y lo restaura al arrancar: ventas, comisiones, caja y clientes quedan guardados en un iPad compartido y sobreviven al bloqueo (hallazgo de privacidad). (1) Crea src/core/apollo/dataClasses.ts: única fuente de la clasificación de campos raíz de Query. STATIC (persistibles, controlados por versión de catálogo): services, products, catalogCombos, catalogCategories, y los de sucursales/locations que use el POS. SESSION (persistible): viewer. SENSITIVE (dinero y datos de clientes; nunca persistido; siempre de la red): posDaySales, staffDayEarnings, registers, posCajaStatusHome, searchCustomers, y cualquier query de ventas, comisiones, caja, cupos o clientes. LIVE (sin dinero; nunca persistido): walkIns, appointments, posInventoryLevels, posAvailableBarbers (incluye estado laboral), reloj/fichajes. Verifica los nombres REALES con grep en src/features/**/data/*.ts; exporta PERSISTED_ROOT_FIELDS = STATIC ∪ SESSION y helpers isSensitive/isLive. (2) client.ts: antes de escribir, filtra el snapshot con una función pura pickPersistable(snapshot): conserva de ROOT_QUERY solo las llaves cuyo nombre de campo está en PERSISTED_ROOT_FIELDS, más las entidades alcanzables desde ellas siguiendo __ref de forma recursiva; todo lo demás se descarta. LISTA DE PERMITIDOS, no de excluidos: un campo nuevo sin clasificar NO se persiste. (3) Al restaurar aplica el mismo filtro. (4) Reemplaza la constante manual SCHEMA_VERSION por un id de build: `define: { __BUILD_ID__: JSON.stringify(...) }` en vite.config.ts (hash de commit del deploy o timestamp del build) declarado en src/vite-env.d.ts; en test usa un valor fijo. Cada deploy purga el caché guardado una vez. Conserva el tope de 1.5 MB, el flush en pagehide y purgePersistedCache. Test src/core/apollo/persistence.test.ts: snapshot con services + posDaySales + staffDayEarnings + un Customer → lo persistible contiene services y sus entidades y NO contiene posDaySales, staffDayEarnings, registers ni el Customer; un campo desconocido no se persiste; restaurar un caché viejo con dinero lo descarta; id de build distinto purga.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Solo catálogo y sesión se persisten; dinero y clientes jamás",
+          "check": "npm test -- src/core/apollo/persistence.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Clasificación centralizada y versión de caché por build",
+          "check": "grep -q 'PERSISTED_ROOT_FIELDS' src/core/apollo/dataClasses.ts && grep -q '__BUILD_ID__' src/core/apollo/client.ts && ! grep -q \"SCHEMA_VERSION = '\" src/core/apollo/client.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck, eslint y build",
+          "check": "npm run typecheck && npx eslint src/core/apollo && npm run build",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Secciones 1, 3.1 y 3.2: diagnóstico, clases de datos y persistencia por lista de permitidos (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/apollo/client.ts",
+          "reason": "attachCachePersistence y typePolicies actuales a modificar (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/bootstrap/BootstrapProvider.tsx",
+          "reason": "STATIC_QUERY_FIELDS: lista actual de campos estáticos a unificar con dataClasses (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "vite.config.ts",
+          "reason": "Dónde se define __BUILD_ID__ (AC-2, AC-3)"
+        }
+      ],
+      "files": [
+        "src/core/apollo/dataClasses.ts",
+        "src/core/apollo/client.ts",
+        "src/core/apollo/persistence.test.ts",
+        "vite.config.ts",
+        "src/vite-env.d.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-006",
+      "title": "Componente MoneyValue: una cifra de dinero nunca se muestra vieja ni como $0 falso",
+      "description": "Decisión del dueño: esqueleto de carga para los datos de dinero; nunca datos viejos ni falsos. Crea src/shared/pos-ui/MoneyValue.tsx: ÚNICA forma de pintar en el POS una cifra de dinero que viene del servidor (totales del día, comisiones, caja, cupos). Reutiliza MoneyDisplay.tsx para el formato y Skeleton.tsx para el esqueleto (no dupliques su lógica). Props: status: 'loading' | 'fresh' | 'updating' | 'offline' | 'error'; cents: number | null; size/variant que ya soporte MoneyDisplay; onRetry?: () => void; label accesible. Estados: (1) loading → esqueleto del MISMO tamaño que el numeral (sin salto de layout); nunca '$0' ni la cifra anterior; aria-busy='true'. (2) fresh → la cifra. (3) updating → la cifra atenuada (opacidad) con un indicador discreto de actualización; si pasa más de 1000 ms en 'updating' se pinta como loading (esqueleto). Existe para que las pantallas no parpadeen con cada venta de otra iPad: la cifra atenuada acaba de venir del servidor hace instantes. (4) offline → '—' y el texto 'Sin conexión'; NUNCA la última cifra como si fuera actual. (5) error → 'No se pudo cargar' y, si hay onRetry, botón 'Reintentar' (área táctil ≥ 44 px). Regla: un 0 REAL (fresh con cents = 0) se pinta como $0.00 (o como lo formatee MoneyDisplay); 'no sé' siempre es esqueleto o guion. Respeta prefers-reduced-motion (sin animación de pulso). Usa solo tokens existentes (var(--color-*)); no toques el design system. Exporta desde src/shared/pos-ui/index.ts. Test MoneyValue.test.tsx (Testing Library; timers falsos de Vitest para el segundo de 'updating'): loading no contiene ningún dígito y tiene aria-busy; fresh muestra el monto; fresh con 0 muestra cero real; updating muestra el monto y a los 1000 ms deja de mostrarlo; offline muestra '—' y no el monto; error muestra el mensaje y Reintentar llama a onRetry.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Los cinco estados; cero real distinto de 'no sé'; updating cae a esqueleto tras 1 s",
+          "check": "npm test -- src/shared/pos-ui/MoneyValue.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Exportado y sin duplicar el formato de dinero",
+          "check": "grep -q 'MoneyValue' src/shared/pos-ui/index.ts && grep -q 'MoneyDisplay' src/shared/pos-ui/MoneyValue.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/shared/pos-ui/MoneyValue.tsx src/shared/pos-ui/MoneyValue.test.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.1b: tabla de los cinco estados de una cifra de dinero (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/shared/pos-ui/MoneyDisplay.tsx",
+          "reason": "Formato de dinero existente a reutilizar (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/shared/pos-ui/Skeleton.tsx",
+          "reason": "Esqueleto existente a reutilizar (AC-1)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-05-04-pos-money-ux-consistency-design.md",
+          "reason": "Convenciones previas de cómo se muestra dinero en el POS (AC-1)"
+        }
+      ],
+      "files": [
+        "src/shared/pos-ui/MoneyValue.tsx",
+        "src/shared/pos-ui/MoneyValue.test.tsx",
+        "src/shared/pos-ui/index.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-007",
+      "title": "FreshnessProvider: un solo canal de avisos por sucursal y puesta al día al reconectar",
+      "description": "DECISIÓN DEL DUEÑO: el POS se actualiza por WebSocket; NO hay sondeo periódico (ningún setInterval que consulte al servidor 'por si acaso'). Bug real (R8): 'Ventas del día' mostraba 2 ventas cuando había 14, porque la terminal pintó su caché, no recibió los eventos y, al estar siempre en primer plano, nunca disparó focus/visibilitychange. Hoy cada página abre sus propias suscripciones solo mientras está montada (HoyPage, MyDayPage, DaySalesPage) y si el socket se cae los eventos se pierden: el pubsub del API es en memoria y no reenvía. Crea en src/core/freshness/: (1) FreshnessProvider.tsx: abre UNA vez por sucursal (slug de useLocation) las suscripciones que ya existen en src/features/home/data/home.queries.ts (POS_HOME_SALE_EVENT, POS_HOME_WALK_IN_QUEUE_UPDATED y la de citas) y traduce cada evento a un TEMA: 'sales', 'walkins', 'appointments'. Mantiene un registro de cargadores por tema. Emite 'refrescar' para un tema cuando llega su evento; y para TODOS los temas cuando: el socket pasa de caído a conectado (puesta al día: UNA consulta por reconexión, no un sondeo), la pestaña vuelve a ser visible / gana foco, o alguien llama refreshAll(). Reglas: mínimo 5 s entre refrescos del MISMO tema (una ráfaga de 10 eventos produce 1 refresco, con un refresco final al cerrar la ventana si llegaron más); se pausa mientras haya un cobro enviándose (expón setPaused(boolean); quedan pendientes y se ejecutan al reanudar). Expone por contexto: connection: 'connected' | 'reconnecting' | 'offline', lastUpdatedAt: Date | null (último refresco exitoso) y refreshAll(). (2) useLiveRefresh(load, topics): registra y desregistra el cargador; NO lo invoca al montar (la página decide su carga inicial). (3) src/core/apollo/wsStatus.ts: emisor mínimo (subscribe/getState) que client.ts alimenta con los callbacks `on: { connected, closed, error }` de graphql-ws createClient; distingue primera conexión de reconexión. Test FreshnessProvider.test.tsx con Apollo mockeado y timers falsos: evento de venta refresca solo 'sales'; 10 eventos en ráfaga → 1 refresco; reconexión refresca todos los temas UNA vez y la primera conexión no; pausado no refresca y al reanudar sí; desmontar desregistra; no existe ningún temporizador periódico de consulta.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Temas, ráfagas, puesta al día al reconectar, pausa y desregistro",
+          "check": "npm test -- src/core/freshness/FreshnessProvider.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin sondeo periódico y con estado de socket conectado a client.ts",
+          "check": "! grep -q 'setInterval' src/core/freshness/FreshnessProvider.tsx && grep -q 'wsStatus' src/core/apollo/client.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/core/freshness src/core/apollo",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.3: refresco por eventos sin sondeo, puesta al día al reconectar y reglas de ráfaga (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/apollo/client.ts",
+          "reason": "createClient de graphql-ws: dónde se conectan los callbacks on.connected / on.closed (AC-2)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/home/presentation/HoyPage.tsx",
+          "reason": "Cómo se abren hoy las tres suscripciones por página (patrón a centralizar) (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/home/data/home.queries.ts",
+          "reason": "Documentos de las suscripciones existentes a reutilizar (AC-1)"
+        }
+      ],
+      "files": [
+        "src/core/freshness/FreshnessProvider.tsx",
+        "src/core/freshness/useLiveRefresh.ts",
+        "src/core/freshness/FreshnessProvider.test.tsx",
+        "src/core/apollo/wsStatus.ts",
+        "src/core/apollo/client.ts"
+      ],
+      "depends_on": [
+        "T-005"
+      ],
+      "priority": 1,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-008",
+      "title": "Nombre del barbero activo grande en la barra superior (variante A)",
+      "description": "Queja del cliente (R9): 'Hola, Aaron' y las iniciales en la esquina son muy chicos; un barbero cobra, olvida tocar el candado y el siguiente cobra un corte en el perfil de otro sin darse cuenta: la venta y la comisión quedan mal atribuidas. El dueño eligió la variante A 'Nombre en la barra' del mockup docs/superpowers/specs/2026-09-r6-r9-variantes.html (ábrelo: sección R9, variante A). En src/app/IdentityStripV2.tsx: (1) la barra sube de h-14 / sm:h-16 a min-h-[68px]. (2) A la derecha, en este orden: reloj (como hoy) · bloque de identidad · botón Bloquear. Bloque de identidad: avatar o iniciales de 44 px (hoy 36; con borde bone) y, a su lado, el NOMBRE COMPLETO del barbero en font-[var(--font-pos-display)] (Barlow Condensed), text-[28px], font-extrabold, mayúsculas, leading apretado; debajo, en mono 9–10 px tracked, el estado laboral que hoy muestra el StatusBadge ('EN PISO' / 'EN SERVICIO' / 'SIN CHECAR') seguido de '· SESIÓN ACTIVA'. El StatusBadge suelto desaparece (su información vive bajo el nombre). (3) El candado deja de ser un ícono solo: botón con ícono + texto 'Bloquear', borde leather-muted, alto ≥ 44 px, conserva aria-label='Bloquear sesión' y onLock. (4) Responsive: en anchos chicos el nombre se trunca con elipsis (min-w-0 + truncate) y NUNCA desaparece; ceden primero la fecha bajo el reloj, luego el reloj, luego el estado. (5) En src/features/home/presentation/HoyView.tsx elimina el párrafo 'Hola, {firstName}.' (redundante con la barra); ajusta el espaciado superior del bloque de comisiones. No cambies props públicas salvo lo necesario; no toques tokens. Actualiza src/app/IdentityStripV2.test.tsx: el nombre completo es visible como texto; existe un botón con nombre accesible 'Bloquear sesión' que llama a onLock; el estado se muestra bajo el nombre; con foto se usa la imagen con alt del nombre. Actualiza HoyView.test.tsx: ya no existe el texto 'Hola,'.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Nombre completo visible, botón Bloquear con texto y estado bajo el nombre",
+          "check": "npm test -- src/app/IdentityStripV2.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Hoy ya no saluda y sigue en verde",
+          "check": "npm test -- src/features/home/presentation/HoyView.test.tsx && ! grep -q 'Hola,' src/features/home/presentation/HoyView.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/app/IdentityStripV2.tsx src/features/home/presentation/HoyView.tsx",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Revisión visual contra el mockup",
+          "check": "Abrir el POS en laptop e iPad y comparar la barra con la variante A de R9 del mockup; con un nombre largo el texto se trunca y no desaparece",
+          "kind": "manual"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-menores-design.md",
+          "reason": "Apartado R9: medidas de la variante A y criterios de aceptación (AC-1, AC-2)"
+        },
+        {
+          "type": "doc",
+          "path": "docs/superpowers/specs/2026-09-r6-r9-variantes.html",
+          "reason": "Mockup aprobado: sección R9, variante A 'Nombre en la barra' (AC-4)"
+        },
+        {
+          "type": "interface",
+          "path": "src/app/IdentityStripV2.tsx",
+          "reason": "Barra superior a modificar: props, StatusBadge y candado actuales (AC-1)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-04-29-pos-visual-language-design.md",
+          "reason": "Lenguaje visual del POS: tipografías y tokens a respetar (AC-1)"
+        }
+      ],
+      "files": [
+        "src/app/IdentityStripV2.tsx",
+        "src/app/IdentityStripV2.test.tsx",
+        "src/features/home/presentation/HoyView.tsx",
+        "src/features/home/presentation/HoyView.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-009",
+      "title": "El botón de cobro dice a nombre de quién se cobra",
+      "description": "Segunda mitad de R9 (variante A del mockup): el error que describe el cliente ocurre AL COBRAR (un barbero cobra en la sesión de otro), así que el nombre debe estar justo en ese botón. En src/features/checkout/presentation/CobrarCTA.tsx agrega la prop `staffName: string` y cambia el texto del botón principal a dos líneas: arriba, en mono pequeño tracked, el texto actual de la acción (p. ej. 'COBRAR $280.00' o el que hoy tenga: consérvalo tal cual, incluido el monto); abajo, en font-[var(--font-pos-display)] text-[20px] mayúsculas: 'COMO {PRIMER NOMBRE}'. Si hoy el botón es de una sola línea, conviértelo a columna sin cambiar su alto mínimo táctil ni sus estados (deshabilitado, enviando). El nombre accesible del botón debe incluir ambas cosas: 'Cobrar $280.00 como Aarón'. En src/features/checkout/presentation/CheckoutPage.tsx pasa el nombre del barbero de la SESIÓN ACTIVA (viewer.staff.fullName vía usePosAuth; primer nombre = primera palabra), NO el del barbero atribuido a las líneas: son cosas distintas (el cajero puede cobrar servicios hechos por otro; el botón dice quién está operando). Si PaymentSheet.tsx tiene su propio botón de confirmar pago, aplica el mismo patrón ahí ('Confirmar pago · como Aarón') pasando la misma prop. No cambies la lógica de cobro. Actualiza CheckoutPage.test.tsx: el botón de cobro expone el nombre del barbero de la sesión en su nombre accesible; con otra sesión cambia; el monto sigue visible. Crea o extiende el test de CobrarCTA si existe.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El botón de cobro incluye el nombre del barbero de la sesión y conserva el monto",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Hoja de pago en verde",
+          "check": "npm test -- src/features/checkout/presentation/PaymentSheet.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/presentation/CobrarCTA.tsx src/features/checkout/presentation/CheckoutPage.tsx src/features/checkout/presentation/PaymentSheet.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-menores-design.md",
+          "reason": "Apartado R9: 'Cobrar como {nombre}' en el flujo de venta y en la confirmación de pago (AC-1)"
+        },
+        {
+          "type": "doc",
+          "path": "docs/superpowers/specs/2026-09-r6-r9-variantes.html",
+          "reason": "Mockup aprobado: botón de cobro de la variante A de R9 (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CobrarCTA.tsx",
+          "reason": "Botón principal de cobro a modificar (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/auth/usePosAuth.ts",
+          "reason": "De dónde sale el barbero de la sesión activa (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/CobrarCTA.tsx",
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CheckoutPage.test.tsx",
+        "src/features/checkout/presentation/PaymentSheet.tsx",
+        "src/features/checkout/presentation/PaymentSheet.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 2,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-010",
+      "title": "Control 'Actualizar' con hora del último dato y estado de la conexión en vivo",
+      "description": "Red de seguridad y señal de confianza del nuevo esquema de frescura: el operador debe saber qué tan fresco es lo que ve y tener una salida que NO sea recargar la página. Crea src/core/freshness/RefreshControl.tsx, que lee el contexto de FreshnessProvider (connection, lastUpdatedAt, refreshAll): (1) botón 'Actualizar' (ícono de recarga SVG inline, sin librería de íconos; aria-label 'Actualizar datos'; área táctil ≥ 44 px) que llama a refreshAll(); mientras refresca, el ícono gira (sin animación si prefers-reduced-motion) y el botón queda deshabilitado. (2) A su lado, en mono 9–10 px: 'ACTUALIZADO 18:36' con la hora del último refresco exitoso en la zona horaria de la SUCURSAL (usa src/shared/lib/date.ts, formatTimeInTz; nunca la tz del dispositivo); si lastUpdatedAt es null no se muestra hora. (3) Estado de conexión: 'connected' no muestra nada extra; 'reconnecting' por más de 5 s, u 'offline', muestra una etiqueta en rojo bravo 'SIN CONEXIÓN EN VIVO' y el texto de hora pasa a 'DATOS DE LAS 18:36'. Nunca se presentan datos viejos como actuales. No hagas ninguna consulta desde este componente: solo dispara refreshAll. Monta el control en src/app/IdentityStripV2.tsx, a la izquierda del reloj, pasándolo como elemento hijo/prop opcional (`trailing` o similar) para no acoplar la barra al contexto; en anchos chicos el texto de hora se oculta y queda solo el botón. Test RefreshControl.test.tsx con un provider de prueba: clic llama a refreshAll; muestra la hora en la tz dada; offline muestra el aviso y 'DATOS DE LAS…'; reconnecting de menos de 5 s no muestra aviso (timers falsos); sin lastUpdatedAt no pinta hora.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Botón, hora en tz de sucursal y aviso de conexión caída",
+          "check": "npm test -- src/core/freshness/RefreshControl.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "La barra sigue en verde con el control montado",
+          "check": "npm test -- src/app/IdentityStripV2.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/core/freshness src/app/IdentityStripV2.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.3 e) y f): botón Actualizar con hora y estado de conexión visible (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/app/IdentityStripV2.tsx",
+          "reason": "Barra superior donde se monta el control (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/shared/lib/date.ts",
+          "reason": "formatTimeInTz: hora en la zona horaria de la sucursal (AC-1)"
+        }
+      ],
+      "files": [
+        "src/core/freshness/RefreshControl.tsx",
+        "src/core/freshness/RefreshControl.test.tsx",
+        "src/app/IdentityStripV2.tsx",
+        "src/app/IdentityStripV2.test.tsx"
+      ],
+      "depends_on": [
+        "T-007",
+        "T-008"
+      ],
+      "priority": 2,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-011",
+      "title": "Montar FreshnessProvider en la app y refrescar al desbloquear con PIN",
+      "description": "Conecta el mecanismo de frescura al árbol de la app. (1) En src/app/Providers.tsx monta FreshnessProvider DENTRO de los providers de Apollo, location y auth (los necesita) y por fuera del router/shell. Solo debe abrir suscripciones cuando hay sesión autenticada Y sucursal (slug); sin ellas queda inerte. (2) En src/app/PosShell.tsx renderiza RefreshControl dentro de IdentityStripV2 (prop creada en la tarea anterior). (3) Refresco al desbloquear: cuando isLocked pasa de true a false (alguien metió su PIN), llama a refreshAll(). Es un disparador por ACCIÓN del usuario, no por tiempo: el siguiente barbero siempre ve datos frescos y no los del anterior. Impleméntalo con un efecto que observe la transición (ref del valor previo), en PosShell o en un componente hijo de FreshnessProvider; no lo metas en PosAuthProvider (evita acoplar auth a frescura). (4) NO agregues ningún setInterval de consulta. Actualiza src/app/PosShell.test.tsx: con sesión y sucursal el shell renderiza el control 'Actualizar datos'; la transición bloqueado → desbloqueado dispara refreshAll exactamente una vez; permanecer desbloqueado no vuelve a dispararlo. Si PosShell.cajaGate.test.tsx necesita el provider de prueba para seguir en verde, envuélvelo en el helper de render existente.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Control visible en el shell y refresco único al desbloquear",
+          "check": "npm test -- src/app/PosShell.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Resto del shell en verde",
+          "check": "npm test -- src/app/PosShell.cajaGate.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Sin sondeo; typecheck, eslint y build",
+          "check": "! grep -q 'setInterval' src/app/Providers.tsx src/app/PosShell.tsx && npm run typecheck && npx eslint src/app && npm run build",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.3 d): disparadores por acción del usuario (desbloquear con PIN), no por tiempo (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/app/Providers.tsx",
+          "reason": "Orden actual de providers donde se inserta FreshnessProvider (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/app/PosShell.tsx",
+          "reason": "Shell que renderiza la barra y conoce isLocked (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/app/PosShell.test.tsx",
+          "reason": "Helper de render y mocks del shell a reutilizar (AC-1, AC-2)"
+        }
+      ],
+      "files": [
+        "src/app/Providers.tsx",
+        "src/app/PosShell.tsx",
+        "src/app/PosShell.test.tsx",
+        "src/app/PosShell.cajaGate.test.tsx"
+      ],
+      "depends_on": [
+        "T-010",
+        "T-001"
+      ],
+      "priority": 2,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-012",
+      "title": "Al bloquear la sesión se borran de la memoria el dinero y los datos de clientes",
+      "description": "Con varias personas usando el mismo iPad, el siguiente barbero no debe heredar en pantalla ni en memoria las cifras del anterior (comisiones, ventas del día, caja, clientes buscados). Hoy `lock()` en src/core/auth/PosAuthProvider.tsx solo pone isLocked y limpia 'bb-pos-last-barber-id'; el caché de Apollo en memoria conserva todo. Cambio: al bloquear (manual con el candado o por auto-bloqueo) y también en logout, evicta del caché de Apollo TODOS los campos raíz clasificados como SENSITIVE en src/core/apollo/dataClasses.ts (creado en una tarea previa: úsalo como única fuente; NO listes campos a mano aquí) con cache.evict({ id: 'ROOT_QUERY', fieldName }) por cada uno y un cache.gc() al final. El catálogo (STATIC) y viewer NO se tocan: el desbloqueo sigue siendo instantáneo. PosAuthProvider recibe el cliente con useApolloClient (o por el repositorio de auth si ese es el patrón: mira cómo hace logout el evictViewerCache en src/core/auth/auth.repository.ts y sigue ese patrón, agregando un método evictSensitiveCache al repositorio y a su mock en src/test/mocks/repositories.ts). No cambies el comportamiento del PIN ni la persistencia de isLocked. Extiende src/core/auth/PosAuthProvider.test.tsx: lock() llama a la evicción de sensibles; logout() también; unlock() no; el catálogo no se evicta.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Bloquear y cerrar sesión evictan lo sensible; el catálogo se conserva",
+          "check": "npm test -- src/core/auth/PosAuthProvider.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "La lista de campos sale de dataClasses, no se duplica",
+          "check": "grep -rq 'dataClasses' src/core/auth && ! grep -q \"'posDaySales'\" src/core/auth/auth.repository.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/core/auth src/test/mocks",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.2: al bloquear se evictan de memoria los campos DINERO/SENSIBLE (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/auth/PosAuthProvider.tsx",
+          "reason": "lock() y logout() a extender (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/core/auth/auth.repository.ts",
+          "reason": "evictViewerCache: patrón de evicción vía repositorio (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/test/mocks/repositories.ts",
+          "reason": "Mock del repositorio de auth que debe ganar el método nuevo (AC-1)"
+        }
+      ],
+      "files": [
+        "src/core/auth/PosAuthProvider.tsx",
+        "src/core/auth/PosAuthProvider.test.tsx",
+        "src/core/auth/auth.repository.ts",
+        "src/test/mocks/repositories.ts"
+      ],
+      "depends_on": [
+        "T-005",
+        "T-004"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-013",
+      "title": "Ventas del día siempre viene de la red y se actualiza por avisos",
+      "description": "Bug reportado por el cliente (R8): en la computadora de la barbería 'Ventas del día' mostraba 2 ventas ($500) cuando ya había 14 ($3,720), hasta que abrió la página en otra computadora. Causa (verificada): src/features/day-sales/presentation/DaySalesPage.tsx monta con load({ force: false }) → cache-first sobre un caché que además sobrevivía recargas; se refrescaba solo con eventos del socket o con focus/visibilitychange, que una terminal siempre en primer plano nunca dispara. REGLA DEL DUEÑO: el dinero nunca se muestra desde caché. Cambios: (1) src/features/day-sales/data/day-sales.repository.ts: getDaySales SIEMPRE usa fetchPolicy 'network-only'; elimina el parámetro force (y ajusta llamadores y el mock de src/test/mocks/repositories.ts si lo expone). (2) DaySalesPage.tsx: elimina los useEffect propios de suscripción (apollo.subscribe a POS_HOME_SALE_EVENT) y de focus/visibilitychange; en su lugar registra la carga con useLiveRefresh(load, ['sales']) de src/core/freshness. La carga inicial al montar se conserva. (3) Estados de la pantalla, usando MoneyValue de src/shared/pos-ui para el total del encabezado: primera carga → filas esqueleto y total en 'loading' (nunca una lista vacía ni '$0'); refresco por aviso con datos ya en pantalla → total en 'updating' y la lista se mantiene hasta que llega la nueva; error de red → NO se queda la lista anterior como si fuera actual: total en 'offline' y el mensaje existente 'No se pudieron cargar las ventas del día…' con botón Reintentar; vacío real → el estado vacío actual ('hoy no hay ventas') con total $0 real. (4) Respeta la regla de la tarea previa de este archivo: nada de setState síncrono dentro del efecto de carga. No cambies filtros por barbero, hoja de detalle ni reimpresión. Actualiza DaySalesPage.test.tsx: monta pidiendo a la red; un refresco del tema 'sales' vuelve a cargar; no existe ya apollo.subscribe en la página; error muestra aviso y no la lista previa; cargando no muestra '$0'.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Siempre red, refresco por tema 'sales', esqueletos y error sin datos viejos",
+          "check": "npm test -- src/features/day-sales",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin suscripción ni listeners propios en la página; repositorio siempre network-only",
+          "check": "! grep -q 'apollo.subscribe' src/features/day-sales/presentation/DaySalesPage.tsx && ! grep -q \"addEventListener('focus'\" src/features/day-sales/presentation/DaySalesPage.tsx && ! grep -q 'cache-first' src/features/day-sales/data/day-sales.repository.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint sin warnings",
+          "check": "npm run typecheck && npm run lint -- src/features/day-sales --max-warnings=0",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Secciones 1 (causa de R8), 3.1 (dinero siempre de la red) y 3.1b (estados de una cifra) (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/day-sales/presentation/DaySalesPage.tsx",
+          "reason": "Carga, suscripción y listeners actuales a reemplazar (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/day-sales/data/day-sales.repository.ts",
+          "reason": "getDaySales y su fetchPolicy condicional (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/test/mocks/repositories.ts",
+          "reason": "Mock del repositorio de ventas del día (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/day-sales/presentation/DaySalesPage.tsx",
+        "src/features/day-sales/presentation/DaySalesPage.test.tsx",
+        "src/features/day-sales/data/day-sales.repository.ts",
+        "src/test/mocks/repositories.ts"
+      ],
+      "depends_on": [
+        "T-002",
+        "T-006",
+        "T-007",
+        "T-012"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-014",
+      "title": "Hoy: las comisiones del barbero vienen siempre de la red con esqueleto",
+      "description": "Pantalla 'Hoy' del barbero: muestra '$660 COMISIONES HOY' (src/features/home/presentation/HoyView.tsx) con datos que carga src/features/home/presentation/HoyPage.tsx (staffDayEarnings con una política `earningsPolicy` que puede ser cache-first, más walk-ins y citas) y abre TRES suscripciones propias (walk-in, cita, venta). REGLA DEL DUEÑO: el dinero nunca se muestra desde caché; los avisos llegan por un solo canal. Cambios en HoyPage.tsx: (1) la consulta de comisiones (staffDayEarnings) usa SIEMPRE 'network-only'; elimina earningsPolicy. (2) Elimina el bloque de suscripciones propias (subscribeTo / apollo.subscribe) y cualquier listener de focus/visibilitychange; registra las cargas con useLiveRefresh de src/core/freshness: la de comisiones en el tema 'sales'; la de fila y citas en 'walkins' y 'appointments'. (3) Fila de walk-ins y citas NO son dinero: pueden pintarse desde la memoria de la sesión, pero al montar SIEMPRE se revalidan contra la red (carga inicial con force/network-only). En HoyView.tsx: el numeral de comisiones pasa a MoneyValue (src/shared/pos-ui) con su estado: 'loading' en la primera carga (hoy pinta '—': reemplázalo por esqueleto del tamaño del numeral), 'updating' en refrescos, 'offline'/'error' si falla (nunca la cifra previa). El view-model (deriveHoyViewModel.ts) ya expone commission.loading: extiéndelo con el estado si hace falta, sin lógica de dinero en el componente. El resto de Hoy (filas, CTA, gates de caja) no cambia. Actualiza HoyPage.test.tsx y HoyView.test.tsx: comisiones se piden a la red al montar; un refresco de 'sales' recarga comisiones y no la fila; cargando no muestra dígitos; error no muestra la cifra anterior; la página ya no llama a apollo.subscribe.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Comisiones siempre de red, refresco por temas y estados de la cifra",
+          "check": "npm test -- src/features/home/presentation",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin suscripciones propias en la página",
+          "check": "! grep -q 'apollo.subscribe' src/features/home/presentation/HoyPage.tsx && ! grep -q 'earningsPolicy' src/features/home/presentation/HoyPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/home",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Secciones 3.1, 3.1b y 3.3 a): clases de datos, estados de una cifra y canal único (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/home/presentation/HoyPage.tsx",
+          "reason": "Cargas, earningsPolicy y suscripciones actuales a reemplazar (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/home/presentation/HoyView.tsx",
+          "reason": "Numeral de comisiones a migrar a MoneyValue (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/home/presentation/deriveHoyViewModel.ts",
+          "reason": "View-model que expone commission.loading (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/home/presentation/HoyPage.tsx",
+        "src/features/home/presentation/HoyPage.test.tsx",
+        "src/features/home/presentation/HoyView.tsx",
+        "src/features/home/presentation/HoyView.test.tsx",
+        "src/features/home/presentation/deriveHoyViewModel.ts"
+      ],
+      "depends_on": [
+        "T-006",
+        "T-007",
+        "T-008"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-015",
+      "title": "Mi día: ganancias y ventas del barbero siempre de la red con esqueleto",
+      "description": "src/features/my-day/presentation/MyDayPage.tsx muestra al barbero sus ganancias del día (comisión, propinas, tiempo trabajado) y su lista de servicios. Hoy carga con `fetchPolicy: opts.force ? 'network-only' : 'cache-first'` (~línea 339) y abre sus propias suscripciones de walk-in, cita y venta (~líneas 419–437). REGLA DEL DUEÑO: el dinero nunca se muestra desde caché; los avisos llegan por un solo canal. Cambios: (1) toda consulta de dinero de esta página (ganancias del día, ventas del barbero) usa SIEMPRE 'network-only'; elimina la rama cache-first. (2) Elimina subscribeTo / apollo.subscribe y cualquier listener de focus/visibilitychange; registra la carga con useLiveRefresh(load, ['sales', 'walkins', 'appointments']) de src/core/freshness. (3) Cada cifra de dinero de la página (el hero 'Lo que llevas ganado hoy', comisión, propinas y los montos por fila que representen dinero del servidor) se pinta con MoneyValue de src/shared/pos-ui: 'loading' en la primera carga (esqueleto del tamaño del numeral; nunca '$0' ni '—' ambiguo), 'updating' en refrescos por aviso, 'offline' o 'error' si falla, sin dejar la cifra previa como si fuera actual. Un 0 real ('todavía no llevas ventas') se pinta como cero y con su texto vacío actual. (4) La hoja de detalle de una venta (SaleDetailSheet.tsx) no cambia. Actualiza MyDayPage.test.tsx: monta pidiendo a la red; un refresco del tema 'sales' recarga; cargando no muestra dígitos; error no conserva la cifra anterior; la página ya no llama a apollo.subscribe.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Siempre red, refresco por temas y estados de cada cifra",
+          "check": "npm test -- src/features/my-day",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin cache-first ni suscripciones propias",
+          "check": "! grep -q 'cache-first' src/features/my-day/presentation/MyDayPage.tsx && ! grep -q 'apollo.subscribe' src/features/my-day/presentation/MyDayPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/my-day",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Secciones 3.1, 3.1b y 3.3: dinero siempre de red, estados de la cifra y canal único (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/my-day/presentation/MyDayPage.tsx",
+          "reason": "Carga con fetchPolicy condicional y suscripciones propias a reemplazar (AC-1, AC-2)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/my-day/presentation/MyDayPage.test.tsx",
+          "reason": "Mocks de la página a extender (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/my-day/presentation/MyDayPage.tsx",
+        "src/features/my-day/presentation/MyDayPage.test.tsx"
+      ],
+      "depends_on": [
+        "T-006",
+        "T-007"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-016",
+      "title": "Caja: el estado y los montos de la caja siempre de la red y al día entre iPads",
+      "description": "Con varias iPads cobrando en la misma sucursal, la caja es el dato más sensible: efectivo esperado, tarjeta, transferencia, si está abierta o cerrada. src/features/register/data/register.repository.ts lee con `opts?.force ? 'network-only' : 'cache-first'` (~línea 78) y evicta 'registers' y 'posCajaStatusHome' solo tras mutaciones PROPIAS: lo que abre, cierra o cobra otra iPad no llega. REGLA DEL DUEÑO: el dinero nunca se muestra desde caché. Cambios: (1) register.repository.ts: todas las lecturas de caja (sesión, estado home, montos esperados) usan SIEMPRE 'network-only'; elimina el parámetro force y ajusta llamadores y el mock en src/test/mocks/repositories.ts. (2) src/features/register/application/useRegister.ts: registra su carga con useLiveRefresh(load, ['sales', 'register']) de src/core/freshness: una venta de otra iPad cambia el esperado; abrir o cerrar caja en otra iPad cambia el estado. El tema 'register' lo emitirá la suscripción posDataChanged (tarea posterior); registrarlo desde ahora no rompe nada. Expón en el hook el estado de la cifra ('loading' | 'fresh' | 'updating' | 'offline' | 'error'). (3) src/features/register/presentation/CajaOpenView.tsx: los montos esperados se pintan con MoneyValue de src/shared/pos-ui según ese estado; primera carga → esqueletos, nunca '$0'. (4) IMPORTANTE para el cierre: el asistente de corte (CloseCajaWizard) debe trabajar con montos recién traídos de la red: al entrar al corte se fuerza una carga y, si falla, NO se permite continuar con cifras viejas (mensaje 'No se pudo confirmar el estado de la caja. Revisa la conexión.'). No cambies la lógica del corte ni la regla de caja de un día anterior (StaleCajaBlocker). Actualiza useRegister.test.tsx y CajaOpenView.test.tsx: siempre red; refresco por 'sales' y 'register'; cargando sin dígitos; error sin cifra previa.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Caja siempre de red, refresco por temas y estados de la cifra",
+          "check": "npm test -- src/features/register",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin cache-first en el repositorio de caja",
+          "check": "! grep -q 'cache-first' src/features/register/data/register.repository.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/register src/test/mocks",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Secciones 3.1 y 3.3: caja es DINERO/SENSIBLE y se actualiza por avisos (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/register/data/register.repository.ts",
+          "reason": "Lecturas con fetchPolicy condicional y evicciones locales (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/register/application/useRegister.ts",
+          "reason": "Hook de caja donde se registra la carga y se expone el estado (AC-1)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-05-04-pos-caja-design.md",
+          "reason": "Diseño de la caja del POS: qué no se debe cambiar (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/register/data/register.repository.ts",
+        "src/features/register/application/useRegister.ts",
+        "src/features/register/application/useRegister.test.tsx",
+        "src/features/register/presentation/CajaOpenView.tsx",
+        "src/features/register/presentation/CajaOpenView.test.tsx"
+      ],
+      "depends_on": [
+        "T-006",
+        "T-007",
+        "T-013"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-017",
+      "title": "Agenda y fila de walk-ins se revalidan al entrar y por avisos",
+      "description": "Datos vivos SIN dinero (clase LIVE de src/core/apollo/dataClasses.ts): la agenda y la fila de walk-ins. Regla: pueden pintarse al instante desde la memoria de la sesión, pero SIEMPRE se revalidan contra la red al entrar a la pantalla y cuando llega un aviso; nunca dependen de focus/visibilitychange ni de un sondeo. Hoy src/features/agenda/data/agenda.repository.ts y src/features/walkins/data/walkins.repository.ts leen con `opts?.force ? 'network-only' : 'cache-first'` y las páginas montan sin forzar. Cambios: (1) src/features/agenda/presentation/AgendaPage.tsx: la carga inicial al montar pide a la red (force: true) mostrando mientras tanto lo que haya en memoria; registra la carga con useLiveRefresh(load, ['appointments']) de src/core/freshness; elimina listeners propios de focus/visibilitychange o suscripciones si los tiene. (2) src/features/walkins/presentation/WalkInsPage.tsx: igual, con el tema 'walkins'. (3) Si la red falla y hay datos en memoria, se muestran con un aviso visible 'Sin conexión · datos de las HH:MM' (hora en la zona horaria de la sucursal con src/shared/lib/date.ts); si no hay datos, el estado de error existente. (4) No agregues setInterval. No toques los repositorios salvo que sea indispensable para el force (si lo haces, repórtalo). Actualiza AgendaPage.test.tsx y WalkInsPage.test.tsx: al montar se pide a la red aunque haya caché; un aviso del tema correspondiente recarga; un aviso de otro tema no; fallo de red con datos previos muestra el aviso de sin conexión.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Revalidan al montar y por su tema; aviso de sin conexión con datos previos",
+          "check": "npm test -- src/features/agenda src/features/walkins/presentation/WalkInsPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin sondeo en estas páginas",
+          "check": "! grep -q 'setInterval' src/features/agenda/presentation/AgendaPage.tsx src/features/walkins/presentation/WalkInsPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/agenda src/features/walkins",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.1: clase VIVO sin dinero: memoria de sesión + revalidar siempre (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/agenda/presentation/AgendaPage.tsx",
+          "reason": "Carga actual de la agenda (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/walkins/presentation/WalkInsPage.tsx",
+          "reason": "Carga actual de la fila de walk-ins (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/agenda/presentation/AgendaPage.tsx",
+        "src/features/agenda/presentation/AgendaPage.test.tsx",
+        "src/features/walkins/presentation/WalkInsPage.tsx",
+        "src/features/walkins/presentation/WalkInsPage.test.tsx"
+      ],
+      "depends_on": [
+        "T-007"
+      ],
+      "priority": 3,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-018",
+      "title": "El cobro y el recibo no muestran Subtotal ni Impuesto cuando no hay impuesto",
+      "description": "Decisión del dueño (R5): todos los precios son SIN IVA; el API ya guarda impuesto 0 y el histórico se corrigió. En el POS aparecen 'Subtotal' e 'Impuesto' en src/features/checkout/presentation/CartTotals.tsx (totales del carrito), SaleTicketBody.tsx (cuerpo del ticket en pantalla / recibo) y PrintableTicket.tsx (ticket impreso). Cambio: cuando el impuesto es 0 NO se muestra la línea de Subtotal ni la de Impuesto: solo Total (más propina y descuento si existen). Cuando el impuesto es mayor a 0 el desglose completo sigue apareciendo: NO borres ese código, el IVA volverá en el futuro. IMPORTANTE (no duplicar reglas del API): revisa si el POS CALCULA impuesto del lado del cliente para el carrito (src/features/checkout/lib/cart.ts o CartTotals); si lo hace con una tasa fija (p. ej. 16%), eso contradice al API, que hoy usa tasa 0: deja el cálculo del carrito en impuesto 0 y repórtalo en el handoff como hallazgo (la tasa debe venir del API, nunca estar fija en el POS); el total que se cobra es el que valida el API. El ticket impreso no debe dejar renglones vacíos donde estaban esas líneas. Actualiza CartTotals.test.tsx y crea src/features/checkout/presentation/SaleTicketBody.test.tsx: con impuesto 0 no existe el texto 'Subtotal' ni 'Impuesto' y sí 'Total'; con impuesto > 0 aparecen los tres; el total mostrado es igual a la suma de líneas + propina − descuento.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Sin impuesto solo se ve Total en carrito y ticket; con impuesto se ve el desglose",
+          "check": "npm test -- src/features/checkout/presentation/CartTotals.test.tsx src/features/checkout/presentation/SaleTicketBody.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Recibo y carrito existentes en verde",
+          "check": "npm test -- src/features/checkout/presentation/ReceiptScreen.test.tsx src/features/checkout/lib/cart.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/presentation/CartTotals.tsx src/features/checkout/presentation/SaleTicketBody.tsx src/features/checkout/presentation/PrintableTicket.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-menores-design.md",
+          "reason": "Apartado R5: qué se oculta, por qué no se borra y que el POS no calcula impuesto por su cuenta (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CartTotals.tsx",
+          "reason": "Totales del carrito con Subtotal e Impuesto (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/SaleTicketBody.tsx",
+          "reason": "Cuerpo del ticket en pantalla (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/lib/cart.ts",
+          "reason": "Dónde podría calcularse impuesto del lado del cliente (AC-2)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/CartTotals.tsx",
+        "src/features/checkout/presentation/CartTotals.test.tsx",
+        "src/features/checkout/presentation/SaleTicketBody.tsx",
+        "src/features/checkout/presentation/SaleTicketBody.test.tsx",
+        "src/features/checkout/presentation/PrintableTicket.tsx"
+      ],
+      "depends_on": [],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-019",
+      "title": "Sincronizar schema del API: avisos de datos y ajustes del POS",
+      "description": "COMPUERTA. Las tareas siguientes necesitan lo que el API agrega en su lote (en ../bienbravo-api: tareas T-019 suscripción posDataChanged con el enum PosDataEventKind, y T-024/T-025 query posSettings). El primer criterio verifica que el schema emitido del API ya lo trae; si NO, esta tarea está BLOQUEADA: repórtalo como blocked; NO mockees el schema ni edites a mano los generados. Si sí: `npm run sync-schema` (copia el schema del API a ./schema.graphql) y luego `npm run codegen` (regenera src/core/graphql/generated/). No agregues operaciones aquí: solo sincroniza. Revisa el diff de schema.graphql: debe traer únicamente adiciones; si trae tipos o campos ELIMINADOS que el POS usa, detente y repórtalo. CI falla si lo commiteado difiere de lo que produce codegen: commitea juntos schema.graphql y los generados. Esta tarea va después de la sincronización pendiente de staffWorkingWindows (misma clase de archivos).",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El schema del API ya trae avisos y ajustes del POS (si falla: tarea bloqueada)",
+          "check": "grep -q 'posDataChanged' ../bienbravo-api/src/graphql/schema.generated.graphql && grep -q 'posSettings' ../bienbravo-api/src/graphql/schema.generated.graphql",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "schema.graphql sincronizado",
+          "check": "grep -q 'posDataChanged' schema.graphql && grep -q 'PosDataEventKind' schema.graphql && grep -q 'posAutoLockIdleSeconds' schema.graphql",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Codegen sin drift y typecheck",
+          "check": "npm run codegen && git diff --exit-code -- src/core/graphql/generated && npm run typecheck",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": "CLAUDE.md",
+          "reason": "Procedimiento sync-schema + codegen y regla de CI de drift (AC-2, AC-3)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-del-negocio-y-bloqueo-pos-design.md",
+          "reason": "Sección 3.2: posSettings trae solo los dos tiempos de bloqueo (AC-1, AC-2)"
+        }
+      ],
+      "files": [
+        "schema.graphql",
+        "src/core/graphql/generated/gql.ts",
+        "src/core/graphql/generated/graphql.ts"
+      ],
+      "depends_on": [
+        "T-003"
+      ],
+      "priority": 3,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-020",
+      "title": "FreshnessProvider escucha posDataChanged: caja, catálogo, ajustes, pagos y comisiones",
+      "description": "El API publica un aviso genérico por sucursal, `posDataChanged(slug)`, con kind ∈ { REGISTER, CATALOG, SETTINGS, PAYMENT, COMMISSION } (sin montos ni nombres: solo avisa). Cubre lo que las tres suscripciones existentes no cubren: otra iPad abre o cierra caja; el admin corrige la forma de pago de una venta, edita una comisión, cambia un precio o los ajustes del negocio. (1) Crea src/core/freshness/freshness.queries.ts con la suscripción usando graphql() de '@/core/graphql/generated' (NO gql de @apollo/client): subscription PosDataChanged($slug: String!) { posDataChanged(slug: $slug) { kind locationSlug occurredAt } }; corre `npm run codegen` y commitea los generados. (2) En src/core/freshness/FreshnessProvider.tsx abre esta cuarta suscripción junto a las otras (una sola vez por sucursal) y mapea kind → temas: REGISTER → 'register'; PAYMENT → 'sales' y 'register' (una corrección mueve montos entre canales de la caja); COMMISSION → 'sales' (las comisiones del barbero cambian); CATALOG → 'catalog'; SETTINGS → 'settings'. Agrega 'register', 'catalog' y 'settings' a los temas válidos de useLiveRefresh. Mismas reglas de ráfaga (mínimo 5 s por tema) y de pausa mientras se envía un cobro. (3) La puesta al día al reconectar también emite los temas nuevos. No agregues sondeo. Extiende FreshnessProvider.test.tsx: REGISTER refresca solo cargadores de 'register'; PAYMENT refresca 'sales' y 'register'; COMMISSION refresca 'sales'; CATALOG y SETTINGS llegan a sus temas; un kind desconocido se ignora sin romper.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Cada kind llega a sus temas; kinds desconocidos se ignoran",
+          "check": "npm test -- src/core/freshness/FreshnessProvider.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Suscripción con graphql() y codegen sin drift",
+          "check": "grep -q 'posDataChanged' src/core/freshness/freshness.queries.ts && npm run codegen && git diff --exit-code -- src/core/graphql/generated",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/core/freshness",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.3 c): eventos nuevos y qué cambia cada uno (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/home/data/home.queries.ts",
+          "reason": "Cómo se declaran las suscripciones con graphql() en este repo (AC-2)"
+        },
+        {
+          "type": "doc",
+          "path": "CLAUDE.md",
+          "reason": "Regla: usar graphql() de generated y commitear el codegen (AC-2)"
+        }
+      ],
+      "files": [
+        "src/core/freshness/freshness.queries.ts",
+        "src/core/freshness/FreshnessProvider.tsx",
+        "src/core/freshness/FreshnessProvider.test.tsx",
+        "src/core/graphql/generated/gql.ts",
+        "src/core/graphql/generated/graphql.ts"
+      ],
+      "depends_on": [
+        "T-019",
+        "T-011"
+      ],
+      "priority": 3,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-021",
+      "title": "La versión del catálogo se revisa por avisos y al entrar a cobrar, no solo al cambiar de pestaña",
+      "description": "src/core/bootstrap/BootstrapProvider.tsx consulta un hash barato (catalogVersion) y, si cambió, evicta el catálogo cacheado para que se vuelva a pedir UNA vez. Defecto (verificado): solo corre al autenticarse y en visibilitychange; una terminal siempre en primer plano nunca se entera de que el admin cambió un precio, sigue mostrando el viejo y el cobro acaba rechazado por el API. Además, tras evictar no avisa a las pantallas ya montadas. Cambios: (1) expón la revisión como función `checkCatalogVersion()` por contexto (hook useCatalogVersionCheck) sin cambiar su naturaleza best-effort ni el HttpLink propio de la operación PosCatalogVersion. (2) Dispárala, además de lo actual: cuando FreshnessProvider emite los temas 'catalog' o 'settings' (useLiveRefresh(checkCatalogVersion, ['catalog', 'settings'])); en la puesta al día al reconectar el socket; al desbloquear con PIN (ya llega como refreshAll). Son disparadores por EVENTO o por acción del usuario: NO agregues setInterval. (3) Tras evictar por cambio de versión, notifica a las pantallas montadas para que recarguen el catálogo: emite un refresco del tema 'catalog' hacia los cargadores registrados SIN volver a disparar checkCatalogVersion (evita el ciclo: usa una bandera o un canal separado). (4) La lista de campos a evictar sale de STATIC en src/core/apollo/dataClasses.ts (elimina la constante local STATIC_QUERY_FIELDS); posAvailableBarbers ya no es estático. (5) En src/features/checkout/presentation/CheckoutPage.tsx llama a checkCatalogVersion() al montar (entrar a 'Nueva venta'), sin bloquear el render: es el momento en que un precio viejo hace daño. Crea src/core/bootstrap/BootstrapProvider.test.tsx: versión distinta evicta los campos STATIC y notifica 'catalog' una sola vez; versión igual no evicta; un aviso 'catalog' dispara la revisión; no hay ciclo infinito; fallo de red no rompe nada.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Revisión por avisos, evicción desde dataClasses, notificación sin ciclo",
+          "check": "npm test -- src/core/bootstrap/BootstrapProvider.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin lista local de campos ni sondeo; el cobro revisa al entrar",
+          "check": "! grep -q 'STATIC_QUERY_FIELDS = \\[' src/core/bootstrap/BootstrapProvider.tsx && ! grep -q 'setInterval' src/core/bootstrap/BootstrapProvider.tsx && grep -q 'checkCatalogVersion' src/features/checkout/presentation/CheckoutPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Cobro en verde, typecheck y eslint",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx && npm run typecheck && npx eslint src/core/bootstrap",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Diagnóstico puntos 2 y 5, y sección 3.4: control de versión ampliado (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/bootstrap/BootstrapProvider.tsx",
+          "reason": "Gate actual de versión de catálogo a extender (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CheckoutPage.tsx",
+          "reason": "Entrada a 'Nueva venta' donde se revisa la versión (AC-2, AC-3)"
+        }
+      ],
+      "files": [
+        "src/core/bootstrap/BootstrapProvider.tsx",
+        "src/core/bootstrap/BootstrapProvider.test.tsx",
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CheckoutPage.test.tsx"
+      ],
+      "depends_on": [
+        "T-020",
+        "T-009"
+      ],
+      "priority": 3,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-022",
+      "title": "El POS lee sus tiempos de bloqueo desde los ajustes del negocio",
+      "description": "El dueño configura en el admin ('Ajustes del negocio') los tiempos de bloqueo automático del POS. El API los expone en la query `posSettings { posAutoLockIdleSeconds posAutoLockCheckoutSeconds }`, legible por cualquier sesión de staff del POS. (1) Crea src/core/bootstrap/posSettings.queries.ts con la query usando graphql() de '@/core/graphql/generated'; `npm run codegen` y commitea los generados. (2) Crea src/core/bootstrap/usePosSettings.ts: hook que devuelve { idleSeconds, checkoutSeconds }. Defaults 15 y 90 mientras carga o si la consulta falla (el bloqueo NUNCA debe depender de la red para funcionar). Sanea en el cliente: enteros, entre 10 y 600, y checkoutSeconds ≥ idleSeconds; un valor fuera de rango cae al default (el API ya valida; esto es defensa). Política de datos: esta consulta es de clase SESSION/ajustes, no dinero: 'cache-first' con revalidación, y se vuelve a pedir cuando FreshnessProvider emite el tema 'settings' (useLiveRefresh) y en la puesta al día al reconectar; así un cambio hecho en el admin llega a las terminales sin recargar y sin sondeo. Agrega el campo raíz posSettings a la clase correspondiente en src/core/apollo/dataClasses.ts SOLO si quieres que se persista para el arranque; si no, déjalo fuera (recomendado: fuera; los defaults cubren el arranque). Solo consulta con sesión autenticada. Test src/core/bootstrap/usePosSettings.test.tsx: defaults mientras carga; valores del API cuando llegan; valores inválidos (5, 9999, checkout < idle) caen a default; error de red → defaults; un refresco del tema 'settings' vuelve a consultar.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Defaults, saneo de valores y relectura por el tema 'settings'",
+          "check": "npm test -- src/core/bootstrap/usePosSettings.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Query con graphql() y codegen sin drift",
+          "check": "grep -q 'posSettings' src/core/bootstrap/posSettings.queries.ts && npm run codegen && git diff --exit-code -- src/core/graphql/generated",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/core/bootstrap",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-del-negocio-y-bloqueo-pos-design.md",
+          "reason": "Secciones 3.1 a 3.3: valores, límites y uso de defaults si no han cargado (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/core/bootstrap/catalogVersion.queries.ts",
+          "reason": "Cómo se declara una query chica de arranque con graphql() (AC-2)"
+        }
+      ],
+      "files": [
+        "src/core/bootstrap/posSettings.queries.ts",
+        "src/core/bootstrap/usePosSettings.ts",
+        "src/core/bootstrap/usePosSettings.test.tsx",
+        "src/core/graphql/generated/gql.ts",
+        "src/core/graphql/generated/graphql.ts"
+      ],
+      "depends_on": [
+        "T-020"
+      ],
+      "priority": 3,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-023",
+      "title": "Bloqueo automático con dos tiempos: 15 s en reposo y 90 s con venta en curso",
+      "description": "Riesgo que describió el cliente: un barbero cobra, olvida tocar el candado y el siguiente cobra en su perfil. Hoy src/core/auth/useAutoLock.ts bloquea a los 5 minutos fijos. Decisiones del dueño: 15 s sin actividad; 90 s cuando hay una venta en curso; NO se bloquea después de cada venta (pedir PIN por venta sería muy cansado); ambos tiempos configurables (usePosSettings). PROBLEMA a evitar: al bloquear, PosShell navega a '/' y desmonta todo; el carrito vive en memoria (useCheckout) y se PIERDE; con 15 s parejos pasaría cada vez que el cliente busca el efectivo o la terminal de tarjeta tarda 30 s. Cambios: (1) crea src/core/auth/saleActivity.ts: store mínimo (subscribe / getSnapshot, para useSyncExternalStore) con { inProgress: boolean, submitting: boolean } y setters; no es contexto de React para que useAutoLock y el cobro no se acoplen. (2) useAutoLock.ts: tiempo activo = checkoutSeconds si saleActivity.inProgress, si no idleSeconds (de usePosSettings; defaults 15/90). NUNCA bloquea mientras saleActivity.submitting es true (un cobro enviándose): al terminar el envío el contador reinicia. Los eventos de actividad actuales (pointerdown, pointermove, keydown, scroll, touchstart) reinician el contador. Cuando cambia inProgress o llegan tiempos nuevos, el contador se reinicia con el tiempo vigente. Expón `secondsRemaining` (para el aviso de la tarea siguiente) sin re-renderizar toda la app cada segundo: emítelo solo en los últimos 5 s. Sin sesión o ya bloqueado: inerte. (3) src/app/App.tsx sigue montando useAutoLock() una sola vez. La publicación de inProgress/submitting desde el cobro va en otra tarea: aquí el store arranca en false/false. Crea src/core/auth/useAutoLock.test.ts con timers falsos: en reposo bloquea a los 15 s; actividad reinicia; con inProgress bloquea a los 90 s y no a los 15; con submitting no bloquea aunque pase el tiempo y al terminar reinicia; cambiar los tiempos los aplica; sin sesión no programa nada.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "15 s en reposo, 90 s con venta en curso, nunca durante el envío de un cobro",
+          "check": "npm test -- src/core/auth/useAutoLock.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Ya no existen los 5 minutos fijos",
+          "check": "! grep -q '5 \\* 60 \\* 1000' src/core/auth/useAutoLock.ts && grep -q 'saleActivity' src/core/auth/useAutoLock.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Auth y shell en verde, typecheck y eslint",
+          "check": "npm test -- src/core/auth src/app/PosShell.test.tsx && npm run typecheck && npx eslint src/core/auth src/app/App.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-del-negocio-y-bloqueo-pos-design.md",
+          "reason": "Secciones 1, 2 y 3.3: dos tiempos, sin bloqueo tras cada venta y nunca durante el envío (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/auth/useAutoLock.ts",
+          "reason": "Hook actual con 5 minutos fijos a reescribir (AC-1, AC-2)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-04-29-pos-lock-session-design.md",
+          "reason": "Diseño original del bloqueo por PIN: qué no se debe romper (AC-3)"
+        }
+      ],
+      "files": [
+        "src/core/auth/useAutoLock.ts",
+        "src/core/auth/useAutoLock.test.ts",
+        "src/core/auth/saleActivity.ts",
+        "src/app/App.tsx"
+      ],
+      "depends_on": [
+        "T-022",
+        "T-001",
+        "T-012"
+      ],
+      "priority": 3,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-024",
+      "title": "El cobro avisa cuando hay una venta en curso y cuando se está enviando",
+      "description": "Conecta el flujo de cobro con el bloqueo automático y con la frescura de datos. En src/features/checkout/application/useCheckout.ts: (1) publica en el store src/core/auth/saleActivity.ts `inProgress = true` cuando el carrito tiene AL MENOS UN concepto o cuando la hoja de pago está abierta, y `false` cuando el carrito queda vacío, cuando la venta termina (pantalla de recibo / successSale) o al desmontar el cobro. La pantalla de RECIBO cuenta como 'sin venta en curso': decisión del dueño de NO bloquear inmediatamente tras cada venta, pero sí que al terminar vuelva a correr el tiempo corto de 15 s; así, si el barbero cobra y se va, el POS se bloquea solo a los pocos segundos. (2) Publica `submitting = true` exactamente mientras la mutation de cobro está en vuelo (el estado `submitting` que ya existe en el hook) y `false` al resolver o fallar; garantízalo con try/finally. (3) Mientras `submitting` es true, pausa los refrescos de FreshnessProvider (setPaused(true)) y reanúdalos al terminar: un refresco a media mutation no debe repintar ni re-preciar el carrito. Deriva inProgress del estado existente con un efecto de sincronización hacia el store (es un sistema externo: aquí useEffect sí es correcto); no dupliques estado. No cambies la lógica de cobro, precios, cupones ni pagos. Crea src/features/checkout/application/useCheckout.saleActivity.test.tsx (renderHook con los repositorios mock de src/test/mocks/repositories.ts): agregar un concepto pone inProgress en true; vaciar el carrito lo regresa a false; durante el envío submitting es true y vuelve a false también si el cobro falla; al llegar al recibo inProgress es false; desmontar limpia ambos.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "inProgress y submitting reflejan el carrito, el envío, el recibo y el desmontaje",
+          "check": "npm test -- src/features/checkout/application/useCheckout.saleActivity.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Cobro existente en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/presentation/ReceiptScreen.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/application",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-del-negocio-y-bloqueo-pos-design.md",
+          "reason": "Sección 3.3: qué cuenta como venta en curso y que el recibo no cuenta (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "Estado del carrito, submitting y successSale de donde se deriva todo (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/test/mocks/repositories.ts",
+          "reason": "Repositorios mock para probar el hook (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.saleActivity.test.tsx"
+      ],
+      "depends_on": [
+        "T-023",
+        "T-021"
+      ],
+      "priority": 3,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-025",
+      "title": "Aviso 'Se bloquea en 5…' antes del bloqueo automático",
+      "description": "Con bloqueo a los 15 s, el operador necesita un aviso para no ser sorprendido a media lectura. Crea src/core/auth/AutoLockWarning.tsx: cuando useAutoLock reporta secondsRemaining ≤ 5 (y > 0), muestra una franja fija en la parte inferior, por encima de la barra de pestañas, con el texto 'Se bloquea en {n}… toca para seguir' y una barra de progreso que se vacía. Cualquier toque o tecla ya reinicia el contador (es el comportamiento de useAutoLock), así que la franja desaparece sola; además toda la franja es un botón con nombre accesible 'Seguir usando el POS' para quien navega con teclado. Accesibilidad: role='status' con aria-live='polite' y el número NO se anuncia cada segundo (anuncia una sola vez 'El POS se bloqueará en 5 segundos'); respeta prefers-reduced-motion (la barra cambia por pasos, sin transición). Visual: tokens existentes (fondo carbon-elevated, borde y texto bone, acento rojo bravo en la barra); sin librerías nuevas; no tapa el botón de cobro (deja su alto como padding inferior o súbela cuando el cobro esté visible: revisa el layout de PosShell). No se muestra con la sesión bloqueada ni sin sesión. Móntala una sola vez en src/app/PosShell.tsx. Crea src/core/auth/AutoLockWarning.test.tsx (timers falsos y un mock de useAutoLock): no aparece con más de 5 s; aparece con 5 y muestra el número; un clic llama al reinicio; no aparece bloqueado; el anuncio accesible ocurre una sola vez.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Aparece en los últimos 5 s, se puede descartar y anuncia una sola vez",
+          "check": "npm test -- src/core/auth/AutoLockWarning.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Shell en verde con el aviso montado",
+          "check": "npm test -- src/app/PosShell.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck, eslint y presupuesto de bundle",
+          "check": "npm run typecheck && npx eslint src/core/auth src/app/PosShell.tsx && npm run build",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-ajustes-del-negocio-y-bloqueo-pos-design.md",
+          "reason": "Sección 3.3 punto 3: aviso en los últimos 5 s y reduced-motion (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/auth/useAutoLock.ts",
+          "reason": "secondsRemaining y reinicio del contador (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/app/PosShell.tsx",
+          "reason": "Layout del shell: barra de pestañas y dónde montar la franja (AC-2)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-04-29-pos-visual-language-design.md",
+          "reason": "Lenguaje visual y tokens del POS (AC-1)"
+        }
+      ],
+      "files": [
+        "src/core/auth/AutoLockWarning.tsx",
+        "src/core/auth/AutoLockWarning.test.tsx",
+        "src/app/PosShell.tsx",
+        "src/app/PosShell.test.tsx"
+      ],
+      "depends_on": [
+        "T-023",
+        "T-011"
+      ],
+      "priority": 3,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-026",
+      "title": "Si el API rechaza un cobro por datos viejos, el POS se pone al día y pide confirmar",
+      "description": "Principio del lote: el servidor decide al cobrar, y un rechazo por datos viejos se recupera solo, nunca es un callejón sin salida. Hoy el POS no distingue los códigos de rechazo del API (en src/features/checkout solo aparecen mencionados en comentarios): cualquier error se muestra como texto genérico y el barbero no sabe qué hacer. PRIMER PASO: documenta en el reporte qué hace hoy el cobro ante cada caso. Cambios: (1) src/features/checkout/data/checkout.repository.ts: al fallar la mutation de cobro, lee `extensions.code` del error GraphQL y tradúcelo a un error tipado del dominio en src/features/checkout/domain/checkout.types.ts: PRICE_MISMATCH (precio cambió), BARBER_EXCLUDED, REGISTER_SESSION_STALE (caja de un día anterior), STOCK (faltante de existencias: usa el código o el patrón de mensaje que mande el API; léelo en ../bienbravo-api solo para consultar, sin importar nada) y UNKNOWN. (2) src/features/checkout/application/useCheckout.ts, por caso: PRICE_MISMATCH / BARBER_EXCLUDED → evicta el catálogo (misma función que usa el control de versión), vuelve a cargar precios con force, RE-PRECIA las líneas del carrito con los precios nuevos, NO reintenta el cobro solo, y expone un aviso: 'Los precios cambiaron. Revisa el total antes de cobrar.' con el total anterior y el nuevo; STOCK → recarga existencias y marca las líneas sin stock con el faltante; REGISTER_SESSION_STALE → refresca el estado de caja (tema 'register') para que aparezca el bloqueo de corte pendiente existente; UNKNOWN → mensaje actual. En todos los casos el carrito se CONSERVA y `submitting` vuelve a false. (3) CheckoutPage.tsx muestra el aviso con el patrón de alerta existente y exige un toque explícito en Cobrar para continuar. No relajes ninguna validación ni calcules precios por tu cuenta: los precios vienen del API. Tests: checkout.repository.test.ts mapea cada código; CheckoutPage.test.tsx: PRICE_MISMATCH re-precia, muestra ambos totales y no cobra solo; el carrito se conserva.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Cada código del API se traduce a un error tipado",
+          "check": "npm test -- src/features/checkout/data/checkout.repository.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Re-precio con confirmación explícita y carrito conservado",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Principio P5 y sección 3.5: recuperación cuando el servidor rechaza por datos viejos (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/data/checkout.repository.ts",
+          "reason": "Mutation de cobro y manejo de errores actual (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "Carrito, precios por barbero (priceOverlay) y estado de error (AC-2)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-07-15-precio-overrides-pos-design.md",
+          "reason": "Cómo resuelve el POS precios por barbero y sucursal, y PRICE_MISMATCH (AC-2)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/data/checkout.repository.ts",
+        "src/features/checkout/data/checkout.repository.test.ts",
+        "src/features/checkout/domain/checkout.types.ts",
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/presentation/CheckoutPage.tsx"
+      ],
+      "depends_on": [
+        "T-024",
+        "T-021"
+      ],
+      "priority": 3,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-027",
+      "title": "El POS detecta una versión nueva y se recarga solo cuando no estorba",
+      "description": "Una pestaña del POS abierta todo el día sigue corriendo el JavaScript viejo después de un deploy; este lote cambia API y POS a la vez, así que importa. SIN sondeo periódico. (1) vite.config.ts: al construir, emite `version.json` en la raíz del build con { buildId } usando el MISMO valor de __BUILD_ID__ definido para el caché (plugin mínimo con generateBundle/emitFile o closeBundle; sin dependencias nuevas). Asegura que el hosting no lo cachee: agrega en vercel.json un header Cache-Control: no-store para /version.json (si vercel.json no existe o no maneja headers, repórtalo en el handoff). (2) Crea src/core/freshness/useDeployWatcher.ts: consulta `/version.json` (fetch con cache: 'no-store') SOLO cuando: el socket se reconecta (un deploy del API siempre tira la conexión; usa wsStatus) y cuando alguien desbloquea con PIN. Si buildId difiere de __BUILD_ID__: marca `updateAvailable`. (3) Política de recarga: si la sesión está BLOQUEADA, o no hay venta en curso (saleActivity.inProgress false) y no se está enviando un cobro → window.location.reload() de inmediato. Si hay venta en curso → NO recarga; expone updateAvailable para mostrar la franja 'Hay una versión nueva. Se actualizará al terminar esta venta.' y recarga en cuanto inProgress pase a false. Nunca recargues con submitting en true. Protección contra ciclo: guarda en sessionStorage el buildId por el que ya recargaste y no recargues dos veces por el mismo. En desarrollo (import.meta.env.DEV) el watcher queda inerte. (4) Móntalo en src/app/PosShell.tsx junto con la franja. Test src/core/freshness/useDeployWatcher.test.ts (fetch y location mockeados): mismo buildId no hace nada; distinto y bloqueado recarga; distinto con venta en curso no recarga y sí avisa, y recarga al terminar; no recarga dos veces por el mismo buildId; fallo de fetch no rompe; no existe setInterval.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Recarga solo cuando no estorba, avisa con venta en curso y no entra en ciclo",
+          "check": "npm test -- src/core/freshness/useDeployWatcher.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El build emite version.json y no hay sondeo",
+          "check": "npm run build && test -f dist/version.json && ! grep -q 'setInterval' src/core/freshness/useDeployWatcher.ts",
+          "kind": "build"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Shell en verde, typecheck y eslint",
+          "check": "npm test -- src/app/PosShell.test.tsx && npm run typecheck && npx eslint src/core/freshness src/app/PosShell.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.6: detectar despliegue nuevo al reconectar y al desbloquear; recarga solo sin venta en curso (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "vite.config.ts",
+          "reason": "Dónde se define __BUILD_ID__ y se emite version.json (AC-2)"
+        }
+      ],
+      "files": [
+        "vite.config.ts",
+        "vercel.json",
+        "src/core/freshness/useDeployWatcher.ts",
+        "src/core/freshness/useDeployWatcher.test.ts",
+        "src/app/PosShell.tsx"
+      ],
+      "depends_on": [
+        "T-025"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-028",
+      "title": "Sincronizar schema del API: venta a staff",
+      "description": "COMPUERTA. Las tareas de venta a staff necesitan lo que el API agrega en su bloque de venta a staff (hasta su tarea T-056 en ../bienbravo-api): campo opcional `staffSale { buyerStaffUserId }` en el input de createPOSSale y `productVariantId` en el input de línea; query staffSaleQuota; en Product staffSaleEligible y staffPriceResolvedCents; en ProductVariant staffPriceResolvedCents. El primer criterio verifica que el schema emitido del API ya lo trae; si NO, esta tarea está BLOQUEADA: repórtalo como blocked; NO mockees el schema ni edites a mano los generados. Si sí: `npm run sync-schema` y luego `npm run codegen`. No agregues operaciones aquí: solo sincroniza. Revisa el diff de schema.graphql: solo adiciones; si trae tipos o campos ELIMINADOS que el POS usa, detente y repórtalo. CI falla por drift: commitea juntos schema.graphql y los generados.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El schema del API ya trae venta a staff (si falla: tarea bloqueada)",
+          "check": "grep -q 'staffSaleQuota' ../bienbravo-api/src/graphql/schema.generated.graphql && grep -q 'staffPriceResolvedCents' ../bienbravo-api/src/graphql/schema.generated.graphql",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "schema.graphql sincronizado",
+          "check": "grep -q 'staffSaleQuota' schema.graphql && grep -q 'buyerStaffUserId' schema.graphql && grep -q 'productVariantId' schema.graphql",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Codegen sin drift y typecheck",
+          "check": "npm run codegen && git diff --exit-code -- src/core/graphql/generated && npm run typecheck",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": "CLAUDE.md",
+          "reason": "Procedimiento sync-schema + codegen y regla de CI de drift (AC-2, AC-3)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Secciones 4.1 a 4.3: campos y operaciones que deben existir (AC-1, AC-2)"
+        }
+      ],
+      "files": [
+        "schema.graphql",
+        "src/core/graphql/generated/gql.ts",
+        "src/core/graphql/generated/graphql.ts"
+      ],
+      "depends_on": [
+        "T-022"
+      ],
+      "priority": 4,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-029",
+      "title": "Repositorio de cobro: precio staff del catálogo, cupo del barbero y venta a staff",
+      "description": "Venta a staff (R7): la barbería vende productos a sus barberos a un precio especial (normalmente el costo); el dueño quiere medir quién compra y poder topar por barbero por mes. El API es la autoridad: el POS solo muestra y envía. En src/features/checkout/data/checkout.repository.ts y src/features/checkout/domain/checkout.types.ts: (1) la query de productos del catálogo pide además staffSaleEligible y staffPriceResolvedCents del producto y, por variante, id, priceCents y staffPriceResolvedCents; mapea al tipo de dominio del producto: staffSaleEligible: boolean, staffPriceCents: number | null (el resuelto; null = no se puede vender a staff) y variants con su staffPriceCents. NO pidas ni expongas costCents: el POS nunca necesita el costo crudo. (2) Nuevo método getStaffSaleQuota(locationId, buyerStaffUserId?) → { enabled, allowServicesInTicket, unitsUsed, unitsLimit, unitsRemaining, listAmountCentsUsed, listAmountCentsLimit, listAmountCentsRemaining, perProductLimit, unitsByProduct } usando graphql() de '@/core/graphql/generated'; fetchPolicy SIEMPRE 'network-only' (es un cupo: cambia con cada compra, incluso desde otra iPad). Por ser un campo nuevo sin clasificar, la lista de permitidos del caché ya garantiza que NO se guarda en el dispositivo; su clasificación como SENSITIVE la hace la tarea de useCheckout. (3) El método de cobro acepta opcionalmente staffSale: { buyerStaffUserId } y productVariantId por línea, y los pasa tal cual al input de createPOSSale; sin staffSale el input enviado es idéntico al actual. (4) Agrega al mapeo de errores tipados (tarea de recuperación) los rechazos de venta a staff que el API devuelva con código o mensaje reconocible: tope excedido, producto no elegible, variante requerida; consérvalos con su mensaje en español del API. Corre `npm run codegen` y commitea los generados. Extiende checkout.repository.test.ts: el catálogo mapea precio staff y elegibilidad por producto y variante; el cupo siempre va a la red; el cobro con staffSale envía buyerStaffUserId y productVariantId; sin staffSale el input no cambia; nunca se solicita costCents.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Mapeo de precio staff, cupo siempre de red e input de venta a staff",
+          "check": "npm test -- src/features/checkout/data/checkout.repository.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El POS no pide el costo y codegen sin drift",
+          "check": "! grep -q 'costCents' src/features/checkout/data/checkout.repository.ts && npm run codegen && git diff --exit-code -- src/core/graphql/generated",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/data src/features/checkout/domain",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Secciones 4.2 y 4.3: precio staff resuelto, cupo (el POS solo muestra) e input del cobro (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/data/checkout.repository.ts",
+          "reason": "Queries de catálogo y mutation de cobro a extender (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/domain/checkout.types.ts",
+          "reason": "Tipos de dominio de producto, variante y errores de cobro (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/data/checkout.repository.ts",
+        "src/features/checkout/data/checkout.repository.test.ts",
+        "src/features/checkout/domain/checkout.types.ts",
+        "src/core/graphql/generated/gql.ts",
+        "src/core/graphql/generated/graphql.ts"
+      ],
+      "depends_on": [
+        "T-028",
+        "T-026"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-030",
+      "title": "Reglas de presentación de la venta a staff en el carrito",
+      "description": "Funciones puras para que el carrito muestre una venta a staff SIN decidir nada: la autoridad es el API (precio, elegibilidad, topes). Crea src/features/checkout/lib/staff-sale.ts (sin React, sin Apollo): (1) staffLineView(product, variantId | null) → { eligible: boolean, reason?: 'NOT_ELIGIBLE' | 'NEEDS_VARIANT', unitPriceCents: number | null, listUnitPriceCents: number } donde eligible exige staffSaleEligible y un precio staff resuelto no nulo; listUnitPriceCents es el precio público de la variante elegida (o el del producto si tiene una sola); unitPriceCents es el precio staff de la variante si existe, si no el del producto. (2) needsVariant(product) → true cuando el producto tiene más de una variante y su precio staff o su precio público difieren entre variantes. (3) staffCartSummary(lines) → { listTotalCents, staffTotalCents, discountCents } solo sobre líneas de producto en modo staff; servicios y propinas no entran al descuento. (4) quotaView(quota, cartLines) → por cada tope (unidades, monto a precio público, unidades por producto): usado, en carrito, restante después del carrito y `exceeded`; tope null → sin límite (restante null, nunca exceeded). Sirve para avisar ANTES de cobrar; si exceeded, la UI deshabilita Cobrar con el mensaje, pero el API vuelve a validar. (5) Textos en español devueltos como llaves o mensajes listos: 'Este producto no está disponible para venta a staff', 'Elige la presentación', 'Llevas {usado} de {límite} productos este mes'. Todo en centavos enteros; nada de flotantes. Test src/features/checkout/lib/staff-sale.test.ts: producto elegible, no elegible y sin precio staff; variante obligatoria; resumen ignora servicios y propinas; cupo con y sin tope, en el borde (igual al límite no excede; uno más sí) y por producto.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Vista de línea, variante obligatoria, resumen y cupo en el borde",
+          "check": "npm test -- src/features/checkout/lib/staff-sale.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Módulo puro",
+          "check": "! grep -qE \"from 'react'|@apollo/client\" src/features/checkout/lib/staff-sale.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/lib",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Secciones 4.2, 4.3 y 4.5: precio, variante, topes a precio público y qué muestra el POS (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/lib/coupon-compute.ts",
+          "reason": "Ejemplo de reglas puras del carrito con su test (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/domain/checkout.types.ts",
+          "reason": "Tipos de producto, variante y cupo (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/lib/staff-sale.ts",
+        "src/features/checkout/lib/staff-sale.test.ts"
+      ],
+      "depends_on": [
+        "T-029"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-031",
+      "title": "useCheckout con modo venta a staff",
+      "description": "Agrega a src/features/checkout/application/useCheckout.ts el modo 'venta a staff', sin tocar el cobro normal. Estado nuevo: staffSale: { enabled: boolean, buyerStaffUserId: string | null }. Reglas: (1) Quién puede: enabled solo se puede activar si el viewer tiene 'pos.staff_sale.create' o 'pos.staff_sale.create_for_others' (viewer.permissions). Por default el comprador es el barbero de la SESIÓN ACTIVA. Elegir a OTRO comprador solo si el viewer tiene 'pos.staff_sale.create_for_others' (caso real: recepción cobra la compra de un barbero); sin ese permiso setBuyer con otro id se ignora. (2) Al activar: los cupones aplicados se quitan y el bloque de cupones queda deshabilitado con el texto 'Una venta a staff no admite cupones'; se carga el cupo con getStaffSaleQuota (siempre red) para el comprador y se vuelve a cargar si cambia el comprador. (3) Precios: las líneas de PRODUCTO usan staffLineView (src/features/checkout/lib/staff-sale.ts): unitPrice = precio staff; se conserva el precio público para mostrarlo tachado; un producto no elegible NO se puede agregar en este modo (devuelve el motivo para que la UI lo muestre); si needsVariant, la línea requiere productVariantId antes de poder cobrar. Servicios y combos siguen a precio normal si quota.allowServicesInTicket; si no, no se pueden agregar en este modo. Al DESACTIVAR el modo, las líneas vuelven a su precio normal. (4) Antes de cobrar: quotaView; si algún tope queda exceeded, canCharge = false con el mensaje; el API valida de nuevo de todos modos. (5) Al cobrar: envía staffSale { buyerStaffUserId } y productVariantId por línea; el resto del input igual. (6) Tras una venta a staff exitosa el modo se apaga (la siguiente venta arranca normal) y el cupo se invalida. (7) Si el cupo llega con enabled = false (política apagada en el admin), el modo no se puede activar. No dupliques reglas del API: nada de calcular topes por mes aquí. Clasifica el campo raíz staffSaleQuota como SENSITIVE en src/core/apollo/dataClasses.ts (así se borra de la memoria al bloquear la sesión). Agrega getStaffSaleQuota al mock de src/test/mocks/repositories.ts. Test src/features/checkout/application/useCheckout.staffSale.test.tsx: permisos; comprador por default y cambio con/sin permiso; quita cupones; precios staff y regreso a normal; no elegible; variante requerida; tope excedido bloquea; input enviado; se apaga tras cobrar.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Permisos, comprador, cupones, precios, variante, cupo, input y apagado tras cobrar",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro normal y la actividad de venta siguen en verde",
+          "check": "npm test -- src/features/checkout/application/useCheckout.saleActivity.test.tsx src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "grep -q 'staffSaleQuota' src/core/apollo/dataClasses.ts && npm run typecheck && npx eslint src/features/checkout/application src/test/mocks src/core/apollo",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Secciones 2, 4.3 y 4.5: quién compra para quién, sin cupones, precio staff y cupo visible (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "Estado del carrito, cupones, precios y envío del cobro (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/test/mocks/repositories.ts",
+          "reason": "Mock del repositorio de cobro que gana getStaffSaleQuota (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/auth/usePosAuth.ts",
+          "reason": "Barbero de la sesión activa y sus permisos (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.staffSale.test.tsx",
+        "src/test/mocks/repositories.ts",
+        "src/core/apollo/dataClasses.ts"
+      ],
+      "depends_on": [
+        "T-030",
+        "T-016",
+        "T-005"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-032",
+      "title": "Interfaz de venta a staff en el cobro: interruptor, comprador, cupo y precio tachado",
+      "description": "Interfaz del modo 'venta a staff' (la lógica ya vive en useCheckout). Crea src/features/checkout/presentation/StaffSaleBar.tsx y móntalo en src/features/checkout/presentation/CheckoutPage.tsx arriba del carrito. Solo se renderiza si el viewer tiene 'pos.staff_sale.create' o 'pos.staff_sale.create_for_others' Y la política está activa; si no, el cobro se ve exactamente como hoy. Contenido: (1) interruptor 'Venta a staff' (TouchButton / control existente de src/shared/pos-ui; área táctil ≥ 44 px; role='switch' con aria-checked). (2) Encendido: 'Compra: {NOMBRE DEL COMPRADOR}' en tipografía display; si el viewer tiene 'create_for_others', botón 'Cambiar' que abre el selector de barbero existente (reutiliza BarberSelectorSheet.tsx; no crees otro). (3) Cupo del mes con MoneyValue / estados de carga (es un dato del servidor: esqueleto mientras carga, nunca '0' falso): 'Productos: 3 de 6' y 'Valor: $1,200 de $3,000'; si no hay tope, 'Sin tope este mes'; si el carrito excede, el renglón en rojo bravo con el mensaje de quotaView y el botón Cobrar deshabilitado. (4) Todo el modo lleva una señal visual clara para que nadie cobre a precio staff por accidente: franja con borde rojo bravo y la etiqueta 'VENTA A STAFF' mientras está encendido. En src/features/checkout/presentation/CartLineRow.tsx: en líneas de producto en modo staff muestra el precio público tachado junto al precio staff. En src/features/checkout/presentation/CatalogTile.tsx: en modo staff muestra el precio staff; un producto no elegible aparece atenuado con 'No disponible para staff' y no se puede agregar. El botón de cobro conserva 'Cobrar … como {operador}': operador y comprador pueden ser personas distintas y ambos nombres deben verse. Textos en español; tokens existentes; sin tocar el design system. Test StaffSaleBar.test.tsx: no se renderiza sin permiso ni con política apagada; encender muestra al comprador; 'Cambiar' solo con create_for_others; cupo con tope, sin tope y excedido; cargando no muestra números.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Visibilidad por permiso y política, comprador, cupo y estados de carga",
+          "check": "npm test -- src/features/checkout/presentation/StaffSaleBar.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Carrito, catálogo y cobro existentes en verde",
+          "check": "npm test -- src/features/checkout/presentation/CartLineRow.test.tsx src/features/checkout/presentation/CatalogTile.test.tsx src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck, eslint y build",
+          "check": "npm run typecheck && npx eslint src/features/checkout/presentation && npm run build",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Revisión visual en iPad",
+          "check": "Con un barbero: encender venta a staff, agregar una pomada y verificar precio staff, precio público tachado, cupo y la franja 'VENTA A STAFF'; con recepción: cambiar de comprador",
+          "kind": "manual"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Sección 4.5: interruptor, comprador, precio tachado, cupo y no elegibles en el POS (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CheckoutPage.tsx",
+          "reason": "Layout del cobro donde se monta la barra (AC-2)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/presentation/BarberSelectorSheet.tsx",
+          "reason": "Selector de barbero existente a reutilizar para elegir comprador (AC-1)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-04-29-pos-visual-language-design.md",
+          "reason": "Lenguaje visual y tokens del POS (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/StaffSaleBar.tsx",
+        "src/features/checkout/presentation/StaffSaleBar.test.tsx",
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CartLineRow.tsx",
+        "src/features/checkout/presentation/CatalogTile.tsx"
+      ],
+      "depends_on": [
+        "T-031"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-033",
+      "title": "Elegir la presentación del producto cuando su precio staff cambia por variante",
+      "description": "Decisión del dueño: el precio staff es por producto y por VARIANTE cuando la variante tiene un precio distinto. Hoy las líneas de venta del POS no identifican la variante (el API validaba el precio contra 'alguna variante'); para venta a staff, cuando needsVariant(product) es true el API exige productVariantId y rechaza la línea si falta. Crea src/features/checkout/presentation/VariantPickerSheet.tsx (hoja inferior con el patrón de las hojas existentes, p. ej. BarberSelectorSheet.tsx / CustomerLookupSheet.tsx): título con el nombre del producto; una opción por variante con su nombre, el precio público tachado y el precio staff; las variantes sin precio staff resoluble aparecen deshabilitadas con 'No disponible para staff'; botones táctiles ≥ 44 px; cerrar con Esc o tocando fuera; foco atrapado dentro de la hoja. Flujo en CheckoutPage.tsx: en modo venta a staff, al tocar en el catálogo un producto con needsVariant se abre la hoja ANTES de agregarlo; al elegir, se agrega la línea con su productVariantId (useCheckout ya lo acepta); cancelar no agrega nada. En el carrito, la línea muestra el nombre de la variante elegida y permite cambiarla reabriendo la hoja. Fuera del modo venta a staff NADA cambia: no se abre la hoja y el flujo de agregar producto es el actual. Un producto con una sola variante, o con todas las variantes al mismo precio, nunca abre la hoja. Test VariantPickerSheet.test.tsx: lista variantes con ambos precios; deshabilita las no elegibles; elegir devuelve el id; cancelar no devuelve nada. Extiende CheckoutPage.test.tsx: en modo staff un producto con variantes de precio distinto abre la hoja y la línea queda con variante; fuera del modo staff no la abre.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Hoja de variantes con precios, deshabilitadas y selección",
+          "check": "npm test -- src/features/checkout/presentation/VariantPickerSheet.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Solo se abre en modo staff y cuando la variante importa",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/presentation",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Secciones 3 y 4.2: las líneas no identificaban variante; cuándo es obligatoria (AC-1, AC-2)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/presentation/BarberSelectorSheet.tsx",
+          "reason": "Patrón de hoja inferior accesible del cobro (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CheckoutPage.tsx",
+          "reason": "Dónde se agrega un producto al carrito desde el catálogo (AC-2)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/VariantPickerSheet.tsx",
+        "src/features/checkout/presentation/VariantPickerSheet.test.tsx",
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CheckoutPage.test.tsx"
+      ],
+      "depends_on": [
+        "T-032"
+      ],
+      "priority": 5,
+      "type": "feature",
       "status": "pending",
       "attempts": 0,
       "redispatches": 0,

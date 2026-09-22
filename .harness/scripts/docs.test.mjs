@@ -72,7 +72,7 @@ test('CURATION-TASK.json es un borrador válido para importTasks', () => {
   assert.equal(t.priority, 1);
   assert.deepEqual(t.depends_on, []);
   assert.ok(t.title.length > 0);
-  assert.ok(t.description.length > 0 && t.description.length <= 1200);
+  assert.ok(t.description.length > 0 && t.description.length <= 2400);
   assert.ok(t.acceptance_criteria.length >= 1 && t.acceptance_criteria.length <= 5);
   for (const ac of t.acceptance_criteria) {
     assert.match(ac.id, /^AC-\d+$/);

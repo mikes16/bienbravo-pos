@@ -94,7 +94,7 @@ test('lintTasks exige entre CRITERIA_MIN y CRITERIA_MAX criterios', () => {
 });
 
 test('lintTasks aplica description <= DESCRIPTION_MAX', () => {
-  const { errors } = lint([makeTask({ description: 'x'.repeat(1201) })]);
+  const { errors } = lint([makeTask({ description: 'x'.repeat(2401) })]);
   assert.ok(errors.some((e) => e.rule === 'description-max'));
 });
 
