@@ -502,6 +502,98 @@ describe('useCheckout · venta a staff', () => {
     expect(result.current.error).toBe('Llevas 7 de 6 productos este mes')
   })
 
+  it('leer bien el cupo del siguiente comprador borra el aviso del cupo que falló', async () => {
+    const { repos, checkout } = makeRepos()
+    const realQuota = checkout.getStaffSaleQuota.bind(checkout)
+    // El cupo de staff-2 no se puede leer; staff-4 llega con su tope ya gastado.
+    checkout.getStaffSaleQuota = vi.fn(async (locationId: string, buyerStaffUserId?: string | null) => {
+      if (buyerStaffUserId === 'staff-2') throw new Error('sin red')
+      const quota = await realQuota(locationId, buyerStaffUserId)
+      if (buyerStaffUserId === 'staff-4') return { ...quota, unitsUsed: 6, unitsLimit: 6, unitsRemaining: 0 }
+      return quota
+    })
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    expect(result.current.staffSale.canCharge).toBe(true)
+
+    await act(async () => {
+      await result.current.setStaffSaleBuyer('staff-2')
+    })
+    expect(result.current.staffSale.error).toBe('No se pudo leer el cupo de venta a staff. Reintenta.')
+    expect(result.current.staffSale.quota).toBeNull()
+    expect(result.current.staffSale.canCharge).toBe(false)
+
+    // Otro comprador cuyo cupo SÍ se lee: el aviso rojo se va con el cupo que
+    // lo causó — no puede quedarse pegado junto a un cupo válido y cobrable.
+    await act(async () => {
+      await result.current.setStaffSaleBuyer('staff-3')
+    })
+    expect(result.current.staffSale.error).toBeNull()
+    expect(result.current.staffSale.quota?.enabled).toBe(true)
+    expect(result.current.staffSale.canCharge).toBe(true)
+    expect(result.current.staffSale.blockMessage).toBeNull()
+
+    // Y limpiar el aviso no tapa lo que el cupo nuevo sí bloquea: el cobro
+    // sigue decidiéndose por el cupo leído, no por el error que ya no aplica.
+    await act(async () => {
+      await result.current.setStaffSaleBuyer('staff-4')
+    })
+    expect(result.current.staffSale.error).toBeNull()
+    expect(result.current.staffSale.canCharge).toBe(false)
+    expect(result.current.staffSale.blockMessage).toBe('Llevas 7 de 6 productos este mes')
+  })
+
+  it('una lectura vieja del cupo que aterriza tarde no pisa el aviso de la nueva', async () => {
+    const { repos, checkout } = makeRepos()
+    const realQuota = checkout.getStaffSaleQuota.bind(checkout)
+    let release!: () => void
+    let entered!: () => void
+    const open = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    // El cupo de staff-2 se queda parado a medio viaje; el de staff-3 falla.
+    checkout.getStaffSaleQuota = vi.fn(async (locationId: string, buyerStaffUserId?: string | null) => {
+      if (buyerStaffUserId === 'staff-2') {
+        entered()
+        await open
+        return realQuota(locationId, buyerStaffUserId)
+      }
+      if (buyerStaffUserId === 'staff-3') throw new Error('sin red')
+      return realQuota(locationId, buyerStaffUserId)
+    })
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    let stale!: Promise<void>
+    await act(async () => {
+      stale = result.current.setStaffSaleBuyer('staff-2')
+      await reached
+    })
+    // Sin esperar a que llegue, el operador cambia otra vez y ESE cupo falla.
+    await act(async () => {
+      await result.current.setStaffSaleBuyer('staff-3')
+    })
+    expect(result.current.staffSale.error).toBe('No se pudo leer el cupo de venta a staff. Reintenta.')
+
+    // La lectura vieja aterriza al final: ni limpia el aviso de la nueva ni
+    // pinta el cupo de un comprador que ya no es el elegido.
+    await act(async () => {
+      release()
+      await stale
+    })
+    expect(result.current.staffSale.buyerStaffUserId).toBe('staff-3')
+    expect(result.current.staffSale.error).toBe('No se pudo leer el cupo de venta a staff. Reintenta.')
+    expect(result.current.staffSale.quota).toBeNull()
+    expect(result.current.staffSale.canCharge).toBe(false)
+  })
+
   /* ── 5. Cobro (spec §4.3) ── */
 
   it('el cobro manda el comprador y la presentación de cada línea', async () => {

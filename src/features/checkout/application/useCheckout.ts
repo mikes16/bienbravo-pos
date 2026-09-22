@@ -902,6 +902,11 @@ export function useCheckout() {
       const quota = await checkout.getStaffSaleQuota(locationId, buyerStaffUserId)
       if (seq !== staffQuotaSeqRef.current) return null
       setStaffQuota(quota)
+      // Leer bien el cupo borra el aviso de la lectura anterior que falló: si
+      // no, el alert rojo de la barra se queda pegado junto a un cupo válido y
+      // con el cobro habilitado. Va DESPUÉS del check de `seq` para que una
+      // respuesta vieja no limpie el aviso de una lectura más nueva.
+      setStaffSaleError(null)
       return quota
     } catch {
       if (seq !== staffQuotaSeqRef.current) return null
