@@ -22,7 +22,7 @@ test('numeric core limits match the contract', () => {
   assert.equal(MEMORY_SOFT_RATIO, 0.8);
   assert.equal(LOCK_STALE_MINUTES, 30);
   assert.equal(DEDUP_OVERLAP, 0.8);
-  assert.deepEqual(MEMORY_LIMITS, { 'PROJECT.md': 60, 'DECISIONS.md': 80, 'LESSONS.md': 60 });
+  assert.deepEqual(MEMORY_LIMITS, { 'PROJECT.md': 60, 'DECISIONS.md': 120, 'LESSONS.md': 60 });
 });
 
 test('closed enums match the contract', () => {
