@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
@@ -27,30 +27,26 @@ export function CajaPage() {
   const viewerLoaded = !!viewer
   const canOpen = !viewerLoaded || perms.includes('pos.register.open')
   const canClose = !viewerLoaded || perms.includes('pos.register.close')
-  const { registers, loading, error, refresh } = useRegister(locationId)
+  // El hook ya está registrado en el canal ÚNICO de frescura (temas `sales` y
+  // `register`): esta pantalla NO vigila por su cuenta el foco ni la
+  // visibilidad de la ventana. En el iPad de sucursal, que nunca pierde el
+  // foco, eso no disparaba nunca; el canal sí se entera de la apertura/cierre
+  // hecha desde otra terminal o desde el admin, y de las ventas que mueven el
+  // esperado del corte.
+  const { registers, status, error, refresh } = useRegister(locationId)
   const [blocker, setBlocker] = useState<ActiveServiceItem[] | null>(null)
   const [checkingActive, setCheckingActive] = useState(false)
 
-  // Refetch on focus + visibilitychange. En el tablet alternar pantallas/apps
-  // no dispara window.focus; al volver a estar visible refrescamos para que los
-  // montos esperados (efectivo/tarjeta/transfer) reflejen las ventas recientes.
-  // Cada refresh llega a la red ([D-017]), así que apertura/cierre hecha desde
-  // otro device o desde el admin se vuelve visible aquí sin recargar.
-  useEffect(() => {
-    const onFocus = () => refresh()
-    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [refresh])
-
   const openRegister = useMemo(
-    () => registers.find((r) => r.openSession),
+    () => registers?.find((r) => r.openSession) ?? null,
     [registers],
   )
+
+  // El fallo ya se pinta en la pantalla; acá sólo se evita la promesa suelta
+  // (refresh re-lanza para el canal de frescura).
+  const retry = useCallback(() => {
+    void refresh().catch(() => {})
+  }, [refresh])
 
   const handleAbrir = (registerId: string) => {
     navigate(`/caja/abrir?reg=${registerId}`)
@@ -110,7 +106,10 @@ export function CajaPage() {
     }
   }, [locationId, locationTimezone, agenda, walkins, navigate, checkingActive])
 
-  if (loading && registers.length === 0) {
+  // "Aún no sé" (sin respuesta del servidor) NO es "no hay cajas": mientras
+  // `registers` sea null va el esqueleto, nunca el vacío de "sin cajas
+  // configuradas" ni una cifra esperada de antes ([D-020]).
+  if (status === 'loading') {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 px-8 py-12">
         <SkeletonRow heightPx={48} widthPercent={50} />
@@ -142,12 +141,14 @@ export function CajaPage() {
     )
   }
 
-  if (error && registers.length === 0) {
+  // Un fallo tira la lista ([D-018]), así que aquí `registers` es null: se
+  // avisa y se ofrece Reintentar, jamás los montos de la carga anterior.
+  if (registers === null) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="max-w-md text-center">
           <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
-            Error
+            {status === 'offline' ? 'Sin conexión' : 'Error'}
           </p>
           <h1
             className="mb-2 text-2xl font-bold text-[var(--color-bone)]"
@@ -155,8 +156,10 @@ export function CajaPage() {
           >
             Caja
           </h1>
-          <p className="mb-4 text-sm text-[var(--color-bone-muted)]">{error}</p>
-          <TouchButton variant="secondary" size="min" onClick={() => refresh()}>
+          <p className="mb-4 text-sm text-[var(--color-bone-muted)]">
+            {error ?? 'No se pudo cargar las cajas'}
+          </p>
+          <TouchButton variant="secondary" size="min" onClick={retry}>
             Reintentar
           </TouchButton>
         </div>

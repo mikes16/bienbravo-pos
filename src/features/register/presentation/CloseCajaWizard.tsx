@@ -26,10 +26,14 @@ export function CloseCajaWizard() {
   const canClose = !viewer || viewer.permissions.includes('pos.register.close')
   const { registers, closeSession } = useRegister(locationId)
 
+  // `registers === null` es "aún no sé" ([D-020]), no "no hay cajas": sin
+  // respuesta del servidor no hay sesión que mostrar y el wizard espera.
   const session = useMemo<RegisterSession | null>(
-    () => registers.find((r) => r.openSession)?.openSession ?? null,
+    () => registers?.find((r) => r.openSession)?.openSession ?? null,
     [registers],
   )
+  /** 0 también mientras no sé: así el rebote de abajo no dispara antes de tiempo. */
+  const registerCount = registers?.length ?? 0
 
   const [step, setStep] = useState(0)
   const [counts, setCounts] = useState<CashCounts>(emptyCashCounts())
@@ -47,11 +51,15 @@ export function CloseCajaWizard() {
   const [error, setError] = useState<string | null>(null)
   const [successOpen, setSuccessOpen] = useState(false)
 
+  // Salida limpia cuando el servidor dice que ya no hay sesión abierta (la
+  // cerraron desde otra terminal). Mientras `registers` sea null el conteo es
+  // 0 y NO se navega: rebotar a /caja antes de la primera respuesta sacaría
+  // al cajero del corte por una carga lenta, no por un cierre real.
   useEffect(() => {
-    if (registers.length > 0 && !session) {
+    if (registerCount > 0 && !session) {
       navigate('/caja')
     }
-  }, [registers.length, session, navigate])
+  }, [registerCount, session, navigate])
 
   useEffect(() => {
     if (!successOpen) return
@@ -125,7 +133,7 @@ export function CloseCajaWizard() {
       // fallo, así que NUNCA mostramos éxito sobre un cierre rechazado.
       setSuccessOpen(true)
     } catch (e) {
-      // closeSession ya re-sincronizó con force:true. Si la caja se cerró
+      // closeSession ya re-sincronizó contra la red. Si la caja se cerró
       // remotamente, `session` ahora es null → el effect de arriba navega a
       // /caja (salida limpia). Si sigue abierta (otro fallo), mostramos el
       // mensaje del servidor en español, o un fallback si viene en inglés técnico.
