@@ -17,10 +17,14 @@ const TIME_CLOCK_EVENTS = graphql(`
   }
 `)
 
-const SHIFT_TEMPLATES = graphql(`
-  query ShiftTemplates($staffUserId: ID!, $locationId: ID!) {
-    shiftTemplates(staffUserId: $staffUserId, locationId: $locationId) {
-      id staffUserId locationId dayOfWeek startMin endMin
+// Ventanas REALES de trabajo del día: el API resuelve la plantilla semanal y
+// le aplica encima los overrides del roster (DAY_OFF / CUSTOM_HOURS) con el
+// mismo motor que usa payroll. Leer la plantilla cruda dejaba al POS ciego a
+// esas excepciones, así que el retardo del reloj discrepaba del de nómina.
+const STAFF_WORKING_WINDOWS = graphql(`
+  query StaffWorkingWindows($staffUserId: ID!, $locationId: ID!, $date: String!) {
+    staffWorkingWindows(staffUserId: $staffUserId, locationId: $locationId, date: $date) {
+      startMin endMin
     }
   }
 `)
@@ -43,11 +47,10 @@ export interface TimeClockEvent {
   at: string
 }
 
-export interface ShiftTemplate {
-  id: string
-  staffUserId: string
-  locationId: string
-  dayOfWeek: number
+/** Una ventana de trabajo del día, en minutos desde medianoche local de la
+ *  sucursal. Un día puede traer varias (turno partido) o ninguna (descanso,
+ *  sea por plantilla o por un override DAY_OFF del roster). */
+export interface WorkingWindow {
   startMin: number
   endMin: number
 }
@@ -56,7 +59,8 @@ export interface ClockRepository {
   clockIn(locationId: string): Promise<boolean>
   clockOut(locationId: string): Promise<boolean>
   getEvents(staffUserId: string, locationId: string, fromDate: string, toDate: string): Promise<TimeClockEvent[]>
-  getShiftTemplates(staffUserId: string, locationId: string, opts?: { force?: boolean }): Promise<ShiftTemplate[]>
+  /** `date` en 'YYYY-MM-DD' del día local de la sucursal (localDayInTz). */
+  getWorkingWindows(staffUserId: string, locationId: string, date: string, opts?: { force?: boolean }): Promise<WorkingWindow[]>
   getLatenessThresholdMin(locationId: string, opts?: { force?: boolean }): Promise<number>
 }
 
@@ -110,25 +114,28 @@ export class ApolloClockRepository implements ClockRepository {
     return data!.timeClockEvents
   }
 
-  async getShiftTemplates(
+  async getWorkingWindows(
     staffUserId: string,
     locationId: string,
+    date: string,
     opts?: { force?: boolean },
-  ): Promise<ShiftTemplate[]> {
+  ): Promise<WorkingWindow[]> {
     // cache-first por default pinta rápido en el mount. Pero estos son
-    // datos configurados por el admin (plantilla de turno) — si cambian a
-    // mitad del día, este cliente Apollo nunca se entera (no hay mutación
-    // local que los evicte, a diferencia de registers/openSession). Sin un
-    // path force:true, el indicador de "tarde" del reloj se queda con la
-    // config vieja hasta un hard reload. ClockPage usa force:true en su
-    // refetch de window.focus / visibilitychange, mismo patrón que
-    // CajaPage con getRegisters.
-    const { data } = await this.#client.query<{ shiftTemplates: ShiftTemplate[] }>({
-      query: SHIFT_TEMPLATES,
-      variables: { staffUserId, locationId },
+    // datos configurados por el admin (plantilla de turno + overrides del
+    // roster) — si cambian a mitad del día, este cliente Apollo nunca se
+    // entera (no hay mutación local que los evicte, a diferencia de
+    // registers/openSession). Sin un path force:true, el indicador de
+    // "tarde" del reloj se queda con la config vieja hasta un hard reload.
+    // ClockPage usa force:true en su refetch de window.focus /
+    // visibilitychange, mismo patrón que CajaPage con getRegisters.
+    // `date` va en las variables, así que cada día local tiene su propio
+    // bucket de cache y cruzar la medianoche no sirve las ventanas de ayer.
+    const { data } = await this.#client.query<{ staffWorkingWindows: WorkingWindow[] }>({
+      query: STAFF_WORKING_WINDOWS,
+      variables: { staffUserId, locationId, date },
       fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
-    return data!.shiftTemplates
+    return data!.staffWorkingWindows
   }
 
   async getLatenessThresholdMin(locationId: string, opts?: { force?: boolean }): Promise<number> {
@@ -137,7 +144,7 @@ export class ApolloClockRepository implements ClockRepository {
     // Si la sucursal no tiene regla configurada, usamos esto.
     const DEFAULT_THRESHOLD = 10
     try {
-      // Mismo motivo que getShiftTemplates: la regla de tardanza la
+      // Mismo motivo que getWorkingWindows: la regla de tardanza la
       // configura el admin y no hay eviction local — force:true (usado en
       // el refetch de focus/visibilitychange de ClockPage) es lo único que
       // hace que un cambio de tolerancia se refleje sin hard reload.

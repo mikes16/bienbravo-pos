@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
 import { useLocation } from '@/core/location/useLocation'
-import { minutesOfDayInTz, dayOfWeekInTz, localDayInTz } from '@/shared/lib/date'
-import type { TimeClockEvent, ShiftTemplate } from '../data/clock.repository.ts'
+import { minutesOfDayInTz, localDayInTz } from '@/shared/lib/date'
+import type { TimeClockEvent, WorkingWindow } from '../data/clock.repository.ts'
 
 function formatMinToTime(min: number): string {
   const h = Math.floor(min / 60)
@@ -38,14 +38,17 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   const { clock } = useRepositories()
   const { locationTimezone } = useLocation()
   const [events, setEvents] = useState<TimeClockEvent[]>([])
-  const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([])
+  // Ventanas de trabajo del día ya resueltas por el API (plantilla semanal +
+  // overrides del roster). No es la plantilla cruda: un DAY_OFF llega aquí
+  // como array vacío y un CUSTOM_HOURS con el horario corregido.
+  const [workingWindows, setWorkingWindows] = useState<WorkingWindow[]>([])
   const [loading, setLoading] = useState(true)
   // Submitting cubre las mutaciones clockIn/clockOut. La página usa este
   // flag para deshabilitar el botón y mostrar "Guardando…", evitando
   // doble-submit cuando el operador apreta varias veces antes del refresh.
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // True when the API rejected the events/templates queries with Forbidden,
+  // True when the API rejected the events/windows queries with Forbidden,
   // i.e. the barber isn't assigned to this location (a setup task for the
   // admin, not a transient runtime error).
   const [notAssignedHere, setNotAssignedHere] = useState(false)
@@ -55,9 +58,9 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
 
   // `showSpinner` = mount inicial muestra el skeleton; el refetch de
   // focus/visibilitychange (ver ClockPage) hace revalidación en background
-  // sin parpadeo. `force` = network-only para shiftTemplates/latenessRule,
-  // que son config del admin sin eviction local (a diferencia de
-  // registers/openSession) — sin esto, un cambio de plantilla de turno o
+  // sin parpadeo. `force` = network-only para las ventanas del día y la
+  // latenessRule, que son config del admin sin eviction local (a diferencia
+  // de registers/openSession) — sin esto, un override del roster o un cambio
   // de tolerancia de tardanza a mitad del día se queda stale hasta un hard
   // reload. Mismo patrón showSpinner/force que loadDay en MyDayPage.
   const refresh = useCallback((opts?: { showSpinner?: boolean; force?: boolean }) => {
@@ -68,16 +71,16 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
     if (showSpinner) setLoading(true)
     setError(null)
     setNotAssignedHere(false)
-    // Independent fetches: events, shift templates, lateness rule — fallan o
+    // Independent fetches: events, ventanas del día, lateness rule — fallan o
     // pasan por razones distintas. La lateness rule es informativa: si falla
     // caemos al default (10 min) en lugar de bloquear el reloj.
     void Promise.allSettled([
       clock.getEvents(staffUserId, locationId, d, d),
-      clock.getShiftTemplates(staffUserId, locationId, { force }),
+      clock.getWorkingWindows(staffUserId, locationId, d, { force }),
       clock.getLatenessThresholdMin(locationId, { force }),
-    ]).then(([evtsRes, templatesRes, latenessRes]) => {
+    ]).then(([evtsRes, windowsRes, latenessRes]) => {
       const eventsForbidden = evtsRes.status === 'rejected' && isForbidden(evtsRes.reason)
-      const templatesForbidden = templatesRes.status === 'rejected' && isForbidden(templatesRes.reason)
+      const windowsForbidden = windowsRes.status === 'rejected' && isForbidden(windowsRes.reason)
 
       if (evtsRes.status === 'fulfilled') {
         setEvents(evtsRes.value)
@@ -91,21 +94,21 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
           setError('No se pudo cargar el historial. Reintenta.')
         }
       }
-      if (templatesRes.status === 'fulfilled') {
-        setShiftTemplates(templatesRes.value)
+      if (windowsRes.status === 'fulfilled') {
+        setWorkingWindows(windowsRes.value)
       } else {
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console
-          console.error('[useClock] getShiftTemplates failed', templatesRes.reason)
+          console.error('[useClock] getWorkingWindows failed', windowsRes.reason)
         }
-        setShiftTemplates([])
+        setWorkingWindows([])
       }
       if (latenessRes.status === 'fulfilled') {
         setLatenessThresholdMin(latenessRes.value)
       }
       // Si la lateness query falla, mantenemos el default — no bloquea nada.
 
-      if (eventsForbidden || templatesForbidden) {
+      if (eventsForbidden || windowsForbidden) {
         setNotAssignedHere(true)
       }
       setLoading(false)
@@ -117,8 +120,11 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
   const isClockedIn = events.length > 0 && events[events.length - 1].type === 'CLOCK_IN'
 
   const shiftStatus: ShiftStatus = useMemo(() => {
-    const dow = dayOfWeekInTz(new Date().toISOString(), locationTimezone)
-    const todayShift = shiftTemplates.find((t) => t.dayOfWeek === dow)
+    // Turno partido: la jornada va del inicio de la PRIMERA ventana al fin de
+    // la ÚLTIMA. El API ya las devuelve ordenadas por startMin (mismo motor
+    // que payroll), así que no reordenamos aquí.
+    const firstWindow = workingWindows[0]
+    const lastWindow = workingWindows[workingWindows.length - 1]
 
     // Use the LATEST CLOCK_IN, not the first. With double shifts (IN→OUT→IN),
     // the first CLOCK_IN belongs to the morning shift; for the afternoon shift
@@ -133,7 +139,9 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
       !isClockedIn && latestClockOut ? minutesOfDayInTz(latestClockOut.at, locationTimezone) : null
     const departureLabel = departureMin !== null ? formatMinToTime(departureMin) : null
 
-    if (!todayShift) {
+    // Sin ventanas = no trabaja hoy. Cubre tanto "la plantilla no tiene ese
+    // día" como un override DAY_OFF del roster, que antes era invisible aquí.
+    if (!firstWindow || !lastWindow) {
       return {
         scheduledStartMin: null,
         scheduledEndMin: null,
@@ -149,7 +157,7 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
       }
     }
 
-    const scheduledStart = todayShift.startMin
+    const scheduledStart = firstWindow.startMin
     // Usar el umbral real de la sucursal en vez del hardcode de 5 min. Si la
     // sucursal toleró 10 min y el barbero llegó 6 min tarde, NO es retardo.
     const latenessMin =
@@ -163,7 +171,7 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
 
     return {
       scheduledStartMin: scheduledStart,
-      scheduledEndMin: todayShift.endMin,
+      scheduledEndMin: lastWindow.endMin,
       arrivalMin,
       departureMin,
       scheduledStartLabel: formatMinToTime(scheduledStart),
@@ -174,7 +182,7 @@ export function useClock(staffUserId: string | null, locationId: string | null) 
       statusLabel,
       latenessThresholdMin,
     }
-  }, [events, shiftTemplates, isClockedIn, latenessThresholdMin, locationTimezone])
+  }, [events, workingWindows, isClockedIn, latenessThresholdMin, locationTimezone])
 
   const doClockIn = useCallback(async (): Promise<boolean> => {
     if (!locationId || submitting) return false

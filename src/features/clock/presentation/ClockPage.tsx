@@ -101,12 +101,14 @@ export function ClockPage() {
   } = useClock(viewer?.staff?.id ?? null, locationId)
 
   // Refetch on focus + visibilitychange — mismo patrón dual que
-  // CajaPage/MyDayPage. shiftTemplates/latenessRule son config del admin
-  // (plantilla de turno, tolerancia de tardanza) sin eviction local: si el
-  // admin las cambia a mitad del día, este cliente Apollo nunca se entera
-  // sin este refetch forzado (network-only), y el indicador de "tarde" del
-  // reloj se queda con la config vieja hasta un hard reload. Sin spinner
-  // (showSpinner: false) para que la revalidación no parpadee la pantalla.
+  // CajaPage/MyDayPage. Las ventanas del día (staffWorkingWindows) y la
+  // latenessRule son config del admin (plantilla de turno + overrides del
+  // roster, tolerancia de tardanza) sin eviction local: si el admin las
+  // cambia a mitad del día — p. ej. te marca un DAY_OFF o te corrige el
+  // horario — este cliente Apollo nunca se entera sin este refetch forzado
+  // (network-only), y el indicador de "tarde" del reloj se queda con la
+  // config vieja hasta un hard reload. Sin spinner (showSpinner: false)
+  // para que la revalidación no parpadee la pantalla.
   useEffect(() => {
     const onFocus = () => refresh({ showSpinner: false, force: true })
     const onVisible = () => { if (document.visibilityState === 'visible') refresh({ showSpinner: false, force: true }) }

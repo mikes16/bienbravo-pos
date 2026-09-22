@@ -4,15 +4,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ClockPage } from './ClockPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
+import type { TimeClockEvent, WorkingWindow } from '../data/clock.repository'
 
 class TestAuthRepo extends InMemoryAuthRepository {
   override async getViewer() { return MOCK_VIEWER }
 }
 
-function makeRepos(opts?: { events?: any[]; templates?: any[] }) {
+function makeRepos(opts?: { events?: TimeClockEvent[]; windows?: WorkingWindow[] }) {
   const repos = createMockRepositories()
   repos.clock.getEvents = vi.fn().mockResolvedValue(opts?.events ?? [])
-  repos.clock.getShiftTemplates = vi.fn().mockResolvedValue(opts?.templates ?? [])
+  repos.clock.getWorkingWindows = vi.fn().mockResolvedValue(opts?.windows ?? [])
   repos.clock.clockIn = vi.fn().mockResolvedValue(true)
   repos.clock.clockOut = vi.fn().mockResolvedValue(true)
   return repos
@@ -52,16 +53,14 @@ describe('ClockPage', () => {
   // que es falso (empezó hace 16) y confundía. El copy nuevo nombra el
   // retardo, explica la tolerancia y el efecto en la comisión del día.
   it('live-lateness status names the retardo, explains tolerance and commissions', async () => {
-    // Lunes 2026-05-04, 10:16 AM en America/Monterrey (UTC-6): turno
-    // startMin 600 (10:00) + tolerancia default 10 → 6 min de retardo.
+    // Lunes 2026-05-04, 10:16 AM en America/Monterrey (UTC-6): ventana del
+    // día startMin 600 (10:00) + tolerancia default 10 → 6 min de retardo.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-05-04T16:16:00Z'))
     try {
       renderWithProviders(<ClockPage />, {
         repos: {
-          ...makeRepos({
-            templates: [{ id: 't1', staffUserId: 'staff-1', locationId: 'loc1', dayOfWeek: 1, startMin: 600, endMin: 1140 }],
-          }),
+          ...makeRepos({ windows: [{ startMin: 600, endMin: 1140 }] }),
           auth: new TestAuthRepo(),
         },
       })
@@ -71,6 +70,38 @@ describe('ClockPage', () => {
       expect(screen.getByText(/comisión/i)).toBeInTheDocument()
       // El headline engañoso anterior no debe volver.
       expect(screen.queryByText(/empezó hace/i)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // El reloj lee las ventanas REALES del día (staffWorkingWindows), que ya
+  // traen aplicados los overrides del roster — no la plantilla semanal. Aquí
+  // la plantilla diría 10:00 pero el override CUSTOM_HOURS mueve la entrada a
+  // las 12:00, y eso es lo único que el POS debe mostrar (y contra lo que
+  // debe medir el retardo, igual que nómina).
+  it('usa la ventana del día (override del roster), no la plantilla semanal', async () => {
+    // Lunes 2026-05-04, 10:00 AM en America/Monterrey (UTC-6).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-05-04T16:00:00Z'))
+    try {
+      const repos = makeRepos({ windows: [{ startMin: 720, endMin: 1140 }] })
+      renderWithProviders(<ClockPage />, {
+        repos: { ...repos, auth: new TestAuthRepo() },
+      })
+      expect(await screen.findByText(/tu horario empieza a las/i)).toBeInTheDocument()
+      expect(screen.getByText('12:00 PM')).toBeInTheDocument()
+      // A las 10:00 con entrada a las 12:00 faltan 2 horas — no hay retardo.
+      expect(screen.getByText('2 horas')).toBeInTheDocument()
+      expect(screen.queryByText(/de retardo/i)).toBeNull()
+      // Las ventanas se piden para el día local de la sucursal, no para el
+      // día del device (localDayInTz con la tz de la sucursal).
+      expect(repos.clock.getWorkingWindows).toHaveBeenCalledWith(
+        'staff-1',
+        'loc1',
+        '2026-05-04',
+        { force: false },
+      )
     } finally {
       vi.useRealTimers()
     }
@@ -129,16 +160,20 @@ describe('ClockPage', () => {
     expect(screen.getByText('Salida')).toBeInTheDocument()
   })
 
-  // FIX 8: shiftTemplates/latenessRule son config del admin (plantilla de
-  // turno, tolerancia de tardanza) sin eviction local — si cambian a mitad
-  // del día, el indicador de "tarde" se quedaba stale hasta un hard reload.
-  // ClockPage debe refetchear ambas con force:true (network-only) en focus
-  // y visibilitychange, mismo patrón dual que CajaPage/MyDayPage.
-  it('reloads shiftTemplates/latenessRule with force:true on window focus and visibilitychange', async () => {
+  // FIX 8: las ventanas del día (staffWorkingWindows) y la latenessRule son
+  // config del admin (plantilla de turno + overrides del roster, tolerancia
+  // de tardanza) sin eviction local — si cambian a mitad del día, el
+  // indicador de "tarde" se quedaba stale hasta un hard reload. ClockPage
+  // debe refetchear ambas con force:true (network-only) en focus y
+  // visibilitychange, mismo patrón dual que CajaPage/MyDayPage.
+  it('reloads workingWindows/latenessRule with force:true on window focus and visibilitychange', async () => {
     const repos = makeRepos()
-    const getShiftTemplates = repos.clock.getShiftTemplates as ReturnType<typeof vi.fn>
+    // getWorkingWindows(staffUserId, locationId, date, opts) → opts es c[3].
+    const getWorkingWindows = repos.clock.getWorkingWindows as ReturnType<typeof vi.fn>
+    const forcedWindows = () => getWorkingWindows.mock.calls.filter((c: unknown[]) => (c[3] as { force?: boolean } | undefined)?.force === true).length
     const getLatenessThresholdMin = vi.fn().mockResolvedValue(10)
     repos.clock.getLatenessThresholdMin = getLatenessThresholdMin
+    const forcedLateness = () => getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length
     renderWithProviders(<ClockPage />, {
       repos: { ...repos, auth: new TestAuthRepo() },
     })
@@ -146,24 +181,24 @@ describe('ClockPage', () => {
     await screen.findByText(/listo para empezar/i)
 
     // Mount inicial es cache-first (force:false) — arranca en 0 llamadas forzadas.
-    const forcedTemplatesBefore = getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length
-    const forcedLatenessBefore = getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length
-    expect(forcedTemplatesBefore).toBe(0)
+    const forcedWindowsBefore = forcedWindows()
+    const forcedLatenessBefore = forcedLateness()
+    expect(forcedWindowsBefore).toBe(0)
     expect(forcedLatenessBefore).toBe(0)
 
     act(() => { window.dispatchEvent(new Event('focus')) })
     await waitFor(() => {
-      expect(getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedTemplatesBefore)
-      expect(getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedLatenessBefore)
+      expect(forcedWindows()).toBeGreaterThan(forcedWindowsBefore)
+      expect(forcedLateness()).toBeGreaterThan(forcedLatenessBefore)
     })
-    const forcedTemplatesAfterFocus = getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length
-    const forcedLatenessAfterFocus = getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length
+    const forcedWindowsAfterFocus = forcedWindows()
+    const forcedLatenessAfterFocus = forcedLateness()
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
     act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     await waitFor(() => {
-      expect(getShiftTemplates.mock.calls.filter((c: unknown[]) => (c[2] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedTemplatesAfterFocus)
-      expect(getLatenessThresholdMin.mock.calls.filter((c: unknown[]) => (c[1] as { force?: boolean } | undefined)?.force === true).length).toBeGreaterThan(forcedLatenessAfterFocus)
+      expect(forcedWindows()).toBeGreaterThan(forcedWindowsAfterFocus)
+      expect(forcedLateness()).toBeGreaterThan(forcedLatenessAfterFocus)
     })
   })
 })

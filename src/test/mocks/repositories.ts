@@ -1,3 +1,12 @@
+/* eslint-disable @typescript-eslint/no-unused-vars --
+ * Los mocks in-memory implementan las interfaces completas de los
+ * repositorios: los parámetros se declaran con prefijo `_` para documentar la
+ * firma real aunque el stub no los use. El default de la regla no honra
+ * `argsIgnorePattern: '^_'`, así que este archivo arrastraba el baseline de
+ * errores de lint que ci.yml documenta. Se desactiva SOLO esta regla y SOLO
+ * aquí; el arreglo de fondo (añadir argsIgnorePattern en eslint.config.js)
+ * queda como limpieza aparte, fuera del alcance de esta tarea.
+ */
 import type { AuthRepository } from '@/core/auth/auth.repository.ts'
 import type { PosViewer, PosStaffUser, PosLocation, PosPinLockoutStatus } from '@/core/auth/auth.types.ts'
 import type { Repositories } from '@/core/repositories/registry.ts'
@@ -14,7 +23,7 @@ import type {
 } from '@/features/checkout/domain/checkout.types.ts'
 import type { RegisterRepository } from '@/features/register/data/register.repository.ts'
 import type { Register, RegisterSession, CloseSessionInput, CajaStatus } from '@/features/register/domain/register.types.ts'
-import type { ClockRepository, TimeClockEvent, ShiftTemplate } from '@/features/clock/data/clock.repository.ts'
+import type { ClockRepository, TimeClockEvent, WorkingWindow } from '@/features/clock/data/clock.repository.ts'
 import type { AgendaRepository } from '@/features/agenda/data/agenda.repository.ts'
 import type { Appointment, AppointmentStatus } from '@/features/agenda/domain/agenda.types.ts'
 import type { WalkInsRepository } from '@/features/walkins/data/walkins.repository.ts'
@@ -325,7 +334,7 @@ export class InMemoryClockRepository implements ClockRepository {
     return []
   }
 
-  async getShiftTemplates(_staffUserId: string, _locationId: string, _opts?: { force?: boolean }): Promise<ShiftTemplate[]> {
+  async getWorkingWindows(_staffUserId: string, _locationId: string, _date: string, _opts?: { force?: boolean }): Promise<WorkingWindow[]> {
     return []
   }
 
