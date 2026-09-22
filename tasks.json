@@ -1051,7 +1051,7 @@
       ],
       "priority": 3,
       "type": "fix",
-      "status": "pending",
+      "status": "split",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
@@ -2395,6 +2395,164 @@
       "attempts": 0,
       "redispatches": 0,
       "split_from": "T-016",
+      "review_feedback": []
+    },
+    {
+      "id": "T-017a",
+      "title": "Agenda: revalidar al entrar y por avisos, sin vigilar el foco",
+      "description": "Clase VIVO sin dinero (spec 3.1): la agenda se revalida SIEMPRE contra la red al entrar y cuando llega un aviso del canal; nunca por foco/visibilidad ni por sondeo. La carga inicial vive en el hook, por eso entra al alcance. (a) src/features/agenda/application/useAgenda.ts: `refresh()` pierde el parametro opts y llama SIEMPRE a `agenda.getAppointments(..., { force: true })` — NO toques data/agenda.repository.ts, que conserva su opts porque HoyPage lo usa; `refresh` devuelve su promesa y RE-LANZA el error tras pintar el fallo (el canal solo mueve 'ACTUALIZADO HH:MM' si todos los cargadores resolvieron, handoff T-007); en exito limpia el error (hoy es pegajoso: se setea en el catch y no se borra nunca, asi el aviso no se podria retirar al recuperarse) y guarda `lastLoadedAt: Date | null` (hora del ultimo dato bueno) que expone al caller; un fallo NO tira la lista en memoria ([D-018] aplica solo a dinero: lo vivo se conserva con aviso); los wrappers checkIn/startService/complete/noShow siguen re-sincronizando pero tragando el rechazo (`void refresh().catch(() => {})`) para no dejar promesas sueltas. El fetch del mount va inline con bandera `cancelled` y sin setState en el cuerpo del efecto (leccion T-002a: react-hooks/set-state-in-effect es inter-procedural). (b) src/features/agenda/presentation/AgendaPage.tsx: borra el useEffect de focus/visibilitychange (lineas 393-403) y registra la carga con `useLiveRefresh(load, ['appointments'])` de @/core/freshness/useLiveRefresh — un registro por clase de dato, nada mas ([D-019]). (c) Si la red falla y hay citas en memoria, se muestran con un aviso visible `role=\"status\"` con el texto 'Sin conexion - datos de las HH:MM' (el separador es el punto medio), hora de `lastLoadedAt` via `formatTimeInTz` en `locationTimezone` (nunca la tz del device); sin datos previos, el banner de error existente tal cual. (d) Ni sondeo ni listeners propios, y no escribas esos tokens ni en comentarios: los greps de AC tambien leen comentarios (leccion T-007). (e) AgendaPage.test.tsx: al montar se pide con force:true aunque haya cache; `announce('appointments')` recarga; `announce('sales')` no; fallo de red con citas previas muestra el aviso con la hora y conserva la lista. Reemplaza el test de focus/visibilitychange. renderWithProviders ya monta el stub del canal y devuelve `announce` ([D-023]).",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Al montar pide a la red aunque haya cache; un aviso de 'appointments' recarga y uno de 'sales' no; un fallo con citas previas las conserva con el aviso 'Sin conexion - datos de las HH:MM'",
+          "check": "npm test -- src/features/agenda",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "La pantalla se pone al dia por el canal unico de frescura",
+          "check": "grep -q 'useLiveRefresh' src/features/agenda/presentation/AgendaPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Sin sondeo ni vigilancia propia de foco/visibilidad en la agenda",
+          "check": "! grep -qE 'setInterval|visibilitychange|addEventListener' src/features/agenda/presentation/AgendaPage.tsx src/features/agenda/application/useAgenda.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-5",
+          "desc": "Eslint limpio en la feature",
+          "check": "npx eslint src/features/agenda",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Seccion 3.1: clase VIVO sin dinero — memoria de sesion + revalidar siempre, nunca foco ni sondeo (P3)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-007.md",
+          "reason": "Contrato del canal: useLiveRefresh no invoca load al montar y load debe devolver su promesa y rechazar en error"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/home/presentation/HoyPage.tsx",
+          "reason": "Pantalla ya migrada: lecturas con force, cargadores por tema y cero listeners propios"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-019] un registro por clase de dato; [D-018] tirar el dato es solo para dinero; [D-023] stub del canal en renderWithProviders"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/agenda/data/agenda.repository.ts",
+          "reason": "getAppointments(opts.force) — se consume, no se modifica: HoyPage depende de ese parametro"
+        }
+      ],
+      "files": [
+        "src/features/agenda/application/useAgenda.ts",
+        "src/features/agenda/presentation/AgendaPage.tsx",
+        "src/features/agenda/presentation/AgendaPage.test.tsx"
+      ],
+      "depends_on": [
+        "T-007"
+      ],
+      "priority": 3,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-017",
+      "review_feedback": []
+    },
+    {
+      "id": "T-017b",
+      "title": "Fila de walk-ins: revalidar al entrar y por avisos del canal",
+      "description": "Misma regla que la agenda (spec 3.1, clase VIVO sin dinero) para la Sala de Espera. El mount del hook ya va por red (`opts?.force ?? true`), lo que falta es conectarla al canal y decir la verdad cuando la red falla; ambas cosas exigen el hook, por eso entra al alcance. (a) src/features/walkins/application/useWalkIns.ts: `refresh()` pierde el parametro opts y llama SIEMPRE a `walkins.getWalkIns(locationId, undefined, undefined, { force: true })` (misma forma de llamada que hoy: NO toques data/walkins.repository.ts, que conserva su opts porque HoyPage lo usa); devuelve su promesa y RE-LANZA el error tras pintar el fallo (el canal solo mueve 'ACTUALIZADO HH:MM' si todos los cargadores resolvieron, handoff T-007); en exito limpia el error (hoy es pegajoso y el aviso no se podria retirar al recuperarse) y guarda `lastLoadedAt: Date | null` que expone al caller; un fallo NO tira la cola en memoria ([D-018] aplica solo a dinero). Los wrappers de mutacion siguen re-sincronizando pero tragando el rechazo (`void refresh().catch(() => {})`); ninguno cambia de firma. El fetch del mount va inline con bandera `cancelled` y sin setState en el cuerpo del efecto (leccion T-002a). (b) src/features/walkins/presentation/WalkInsPage.tsx: registra la carga con `useLiveRefresh(load, ['walkins'])` de @/core/freshness/useLiveRefresh — solo ese tema ([D-019]); adapta los call sites de `wi.refresh({ force: true })` (onCreated de AddWalkInSheet) a la firma nueva; deja como esta el efecto que carga barberos disponibles. (c) Si la red falla y hay cola en memoria, se muestra con un aviso visible `role=\"status\"` con el texto 'Sin conexion - datos de las HH:MM' (separador punto medio), hora de `lastLoadedAt` via `formatTimeInTz` con el `locationTimezone` de useLocation (nunca la tz del device); sin datos previos, el banner de error existente. (d) Ni sondeo ni listeners propios de foco/visibilidad, y no escribas esos tokens ni en comentarios: los greps de AC leen comentarios (leccion T-007). (e) WalkInsPage.test.tsx: al montar se pide a la red aunque haya cache (conserva el caso actual que aserta `{ force: true }`); `announce('walkins')` recarga; `announce('appointments')` no; fallo de red con cola previa muestra el aviso con la hora y conserva las filas. renderWithProviders ya monta el stub del canal y devuelve `announce` ([D-023]).",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Al montar pide a la red aunque haya cache; un aviso de 'walkins' recarga y uno de 'appointments' no; un fallo con cola previa la conserva con el aviso 'Sin conexion - datos de las HH:MM'",
+          "check": "npm test -- src/features/walkins",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "La pantalla se pone al dia por el canal unico de frescura",
+          "check": "grep -q 'useLiveRefresh' src/features/walkins/presentation/WalkInsPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Sin sondeo ni vigilancia propia de foco/visibilidad en la fila de walk-ins",
+          "check": "! grep -qE 'setInterval|visibilitychange|addEventListener' src/features/walkins/presentation/WalkInsPage.tsx src/features/walkins/application/useWalkIns.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-5",
+          "desc": "Eslint limpio en la feature",
+          "check": "npx eslint src/features/walkins",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Seccion 3.1: clase VIVO sin dinero — memoria de sesion + revalidar siempre, nunca foco ni sondeo (P3)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-007.md",
+          "reason": "Contrato del canal: useLiveRefresh no invoca load al montar y load debe devolver su promesa y rechazar en error"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/home/presentation/HoyPage.tsx",
+          "reason": "Pantalla ya migrada: lecturas con force, cargadores por tema y cero listeners propios"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-019] un registro por clase de dato; [D-018] tirar el dato es solo para dinero; [D-023] stub del canal en renderWithProviders"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/walkins/data/walkins.repository.ts",
+          "reason": "getWalkIns(opts.force) y el evict tras cada mutacion — se consumen, no se modifican"
+        }
+      ],
+      "files": [
+        "src/features/walkins/application/useWalkIns.ts",
+        "src/features/walkins/presentation/WalkInsPage.tsx",
+        "src/features/walkins/presentation/WalkInsPage.test.tsx"
+      ],
+      "depends_on": [
+        "T-017a"
+      ],
+      "priority": 3,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-017",
       "review_feedback": []
     }
   ]
