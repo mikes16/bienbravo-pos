@@ -14,6 +14,12 @@ import { graphql } from '@/core/graphql/generated'
  * `kind` es `PosDataEventKind` (CATALOG | COMMISSION | PAYMENT | REGISTER |
  * SETTINGS). El mapa kind → temas vive en `FreshnessProvider`, que es quien
  * conoce los temas del canal.
+ *
+ * Esta subscription (como las otras tres del canal) es pública en el API: no
+ * hay guard por sesión, solo el filtro por `slug`. Eso es DEUDA RASTREADA en
+ * T-040 (`.harness/handoffs/T-040.md`), no una decisión aceptada — el
+ * handoff trae el contrato propuesto (token de canal corto por
+ * `connectionParams`) y el punto exacto del API a arreglar.
  */
 export const POS_DATA_CHANGED = graphql(`
   subscription PosDataChanged($slug: String!) {

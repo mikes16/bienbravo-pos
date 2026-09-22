@@ -254,11 +254,12 @@ export function createPosApolloClient(): ApolloClient {
   // (walkInQueueUpdated, saleEvent, appointmentUpdated y posDataChanged) son
   // públicas en el API: sus resolvers no llevan guard, no hay guard global y el
   // servidor de graphql-ws (api/src/main.ts) arma el context sólo con
-  // `connectionParams` — nunca lee la cookie del upgrade. Por eso el handshake
-  // cross-site funciona aunque Safari/iPad (ITP) no mande la cookie de terceros.
-  // El aislamiento lo da el filtro por `slug` (único por tenant) y el hecho de
-  // que el payload sea un ping: el dato viaja después por la consulta HTTP
-  // autenticada de arriba.
+  // `connectionParams` — nunca lee la cookie del upgrade. Hoy el aislamiento lo
+  // da solo el filtro por `slug` (adivinable) y que el payload sea un ping sin
+  // datos: el dato real viaja después por la consulta HTTP autenticada de
+  // arriba. ESTO ES DEUDA RASTREADA (T-040), no una decisión aceptada: ver
+  // `.harness/handoffs/T-040.md` para el contrato propuesto (token de canal
+  // corto por `connectionParams`) y el punto exacto del API a arreglar.
   const wsUri = ((import.meta.env.VITE_API_URL ?? '') + '/graphql').replace(/^http/, 'ws')
 
   const cache = makeCache()
@@ -298,10 +299,10 @@ export function createPosApolloClient(): ApolloClient {
   // el POS de sucursal nunca debe quedar sin push silente. keepAlive 12s
   // detecta zombies antes de que el browser lo note.
   // Auth: el handshake viaja SIN credenciales utilizables (la cookie de
-  // terceros no llega desde Safari/iPad y el API tampoco la leería). Hoy da
-  // igual porque las cuatro subscriptions del canal de frescura son públicas;
-  // el día que alguna exija sesión hay que mandarla por `connectionParams`, no
-  // confiar en la cookie del upgrade.
+  // terceros no llega desde Safari/iPad y el API tampoco la leería). El canal
+  // es público hoy — deuda rastreada en T-040 (`.harness/handoffs/T-040.md`),
+  // no aceptada de forma permanente: cuando el API exija sesión, la credencial
+  // va aquí por `connectionParams` (nunca confiar en la cookie del upgrade).
   //
   // OJO: `retryAttempts` sólo cubre la CAÍDA DEL SOCKET, y al reconectar
   // graphql-ws re-suscribe las operaciones vivas — nunca una que el servidor
