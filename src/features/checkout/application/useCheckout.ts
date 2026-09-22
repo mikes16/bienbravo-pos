@@ -18,6 +18,7 @@ import {
   STAFF_SALE_MESSAGES,
   quotaView,
   staffCartSummary,
+  staffLineMessage,
   staffLineView,
   unitsQuotaMessage,
 } from '../lib/staff-sale'
@@ -186,6 +187,36 @@ export interface StaffSaleCartLine {
   /** Qué falta para poder cobrarla a staff; `null` = lista. */
   blockReason: StaffLineBlockReason | null
   blockMessage: string | null
+}
+
+/**
+ * Cómo se pinta UN producto del CATÁLOGO (la card del grid) con el modo venta
+ * a staff encendido. Es `staffLineView(product, null)` ya resuelto: la card
+ * (`catalogItems`) sólo trae id/nombre/precio público/stock, así que sin esto
+ * el grid no tiene con qué pintar el precio staff ni marcar a los no elegibles
+ * (spec §4.5).
+ *
+ * **Esto es DISPLAY, no una decisión.** La autoridad sigue siendo el API:
+ * `createPOSSale` vuelve a medir precio staff, elegibilidad y topes dentro de
+ * su transacción, y su rechazo gana sobre lo que aquí se haya pintado. Lo de
+ * aquí sólo evita que el operador se entere después de haber cobrado.
+ *
+ * Es la vista del producto SIN presentación elegida: un producto que exige
+ * elegirla entra como NO elegible (`NEEDS_VARIANT`) y sin precio staff, porque
+ * el tile no puede pintar un precio que todavía no existe ([D-042]). El precio
+ * de la LÍNEA, una vez capturada, lo lleva `StaffSaleCartLine`.
+ */
+export interface StaffCatalogView {
+  /** true = el producto se puede agregar al ticket a `unitPriceCents`. */
+  eligible: boolean
+  /** Por qué no; `null` = elegible. */
+  reason: StaffLineBlockReason | null
+  /** Precio staff a pintar. `null` = no hay ninguno que pintar; nunca 0. */
+  unitPriceCents: number | null
+  /** Precio público (el que se tacha cuando hay precio staff). */
+  listUnitPriceCents: number
+  /** Motivo listo para pintar (`staffLineMessage`); `null` = elegible. */
+  message: string | null
 }
 
 /**
@@ -974,8 +1005,10 @@ export function useCheckout() {
   /**
    * Lo que el modo venta a staff ve del carrito: qué línea ya tiene precio
    * staff, qué le falta a las demás, el descuento del ticket y el cupo
-   * contrastado contra lo que se está por cobrar. Derivado en render (nada de
-   * efectos): cambia con el carrito, el catálogo y el cupo.
+   * contrastado contra lo que se está por cobrar. Más `catalogViews`, que es
+   * lo mismo pero del GRID: una vista por producto del catálogo para pintar el
+   * precio staff y marcar a los no elegibles antes de tocar nada. Derivado en
+   * render (nada de efectos): cambia con el carrito, el catálogo y el cupo.
    */
   const staffSale = useMemo(() => {
     const base = {
@@ -991,6 +1024,9 @@ export function useCheckout() {
       return {
         ...base,
         lines: [] as StaffSaleCartLine[],
+        // Sin modo no hay nada que pintar en el grid: el mapa va vacío y el
+        // catálogo ni se recorre.
+        catalogViews: new Map<string, StaffCatalogView>(),
         summary: null as StaffCartSummary | null,
         quotaView: null as StaffQuotaView | null,
         canCharge: true,
@@ -998,6 +1034,22 @@ export function useCheckout() {
       }
     }
     const byId = new Map(products.map((p) => [p.id, p]))
+    // Una vista por producto del catálogo, SIN presentación elegida: es lo que
+    // el grid necesita para pintar el precio staff y marcar a los no elegibles
+    // ([D-042]: sin precio resuelto, `unitPriceCents` es null y el tile pinta
+    // el motivo, jamás un precio aproximado). Display, no decisión: el API
+    // revalida al cobrar.
+    const catalogViews = new Map<string, StaffCatalogView>()
+    for (const product of products) {
+      const productView = staffLineView(product, null)
+      catalogViews.set(product.id, {
+        eligible: productView.eligible,
+        reason: productView.reason ?? null,
+        unitPriceCents: productView.unitPriceCents,
+        listUnitPriceCents: productView.listUnitPriceCents,
+        message: staffLineMessage(productView),
+      })
+    }
     // Forma que consume `lib/staff-sale`: la marca de línea staff es
     // `listUnitPriceCents` y nada más ([D-041]).
     const summaryLines: StaffSummaryLine[] = cartState.lines.map((l) => ({
@@ -1046,6 +1098,7 @@ export function useCheckout() {
     return {
       ...base,
       lines,
+      catalogViews,
       summary: staffCartSummary(summaryLines),
       quotaView: view,
       canCharge: blockMessage === null,
@@ -1892,8 +1945,9 @@ export function useCheckout() {
     /* ── Venta a staff (spec venta a staff §4.3/§4.5) ──────────────────────
      * `staffSale` es todo lo que la UI necesita para pintar el modo:
      * permisos, comprador, cupo del mes contrastado con el carrito, descuento
-     * del ticket, qué línea le falta algo y si se puede cobrar. El POS sólo
-     * MUESTRA: `createPOSSale` vuelve a medir todo al cobrar.
+     * del ticket, qué línea le falta algo, cómo se pinta cada producto del
+     * grid (`catalogViews`) y si se puede cobrar. El POS sólo MUESTRA:
+     * `createPOSSale` vuelve a medir todo al cobrar.
      */
     staffSale,
     setStaffSaleEnabled,

@@ -466,4 +466,63 @@ describe('useCheckout · venta a staff', () => {
     })
     expect(result.current.staffSale.canCharge).toBe(true)
   })
+
+  /* ── 7. Vista del GRID: qué pinta cada card del catálogo (spec §4.5) ── */
+
+  it('con el modo apagado el grid no recibe ninguna vista staff', async () => {
+    const { repos } = makeRepos()
+    const { result } = await mountLoaded(repos)
+
+    // El catálogo SÍ está cargado (la línea entra a precio público): el mapa
+    // está vacío porque no hay modo que pintar, no porque falten productos.
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(25000)
+    expect(result.current.staffSale.catalogViews.size).toBe(0)
+  })
+
+  it('encendido, un producto elegible trae su precio staff y su precio público', async () => {
+    const { repos } = makeRepos()
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    // Una vista por producto del catálogo, aunque el carrito esté vacío: el
+    // grid se pinta antes de tocar nada.
+    expect(result.current.staffSale.catalogViews.size).toBe(3)
+    expect(result.current.staffSale.catalogViews.get('prod-cera')).toEqual({
+      eligible: true,
+      reason: null,
+      unitPriceCents: 12000,
+      listUnitPriceCents: 25000,
+      message: null,
+    })
+  })
+
+  it('los no elegibles vienen marcados con su motivo y sin precio staff', async () => {
+    const { repos } = makeRepos()
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    // El admin lo sacó de la venta a staff.
+    expect(result.current.staffSale.catalogViews.get('prod-pomada')).toEqual({
+      eligible: false,
+      reason: 'NOT_ELIGIBLE',
+      unitPriceCents: null,
+      listUnitPriceCents: 20000,
+      message: 'Este producto no está disponible para venta a staff',
+    })
+    // Presentaciones con precio staff distinto: hasta que el operador elija
+    // una no hay precio que pintar ([D-042]), así que la card no es elegible.
+    expect(result.current.staffSale.catalogViews.get('prod-spray')).toEqual({
+      eligible: false,
+      reason: 'NEEDS_VARIANT',
+      unitPriceCents: null,
+      listUnitPriceCents: 18000,
+      message: 'Elige la presentación',
+    })
+
+    await enable(result, false)
+    expect(result.current.staffSale.catalogViews.size).toBe(0)
+  })
 })
