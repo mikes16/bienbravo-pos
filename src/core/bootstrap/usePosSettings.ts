@@ -93,7 +93,8 @@ function useSettingsChannel(load: () => void | Promise<void>): void {
 /**
  * Los tiempos de bloqueo automático configurados por el dueño.
  *
- * Política de datos: `posSettings` es clase SESIÓN/ajustes, no dinero. Se lee
+ * Política de datos: `posSettings` está clasificado LIVE en
+ * `core/apollo/dataClasses.ts` (ajustes del negocio, sin dinero). Se lee
  * `cache-first` (cero red en el critical path de cada montaje) y se revalida
  * por EVENTO, nunca por tiempo ([D-015] sigue intacto):
  * - el canal de frescura avisa del tema `settings` cuando el admin guarda
@@ -103,10 +104,11 @@ function useSettingsChannel(load: () => void | Promise<void>): void {
  *   `refreshAll()` del desbloqueo con PIN y el botón "Actualizar", porque los
  *   tres disparan TODOS los temas.
  *
- * El campo raíz `posSettings` queda fuera de `core/apollo/dataClasses.ts` a
- * propósito: sin clasificar no se persiste ([D-003]), que es justo lo que
- * queremos — los defaults ya cubren el arranque y así el dispositivo nunca
- * guarda un ajuste viejo que sobreviva a un reinicio.
+ * Ser LIVE (no STATIC/SESSION) significa que nunca se persiste ([D-003]): los
+ * defaults ya cubren el arranque y así el dispositivo nunca guarda un ajuste
+ * viejo que sobreviva a un reinicio. Si la revalidación de red falla DESPUÉS
+ * de una carga buena, se conserva ese último valor en memoria en vez de caer
+ * a los defaults ([D-031] — no es dinero, [D-018] no aplica).
  *
  * Devuelve SIEMPRE un par usable: mientras carga, si la consulta falla o si el
  * valor no pasa el saneo, los defaults (15 / 90).

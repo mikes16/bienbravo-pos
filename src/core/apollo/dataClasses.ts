@@ -55,8 +55,9 @@ export const SESSION_ROOT_FIELDS = ['viewer'] as const
 
 /**
  * DINERO / SENSIBLE: jamás se persiste y siempre se lee de la red. Cubre
- * ventas, comisiones, caja, detalle de venta, prepago de cita y todo dato de
- * cliente (búsqueda, ficha e historial son PII pura).
+ * ventas, comisiones, caja, detalle de venta, prepago de cita, el cupo
+ * mensual de venta a staff y todo dato de cliente (búsqueda, ficha e
+ * historial son PII pura).
  */
 export const SENSITIVE_ROOT_FIELDS = [
   // Ventas del día y detalle de una venta.
@@ -76,6 +77,11 @@ export const SENSITIVE_ROOT_FIELDS = [
   'searchCustomers',
   'customer',
   'customerAppointments',
+  // Cupo mensual de venta a staff (spec §4.3): dato de staff, compartido
+  // entre sucursales y terminales — otra iPad puede haberle vendido a ese
+  // barbero hace diez segundos. Se evicta al bloquear y al cerrar sesión,
+  // igual que el resto de esta clase ([D-016]).
+  'staffSaleQuota',
 ] as const
 
 /**
@@ -89,6 +95,14 @@ export const SENSITIVE_ROOT_FIELDS = [
  * los campos raíz plurales, así que un singular guardado dejaría vivo un
  * precio viejo tras un cambio de catálogo. La autoridad final del precio es el
  * API (PRICE_MISMATCH server-side).
+ *
+ * `posSettings` (ajustes del negocio, spec §3.2: bloqueo automático) tampoco
+ * es dinero ni PII, así que no necesita esconderse como lo SENSIBLE, pero
+ * tampoco puede sobrevivir a un reinicio con un valor viejo: se revalida por
+ * el tema `settings` del canal de frescura, nunca por tiempo ([D-015]). Si esa
+ * revalidación falla se conserva el último valor bueno EN MEMORIA en vez de
+ * volver a los defaults ([D-031] — [D-018], que es regla de dinero, no
+ * aplica aquí).
  */
 export const LIVE_ROOT_FIELDS = [
   'walkIns',
@@ -107,6 +121,8 @@ export const LIVE_ROOT_FIELDS = [
   // Resolución puntual de precio al cobrar.
   'service',
   'catalogCombo',
+  // Ajustes del negocio (bloqueo automático): ver docstring de arriba.
+  'posSettings',
 ] as const
 
 /**

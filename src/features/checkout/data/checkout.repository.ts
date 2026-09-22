@@ -299,9 +299,10 @@ const PRODUCTS_QUERY = graphql(`
 
 // Cupo del mes del comprador (spec venta a staff §4.3). SIEMPRE de la red: es
 // un cupo compartido entre sucursales y terminales — otra iPad puede haberle
-// vendido a ese barbero hace diez segundos. El campo raíz `staffSaleQuota` no
-// está clasificado en core/apollo/dataClasses, así que la lista de permitidos
-// de la persistencia ya garantiza que NO se escribe en el dispositivo ([D-003]).
+// vendido a ese barbero hace diez segundos. El campo raíz `staffSaleQuota`
+// está clasificado SENSITIVE en core/apollo/dataClasses: la lista de
+// permitidos de la persistencia lo excluye ([D-003]) y se evicta al bloquear
+// y al cerrar sesión como el resto de esa clase ([D-016]).
 const STAFF_SALE_QUOTA_QUERY = graphql(`
   query PosStaffSaleQuota($locationId: ID!, $buyerStaffUserId: ID) {
     staffSaleQuota(locationId: $locationId, buyerStaffUserId: $buyerStaffUserId) {

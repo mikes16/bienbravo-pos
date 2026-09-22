@@ -60,10 +60,19 @@ function makeSnapshot(): NormalizedCacheObject {
       },
       // SENSITIVE — PII de cliente.
       'searchCustomers({"query":"jua"})': [{ __ref: 'Customer:cus-1' }],
+      // SENSITIVE — cupo mensual de venta a staff: dato de staff, nunca persistido.
+      'staffSaleQuota({"staffUserId":"staff-1"})': { __typename: 'StaffSaleQuota', remainingCents: 1 },
       // LIVE — sin dinero, pero tampoco se persiste.
       'walkIns({"locationId":"loc-1"})': [{ __ref: 'WalkIn:wi-1' }],
+      // LIVE — ajustes del negocio (bloqueo automático): sin dinero, revalidado
+      // siempre por el canal de frescura, tampoco se persiste.
+      posSettings: {
+        __typename: 'TenantSetting',
+        posAutoLockIdleSeconds: 15,
+        posAutoLockCheckoutSeconds: 90,
+      },
       // Campo raíz que nadie clasificó todavía (el "futuro" del schema).
-      'staffSaleQuota({"staffUserId":"staff-1"})': { __typename: 'StaffSaleQuota', remainingCents: 1 },
+      'aFutureUnclassifiedField({"x":1})': { __typename: 'Whatever', secret: 'nope' },
     },
     ROOT_MUTATION: {
       __typename: 'Mutation',
@@ -143,10 +152,25 @@ describe('pickPersistable — lista de permitidos del cache persistido', () => {
     expect(rootKeys.some((k) => rootFieldName(k) === 'walkIns')).toBe(false)
     expect(kept['WalkIn:wi-1']).toBeUndefined()
 
-    // Lista de permitidos: `staffSaleQuota` no está clasificado → fuera.
-    expect(classifyRootField('staffSaleQuota({"staffUserId":"staff-1"})')).toBe('unclassified')
+    // Lista de permitidos: un campo raíz sin clasificar se queda fuera.
+    expect(classifyRootField('aFutureUnclassifiedField({"x":1})')).toBe('unclassified')
+    expect(rootKeys.some((k) => rootFieldName(k) === 'aFutureUnclassifiedField')).toBe(false)
+  })
+
+  it('descarta posSettings (LIVE) y staffSaleQuota (SENSITIVE), y sí conserva el catálogo', () => {
+    const kept = pickPersistable(makeSnapshot())
+    const rootKeys = Object.keys(kept.ROOT_QUERY as object)
+
+    expect(classifyRootField('posSettings')).toBe('live')
+    expect(classifyRootField('staffSaleQuota({"staffUserId":"staff-1"})')).toBe('sensitive')
+    expect(rootKeys.some((k) => rootFieldName(k) === 'posSettings')).toBe(false)
     expect(rootKeys.some((k) => rootFieldName(k) === 'staffSaleQuota')).toBe(false)
+    expect(PERSISTED_ROOT_FIELDS.has('posSettings')).toBe(false)
     expect(PERSISTED_ROOT_FIELDS.has('staffSaleQuota')).toBe(false)
+
+    // El catálogo sí sobrevive junto a ellos.
+    expect(rootKeys).toContain('services({"locationId":"loc-1"})')
+    expect(kept['Service:svc-1']).toBeDefined()
   })
 
   it('lee el nombre del campo sin importar args ni directivas', () => {
