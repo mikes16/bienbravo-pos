@@ -1086,11 +1086,18 @@ export function useCheckout() {
       staffQuota?.allowServicesInTicket === false && cartState.lines.some((l) => l.kind !== 'product')
     const blockedLine = lines.find((l) => l.blockMessage !== null)
     // Lo que impide cobrar, en orden: la línea que no se puede preciar, el
-    // servicio que esta política no admite, el cupo que no se pudo leer y el
-    // tope rebasado. `null` = se puede cobrar (y el API revalida igual).
+    // servicio que esta política no admite, la política apagada, el cupo que no
+    // se pudo leer y el tope rebasado. `null` = se puede cobrar (y el API
+    // revalida igual).
     const blockMessage = ((): string | null => {
       if (blockedLine) return blockedLine.blockMessage
       if (servicesBlocked) return STAFF_SALE_MESSAGE.noServices
+      // La política se evalúa en CADA lectura del cupo, no sólo al encender
+      // ([D-055]): un cupo releído con el modo ya activo (cambió el comprador,
+      // o el admin apagó la política entre el encendido y el cobro) puede
+      // llegar con `enabled: false`. El modo sigue prendido, pero el cobro se
+      // bloquea aquí — el API lo rechazaría igual.
+      if (staffQuota?.enabled === false) return STAFF_SALE_MESSAGE.disabled
       if (view === null) return STAFF_SALE_MESSAGE.quotaUnavailable
       if (view.exceeded) return staffQuotaBlockMessage(view) ?? STAFF_SALE_MESSAGE.quotaExceeded
       return null

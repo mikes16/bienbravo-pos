@@ -223,6 +223,62 @@ describe('useCheckout · venta a staff', () => {
     expect(result.current.staffSale.error).toBe('La venta a staff está desactivada.')
   })
 
+  it('si el cupo se relee con la política apagada, el modo encendido ya no puede cobrar', async () => {
+    const { repos, checkout } = makeRepos()
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    // Con la política encendida el ticket se puede cobrar.
+    expect(result.current.staffSale.canCharge).toBe(true)
+    expect(result.current.staffSale.blockMessage).toBeNull()
+
+    // El admin apaga la venta a staff entre el encendido y el cobro: el cupo
+    // del nuevo comprador ya llega deshabilitado.
+    checkout.setStaffSaleQuota({ enabled: false })
+    await act(async () => {
+      await result.current.setStaffSaleBuyer('staff-2')
+    })
+
+    // El modo sigue encendido (nadie lo apagó), pero el cobro está bloqueado y
+    // la barra explica por qué.
+    expect(result.current.staffSale.enabled).toBe(true)
+    expect(result.current.staffSale.quota?.enabled).toBe(false)
+    expect(result.current.staffSale.canCharge).toBe(false)
+    expect(result.current.staffSale.blockMessage).toBe('La venta a staff está desactivada.')
+
+    await act(async () => {
+      await result.current.submit(CASH)
+    })
+    // El cobro ni sale: el API lo rechazaría después de cobrar.
+    expect(checkout.createSale).not.toHaveBeenCalled()
+    expect(result.current.error).toBe('La venta a staff está desactivada.')
+  })
+
+  it('si el cupo releído sigue habilitado, el cobro no cambia', async () => {
+    const { repos, checkout } = makeRepos()
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    await act(async () => {
+      await result.current.setStaffSaleBuyer('staff-2')
+    })
+
+    expect(result.current.staffSale.quota?.enabled).toBe(true)
+    expect(result.current.staffSale.canCharge).toBe(true)
+    expect(result.current.staffSale.blockMessage).toBeNull()
+
+    await act(async () => {
+      await result.current.submit(CASH)
+    })
+    expect(checkout.createSale).toHaveBeenCalledTimes(1)
+  })
+
   it('con servicios no admitidos en el ticket el servicio no entra', async () => {
     const { repos, checkout } = makeRepos()
     checkout.setStaffSaleQuota({ allowServicesInTicket: false })

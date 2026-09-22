@@ -3978,6 +3978,65 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-052",
+      "title": "Modo staff: si el cupo vuelve deshabilitado con el modo encendido, el cobro se bloquea",
+      "description": "Hallazgo Important del Principal (2ª pasada, run 2026-09-22-a). En src/features/checkout/application/useCheckout.ts `quota.enabled === false` sólo se evalúa al ENCENDER el modo (~951, setStaffSaleEnabled). Si el cupo se vuelve a leer con el modo ya encendido (cambio de comprador en setStaffSaleBuyer ~967, o el admin apagó la política entre el encendido y el cobro y el canal 'settings'/una relectura trae enabled false), `staffQuota.enabled` queda en false pero el modo sigue activo: el grid y el carrito siguen pintando precios staff y `canCharge` queda en true — el POS ofrece un cobro que el API va a rechazar, rompiendo la promesa del hook y el espíritu de [D-055]. Cambios: (1) En el IIFE de `blockMessage` del memo `staffSale` (~1094), ANTES del check de `view === null`, devuelve `STAFF_SALE_MESSAGE.disabled` cuando `staffQuota?.enabled === false`; con eso `canCharge` queda en false y la StaffSaleBar explica por qué, sin tocar el flujo de encendido ni el de apagado. (2) No cambies precios, elegibilidad ni el envío del cobro. Tests en src/features/checkout/application/useCheckout.staffSale.test.tsx: (a) modo encendido → el cupo del nuevo comprador llega con enabled false → canCharge false y blockMessage = mensaje 'deshabilitado'; (b) el caso ya existente 'política apagada al encender no activa el modo' sigue en verde; (c) con enabled true nada cambia.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Con el modo encendido y el cupo deshabilitado, canCharge es false y blockMessage explica por qué",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro, la barra y la actividad de venta siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/presentation/StaffSaleBar.test.tsx src/features/checkout/application/useCheckout.saleActivity.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/application/useCheckout.ts",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1 (2ª pasada): dónde se evalúa enabled hoy y el fix de una línea en blockMessage (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "setStaffSaleEnabled, setStaffSaleBuyer y el memo staffSale con blockMessage/canCharge (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "reason": "Arnés existente del modo staff (setStaffSaleQuota del mock, comprador, cupo) a extender (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-055] encender es asíncrono y con cupo ilegible/política apagada el modo no se activa (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.staffSale.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }
