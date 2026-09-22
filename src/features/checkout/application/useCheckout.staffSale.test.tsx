@@ -136,6 +136,30 @@ async function enable(result: Hook, on = true) {
   })
 }
 
+/**
+ * Deja la recuperación de un rechazo PARADA en la relectura del catálogo:
+ * `reached` resuelve cuando el re-precio ya entró y `release()` lo deja seguir
+ * con el catálogo que devuelva `catalog()`. Es la única forma de meter un toque
+ * del operador (apagar/encender el modo) EN MEDIO del viaje — la barra no se
+ * deshabilita mientras la recuperación va a la red.
+ */
+function gateCatalog(checkout: InMemoryCheckoutRepository, catalog: () => CatalogProduct[]) {
+  let release!: () => void
+  let enter!: () => void
+  const open = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const reached = new Promise<void>((resolve) => {
+    enter = resolve
+  })
+  checkout.getProducts = vi.fn(async () => {
+    enter()
+    await open
+    return catalog()
+  })
+  return { reached, release: () => release() }
+}
+
 describe('useCheckout · venta a staff', () => {
   beforeEach(() => {
     window.localStorage.setItem('bb-pos-location-id', 'loc1')
@@ -610,6 +634,128 @@ describe('useCheckout · venta a staff', () => {
     // precio público, así que la venta NORMAL sale sin otro rechazo del API.
     await enable(result, false)
     expect(result.current.cartState.lines[0].unitPriceCents).toBe(25000)
+    expect(result.current.staffSale.canCharge).toBe(true)
+  })
+
+  it('apagar el modo mientras el re-precio viaja no deja la línea a precio staff', async () => {
+    const { repos, checkout } = makeRepos()
+    let catalog = CATALOG
+    checkout.getProducts = vi.fn(async () => catalog)
+    // Primer cobro rechazado (dispara el re-precio); el segundo ya pasa.
+    checkout.createSale = vi
+      .fn()
+      .mockRejectedValueOnce(new CheckoutRejectedError('PRICE_MISMATCH', 'El precio cambió.'))
+      .mockResolvedValue(SALE_OK)
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    act(() => {
+      result.current.addCatalogItem(tile(SPRAY, 'var-chico'))
+    })
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(9000)
+
+    // El admin sube los dos precios de la presentación chica; el cobro se
+    // rechaza y la recuperación se queda parada a medio viaje.
+    catalog = [
+      CERA,
+      {
+        ...SPRAY,
+        // El precio del producto lo llena el repositorio con el de la primera
+        // presentación: sube con ella.
+        priceCents: 20000,
+        variants: [
+          { id: 'var-chico', priceCents: 20000, staffPriceCents: 10000 },
+          { id: 'var-grande', priceCents: 30000, staffPriceCents: 15000 },
+        ],
+      },
+      POMADA,
+    ]
+    const gate = gateCatalog(checkout, () => catalog)
+    let charging!: Promise<unknown>
+    await act(async () => {
+      charging = result.current.submit(CASH)
+      await gate.reached
+    })
+
+    // El operador apaga el modo con la recuperación EN VUELO: la barra no se
+    // bloquea mientras viaja, así que esto es un toque posible.
+    await enable(result, false)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(18000)
+
+    await act(async () => {
+      gate.release()
+      await charging
+    })
+
+    // Al aterrizar manda el modo de AHORA: precio PÚBLICO nuevo, jamás el staff
+    // (10000) dentro de una venta normal.
+    expect(result.current.rejectionNotice?.code).toBe('PRICE_MISMATCH')
+    expect(result.current.staffSale.enabled).toBe(false)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(20000)
+    expect(result.current.rejectionNotice?.newTotalCents).toBe(20000)
+
+    // Y el mapa staff quedó vacío: el cobro que sale después es una venta
+    // normal, sin comprador ni presentación staff en el payload.
+    await act(async () => {
+      await result.current.submit(CASH)
+    })
+    expect(checkout.createSale).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(checkout.createSale).mock.calls[1][0]).toMatchObject({
+      staffSale: null,
+      items: [{ productId: 'prod-spray', unitPriceCents: 20000, productVariantId: null }],
+    })
+  })
+
+  it('encender el modo mientras el re-precio viaja deja la línea a precio staff del catálogo nuevo', async () => {
+    const { repos, checkout } = makeRepos()
+    let catalog = CATALOG
+    checkout.getProducts = vi.fn(async () => catalog)
+    checkout.createSale = vi
+      .fn()
+      .mockRejectedValue(new CheckoutRejectedError('PRICE_MISMATCH', 'El precio cambió.'))
+    const { result } = await mountLoaded(repos)
+
+    // Venta NORMAL: la línea entra a precio público.
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(25000)
+
+    catalog = [
+      { ...CERA, priceCents: 30000, staffPriceCents: 14000, variants: [{ id: 'var-cera', priceCents: 30000, staffPriceCents: 14000 }] },
+      SPRAY,
+      POMADA,
+    ]
+    const gate = gateCatalog(checkout, () => catalog)
+    let charging!: Promise<unknown>
+    await act(async () => {
+      charging = result.current.submit(CASH)
+      await gate.reached
+    })
+
+    // El operador enciende el modo con la recuperación EN VUELO: aplica el
+    // precio staff que conoce (el del catálogo viejo, 12000).
+    await enable(result)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(12000)
+
+    await act(async () => {
+      gate.release()
+      await charging
+    })
+
+    // Al aterrizar el modo está encendido: precio staff de la variante según el
+    // catálogo NUEVO, nunca el público (30000) con la marca staff encima.
+    expect(result.current.staffSale.enabled).toBe(true)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(14000)
+    expect(result.current.staffSale.lines[0]).toMatchObject({
+      listUnitPriceCents: 30000,
+      blockReason: null,
+    })
+    expect(result.current.staffSale.summary).toEqual({
+      listTotalCents: 30000,
+      staffTotalCents: 14000,
+      discountCents: 16000,
+    })
     expect(result.current.staffSale.canCharge).toBe(true)
   })
 

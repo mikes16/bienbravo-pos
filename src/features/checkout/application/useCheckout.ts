@@ -164,13 +164,15 @@ interface StaffLinePrice {
   productVariantId: string | null
 }
 
-/** Resultado de re-preciar UNA línea tras un rechazo del API. */
+/**
+ * Resultado de re-preciar UNA línea tras un rechazo del API. Es el precio
+ * PÚBLICO nuevo: lo que cobra una línea de venta a staff se resuelve después,
+ * en el punto de commit de `repriceCartLines` y con el modo de ESE momento.
+ */
 interface RepricedLine {
   priceCents: number
   /** El barbero de la línea ya no ofrece el item: se queda sin barbero. */
   clearBarber: boolean
-  /** Precio staff re-resuelto; `null` = la línea no va a precio staff. */
-  staff: StaffLinePrice | null
 }
 
 /** Una línea de producto del ticket, vista desde el modo venta a staff. */
@@ -428,6 +430,20 @@ export function useCheckout() {
   const [staffSaleLoading, setStaffSaleLoading] = useState(false)
   const [staffSaleError, setStaffSaleError] = useState<string | null>(null)
   const [staffLinePrices, setStaffLinePrices] = useState<Map<string, StaffLinePrice>>(new Map())
+
+  // Espejo del modo para leerlo DESPUÉS de un await, misma ventana que
+  // `cartLinesRef`: la recuperación de un rechazo hace varios viajes a la red y
+  // el interruptor de la barra NO se bloquea mientras tanto (sólo mientras
+  // carga el cupo), así que la clausura del render que inició la recuperación
+  // puede describir un modo que el operador ya cambió. Lo lee `repriceCartLines`
+  // en su punto de commit; todo lo demás sigue usando el state, que es lo que
+  // re-renderiza.
+  const staffSaleEnabledRef = useRef(staffSaleEnabled)
+  const staffLinePricesRef = useRef(staffLinePrices)
+  useEffect(() => {
+    staffSaleEnabledRef.current = staffSaleEnabled
+    staffLinePricesRef.current = staffLinePrices
+  }, [staffSaleEnabled, staffLinePrices])
 
   /* ── Publicación al bloqueo automático (spec § 3.3) ──────────────────────
    *
@@ -1258,46 +1274,35 @@ export function useCheckout() {
    * línea del carrito con el precio del barbero de ESA línea — la misma ruta
    * única de precio que usa el picker, nunca una cuenta propia. Devuelve el
    * total nuevo del carrito.
+   *
+   * El modo venta a staff NO se lee de la clausura del render que inició la
+   * recuperación: entre el rechazo y el commit hay varios viajes a la red y el
+   * interruptor de la barra sigue vivo (sólo se deshabilita mientras carga el
+   * cupo), así que el operador puede haberlo apagado o encendido en medio. Se
+   * lee de los espejos `staffSaleEnabledRef` / `staffLinePricesRef` (mismo
+   * patrón que `cartLinesRef`, creado para esta misma ventana) Y la vista staff
+   * de cada producto se resuelve AHÍ, en el commit, con el catálogo recién
+   * traído — `staffLineView` es puro, así que no necesita viajar antes:
+   *   - apagado al aterrizar → la línea comitea su precio PÚBLICO nuevo y el
+   *     mapa se queda vacío como lo dejó `disableStaffSale`: ninguna línea a
+   *     precio staff dentro de una venta normal ([D-072]/[D-042]);
+   *   - encendido al aterrizar → cada línea con entrada en el mapa comitea el
+   *     precio staff de SU variante según el catálogo nuevo (y si el admin la
+   *     sacó de la venta a staff, vuelve a su público congelado y suelta la
+   *     entrada, que es lo que la deja bloqueando el cobro con su motivo).
+   * El re-precio de servicios y combos (todo lo no-staff) es el de siempre.
    */
   const repriceCartLines = async (locId: string): Promise<number> => {
     const { products, overlay } = await refetchCatalogAndOverlay(locId)
 
-    const productPriceById = new Map(products.map((p) => [p.id, p.priceCents]))
+    const productById = new Map(products.map((p) => [p.id, p]))
     const lines = cartState.lines
     const repriced = await Promise.all(
       lines.map(async (line): Promise<RepricedLine> => {
         if (line.kind === 'product') {
-          const staff = staffLinePrices.get(line.id)
-          if (staffSaleEnabled && staff) {
-            // Línea de venta a staff: se re-precia con el precio staff de SU
-            // variante y se refresca el precio público congelado de ESA misma
-            // variante ([D-036]: una sola ruta de precio por línea). Nunca se
-            // convierte en silencio a precio público ni ignora la presentación.
-            const product = products.find((p) => p.id === line.itemId)
-            const view = product ? staffLineView(product, staff.productVariantId) : null
-            if (view?.eligible && view.unitPriceCents !== null) {
-              return {
-                priceCents: view.unitPriceCents,
-                clearBarber: false,
-                staff: {
-                  listUnitPriceCents: view.listUnitPriceCents,
-                  productVariantId: staff.productVariantId,
-                },
-              }
-            }
-            // El admin la sacó de la venta a staff (o le quitó el precio): la
-            // línea PIERDE la marca staff, lo que bloquea el cobro con el
-            // motivo, y vuelve a su precio público CONGELADO — conservar el
-            // precio staff la dejaría cobrándose a precio staff dentro de una
-            // venta normal en cuanto se apagara el modo (`disableStaffSale`
-            // sólo revierte las líneas que siguen en el mapa), y el API la
-            // rechazaría por PRICE_MISMATCH ([D-042]).
-            return { priceCents: staff.listUnitPriceCents, clearBarber: false, staff: null }
-          }
           return {
-            priceCents: productPriceById.get(line.itemId) ?? line.unitPriceCents,
+            priceCents: productById.get(line.itemId)?.priceCents ?? line.unitPriceCents,
             clearBarber: false,
-            staff: null,
           }
         }
         const lineBarberId = line.staffUserId || cartState.defaultBarberId || null
@@ -1305,14 +1310,14 @@ export function useCheckout() {
         // para los demás se resuelve línea por línea (barbero > sucursal > base).
         const fromOverlay = lineBarberId === attendingBarberId ? overlay.get(line.itemId) : undefined
         if (fromOverlay && !fromOverlay.isExcluded) {
-          return { priceCents: fromOverlay.priceCents, clearBarber: false, staff: null }
+          return { priceCents: fromOverlay.priceCents, clearBarber: false }
         }
         try {
           const resolved =
             line.kind === 'combo'
               ? await checkout.resolveComboPriceForBarber(line.itemId, locId, lineBarberId)
               : await checkout.resolveServicePriceForBarber(line.itemId, locId, lineBarberId)
-          if (!resolved.isExcluded) return { priceCents: resolved.priceCents, clearBarber: false, staff: null }
+          if (!resolved.isExcluded) return { priceCents: resolved.priceCents, clearBarber: false }
           // Ese barbero ya no ofrece el item (el override vale $0 y NUNCA se
           // comitea): la línea se queda sin barbero, a precio de sucursal, y
           // el operador elige otro en el picker. Mismo criterio que
@@ -1321,33 +1326,54 @@ export function useCheckout() {
             line.kind === 'combo'
               ? await checkout.resolveComboPriceForBarber(line.itemId, locId, null)
               : await checkout.resolveServicePriceForBarber(line.itemId, locId, null)
-          return { priceCents: atLocation.priceCents, clearBarber: true, staff: null }
+          return { priceCents: atLocation.priceCents, clearBarber: true }
         } catch {
           // Una resolución que truena no puede borrar el carrito: la línea
           // conserva su precio y el API volverá a rechazarla si sigue mal.
-          return { priceCents: line.unitPriceCents, clearBarber: false, staff: null }
+          return { priceCents: line.unitPriceCents, clearBarber: false }
         }
       }),
     )
-    lines.forEach((line, idx) => {
+    // Commit: el modo de AHORA, no el del render que inició la recuperación.
+    const staffEnabled = staffSaleEnabledRef.current
+    const staffPrices = staffLinePricesRef.current
+    const nextStaffPrices = new Map(staffPrices)
+    const committed = lines.map((line, idx) => {
       const { priceCents, clearBarber } = repriced[idx]
-      commitLinePrice(line, priceCents, clearBarber)
-    })
-    if (staffSaleEnabled) {
-      // El precio público congelado se mueve con el re-precio: si no, el
-      // descuento staff del reporte y el tope de monto quedarían medidos
-      // contra un precio que ya no existe.
-      setStaffLinePrices((prev) => {
-        const next = new Map(prev)
-        lines.forEach((line, idx) => {
-          const staff = repriced[idx].staff
-          if (staff) next.set(line.id, staff)
-          else next.delete(line.id)
+      const staff = staffEnabled && line.kind === 'product' ? staffPrices.get(line.id) : undefined
+      if (!staff) {
+        commitLinePrice(line, priceCents, clearBarber)
+        return priceCents
+      }
+      // Línea de venta a staff: precio staff de SU variante ([D-036]: una sola
+      // ruta de precio por línea). Nunca se convierte en silencio a precio
+      // público ni ignora la presentación. El precio público congelado se mueve
+      // con el re-precio: si no, el descuento staff del reporte y el tope de
+      // monto quedarían medidos contra un precio que ya no existe.
+      const product = productById.get(line.itemId)
+      const view = product ? staffLineView(product, staff.productVariantId) : null
+      if (view?.eligible && view.unitPriceCents !== null) {
+        nextStaffPrices.set(line.id, {
+          listUnitPriceCents: view.listUnitPriceCents,
+          productVariantId: staff.productVariantId,
         })
-        return next
-      })
-    }
-    return lines.reduce((sum, line, idx) => sum + repriced[idx].priceCents * line.qty, 0)
+        commitLinePrice(line, view.unitPriceCents)
+        return view.unitPriceCents
+      }
+      // El admin la sacó de la venta a staff (o le quitó el precio): la línea
+      // PIERDE la marca staff, lo que bloquea el cobro con el motivo, y vuelve
+      // a su precio público CONGELADO — conservar el precio staff la dejaría
+      // cobrándose a precio staff dentro de una venta normal en cuanto se
+      // apagara el modo (`disableStaffSale` sólo revierte las líneas que siguen
+      // en el mapa), y el API la rechazaría por PRICE_MISMATCH ([D-042]/[D-072]).
+      nextStaffPrices.delete(line.id)
+      commitLinePrice(line, staff.listUnitPriceCents)
+      return staff.listUnitPriceCents
+    })
+    // Con el modo apagado el mapa YA está vacío (`disableStaffSale` lo limpia al
+    // revertir): escribirlo aquí sólo agregaría un render con el mismo vacío.
+    if (staffEnabled) setStaffLinePrices(nextStaffPrices)
+    return lines.reduce((sum, line, idx) => sum + committed[idx] * line.qty, 0)
   }
 
   /**

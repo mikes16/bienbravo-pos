@@ -4145,6 +4145,136 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-055",
+      "title": "Modo staff: la recuperación de un rechazo no re-aplica precios con el modo ya cambiado",
+      "description": "Hallazgo Important #1 del Principal (4ª pasada, run 2026-09-22-a). En src/features/checkout/application/useCheckout.ts, `repriceCartLines` (~1271-1347) lee `staffSaleEnabled` y `staffLinePrices` de la clausura capturada al iniciar la recuperación de un rechazo y, tras varios awaits de red, comitea precios (~1333-1335) y re-escribe el mapa staff (~1336-1347) con ese estado viejo. Ventana real: tras el rechazo `submitting` vuelve a false y la barra queda interactiva. Si el operador APAGA el interruptor mientras la recuperación viaja, `disableStaffSale` revierte y limpia el mapa y acto seguido la recuperación re-comitea precios staff y re-puebla el mapa con el modo ya apagado: líneas a precio staff dentro de una venta normal, justo lo que [D-072]/[D-042] prohíben; sólo se auto-corrige con un segundo rechazo del API. El caso inverso (ENCENDER durante la recuperación) deja líneas a precio público marcadas como staff. Cambios: (1) en el punto de commit de `repriceCartLines`, leer `staffSaleEnabled` y `staffLinePrices` vía refs (mismo patrón que `cartLinesRef`, creado para esta misma ventana) o usar un contador de generación del modo (patrón `staffQuotaSeqRef`) que descarte la actualización staff si el modo cambió durante la recuperación; elige UNA de las dos vías y documéntala en el docblock; (2) la parte no-staff de la recuperación (re-precio público de las líneas) sigue aplicándose igual; (3) no toques elegibilidad, cupo ni payload. Tests en src/features/checkout/application/useCheckout.staffSale.test.tsx (arnés existente de re-precio tras rechazo; el mock permite diferir la resolución del cobro/re-precio): (a) modo encendido con línea a precio staff → rechazo → recuperación en vuelo → apagar el modo antes de que resuelva → al resolver, ninguna línea queda a precio staff y el mapa staff queda vacío; (b) modo apagado → rechazo → recuperación en vuelo → encender el modo antes de que resuelva → al resolver, las líneas quedan con el precio staff correcto y ninguna a precio público marcada staff; (c) los 23 escenarios existentes siguen en verde.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Apagar o encender el modo mientras la recuperación de un rechazo está en vuelo no deja líneas con precio y marca staff incoherentes",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro, la barra y la actividad de venta siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/presentation/StaffSaleBar.test.tsx src/features/checkout/application/useCheckout.saleActivity.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Eslint limpio en el hook",
+          "check": "npx eslint src/features/checkout/application/useCheckout.ts",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1 (4ª pasada): la clausura vieja en repriceCartLines y las dos vías de fix (refs o generación) (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "repriceCartLines, disableStaffSale, cartLinesRef y staffQuotaSeqRef: patrones ya usados para la misma ventana (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "reason": "Arnés del modo staff con re-precio tras rechazo y apagado del modo, a extender con resolución diferida (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-072] ninguna línea a precio staff sin marca staff; [D-042] el hook nunca ofrece un cobro que el API rechaza (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.staffSale.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-056",
+      "title": "Modo staff: leer bien el cupo de un comprador limpia el error del cupo anterior",
+      "description": "Hallazgo Important #2 del Principal (4ª pasada, run 2026-09-22-a). En src/features/checkout/application/useCheckout.ts, el camino de éxito de `loadStaffQuota` (~886-890) nunca limpia `staffSaleError`: sólo lo limpian encender el modo (~948) y apagarlo (~927). Con el modo encendido: cambio de comprador cuyo cupo falla → error 'No se pudo leer el cupo… Reintenta'; siguiente cambio de comprador cuyo cupo resuelve bien → el cupo válido se pinta pero el alert de la StaffSaleBar (role=alert, ~132) queda pegado junto a él con `canCharge` en true: un aviso rojo de dinero que ya miente. Cambios: (1) en la rama de éxito de `loadStaffQuota`, DESPUÉS del check de `seq` (para no limpiar un error de una lectura más nueva), `setStaffSaleError(null)`; (2) la rama de fallo sigue igual; (3) no toques elegibilidad, precios ni payload. Tests en src/features/checkout/application/useCheckout.staffSale.test.tsx (arnés existente: setStaffSaleQuota del mock permite fallar y resolver por comprador): (a) modo encendido → comprador A con cupo que falla → staffSaleError con el mensaje → comprador B con cupo válido → staffSaleError null, cupo de B visible y canCharge según cupo; (b) una lectura vieja que resuelve DESPUÉS de una nueva (seq) no limpia ni pisa el error/cupo de la nueva; (c) los escenarios existentes siguen en verde.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Tras un cupo fallido, leer bien el cupo del siguiente comprador deja staffSaleError en null; una lectura vieja no pisa a la nueva",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro, la barra y la actividad de venta siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/presentation/StaffSaleBar.test.tsx src/features/checkout/application/useCheckout.saleActivity.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Eslint limpio en el hook",
+          "check": "npx eslint src/features/checkout/application/useCheckout.ts",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #2 (4ª pasada): dónde se limpia hoy staffSaleError y el fix de una línea tras el check de seq (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "loadStaffQuota (seq, ramas de éxito y fallo), setStaffSaleBuyer y el estado staffSaleError (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "reason": "Arnés del modo staff (setStaffSaleQuota del mock por comprador, cupo caído) a extender (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/StaffSaleBar.tsx",
+          "reason": "Dónde se pinta staffSaleError como role=alert junto al cupo (AC-1, sólo lectura)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.staffSale.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }
