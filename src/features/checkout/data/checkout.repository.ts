@@ -19,7 +19,9 @@ import type {
   StockLevel,
   CreateSaleInput,
   AddItemsToAppointmentSaleInput,
+  SaleItemInput,
   SaleResult,
+  StaffSaleQuota,
 } from '../domain/checkout.types.ts'
 
 /**
@@ -38,6 +40,19 @@ function toSaleRejection(err: unknown): CheckoutRejectedError {
   const rawCode = first?.extensions?.code
   const code = typeof rawCode === 'string' ? rawCode : null
   return new CheckoutRejectedError(checkoutRejectionCodeFrom(code, message), message)
+}
+
+/**
+ * Línea del carrito → `POSSaleItemInput`. `productVariantId` viaja SOLO cuando
+ * la línea lo trae (venta a staff de un producto cuyas variantes tienen precio
+ * staff distinto): una venta normal manda exactamente las mismas llaves que
+ * antes, sin campos nuevos en `null`.
+ */
+function toPosSaleItemInput(
+  item: SaleItemInput,
+): Omit<SaleItemInput, 'productVariantId'> & { productVariantId?: string } {
+  const { productVariantId, ...rest } = item
+  return productVariantId ? { ...rest, productVariantId } : rest
 }
 
 /* ── GraphQL Documents ── */
@@ -249,6 +264,11 @@ const CUSTOMER_HISTORY_QUERY = gql`
   }
 `
 
+// Venta a staff (spec §4.2): pedimos la ELEGIBILIDAD y el precio staff YA
+// RESUELTO por el API (variante > producto > costo), nunca el costo crudo del
+// producto — ese dato no tiene por qué llegar a una terminal de mostrador ni
+// al cache del dispositivo. `staffPriceResolvedCents` null = ese nivel no se
+// puede vender a staff; la precedencia ya la aplicó el servidor.
 const PRODUCTS_QUERY = graphql(`
   query PosProducts($locationId: ID!) {
     products(locationId: $locationId) {
@@ -259,9 +279,37 @@ const PRODUCTS_QUERY = graphql(`
       categoryId
       sortOrder
       isActive
+      staffSaleEligible
+      staffPriceResolvedCents
       variants {
         id
         priceCents
+        staffPriceResolvedCents
+      }
+    }
+  }
+`)
+
+// Cupo del mes del comprador (spec venta a staff §4.3). SIEMPRE de la red: es
+// un cupo compartido entre sucursales y terminales — otra iPad puede haberle
+// vendido a ese barbero hace diez segundos. El campo raíz `staffSaleQuota` no
+// está clasificado en core/apollo/dataClasses, así que la lista de permitidos
+// de la persistencia ya garantiza que NO se escribe en el dispositivo ([D-003]).
+const STAFF_SALE_QUOTA_QUERY = graphql(`
+  query PosStaffSaleQuota($locationId: ID!, $buyerStaffUserId: ID) {
+    staffSaleQuota(locationId: $locationId, buyerStaffUserId: $buyerStaffUserId) {
+      enabled
+      allowServicesInTicket
+      unitsUsed
+      unitsLimit
+      unitsRemaining
+      listAmountCentsUsed
+      listAmountCentsLimit
+      listAmountCentsRemaining
+      perProductLimit
+      unitsByProduct {
+        productId
+        units
       }
     }
   }
@@ -767,6 +815,18 @@ export interface CheckoutRepository {
    * después de una venta ajena seguiría pintando cache-first.
    */
   getStockLevels(locationId: string, opts?: { force?: boolean }): Promise<StockLevel[]>
+  /**
+   * Cupo del mes de venta a staff del comprador (spec venta a staff §4.3).
+   * `buyerStaffUserId` ausente = el de la sesión; pedir el de OTRO barbero
+   * exige el mismo permiso que cobrárselo y lo gatea el API.
+   *
+   * SIEMPRE va a la red — sin `opts.force`, igual que el resto de los datos
+   * que no se pueden servir de caché ([D-017]): es un cupo compartido entre
+   * terminales y sucursales, y un número viejo aquí es una promesa que el
+   * cobro no va a cumplir. El POS solo lo MUESTRA: la autoridad es
+   * `createPOSSale`, que lo vuelve a medir dentro de su transacción.
+   */
+  getStaffSaleQuota(locationId: string, buyerStaffUserId?: string | null): Promise<StaffSaleQuota>
   createSale(input: CreateSaleInput): Promise<SaleResult>
   /**
    * Cierra una venta prepagada (Sale.paymentStatus=PAID) al completar el
@@ -930,7 +990,10 @@ interface RawProduct {
   categoryId: string | null
   sortOrder: number
   isActive: boolean
-  variants: { id: string; priceCents: number }[]
+  staffSaleEligible: boolean
+  /** Precio staff ya resuelto por el API a nivel producto; null = no vendible a staff. */
+  staffPriceResolvedCents: number | null
+  variants: { id: string; priceCents: number; staffPriceResolvedCents: number | null }[]
 }
 
 interface RawComboItem {
@@ -1157,7 +1220,43 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         imageUrl: p.imageUrl,
         categoryId: p.categoryId ?? null,
         sortOrder: p.sortOrder,
+        // Venta a staff: elegibilidad + precio staff resuelto, tal como los
+        // manda el API. `staffPriceCents` null = este producto no se puede
+        // vender a staff (el API rechaza la línea); el POS solo lo muestra.
+        staffSaleEligible: p.staffSaleEligible,
+        staffPriceCents: p.staffPriceResolvedCents ?? null,
+        variants: (p.variants ?? []).map((v) => ({
+          id: v.id,
+          priceCents: v.priceCents,
+          staffPriceCents: v.staffPriceResolvedCents ?? null,
+        })),
       }))
+  }
+
+  async getStaffSaleQuota(locationId: string, buyerStaffUserId?: string | null): Promise<StaffSaleQuota> {
+    // network-only SIEMPRE (sin `opts.force`, [D-017]): el cupo cambia con
+    // cada compra del mes, incluso desde otra iPad o desde otra sucursal.
+    // Servir un snapshot cacheado pintaría "te quedan 3" cuando ya no queda
+    // ninguno — y el cobro reventaría después de que el operador ya cobró.
+    const { data } = await this.#client.query({
+      query: STAFF_SALE_QUOTA_QUERY,
+      variables: { locationId, buyerStaffUserId: buyerStaffUserId ?? null },
+      fetchPolicy: 'network-only',
+    })
+    const quota = data!.staffSaleQuota
+    return {
+      enabled: quota.enabled,
+      allowServicesInTicket: quota.allowServicesInTicket,
+      unitsUsed: quota.unitsUsed,
+      // null = SIN TOPE, no cero: quien lo pinte tiene que distinguirlos.
+      unitsLimit: quota.unitsLimit ?? null,
+      unitsRemaining: quota.unitsRemaining ?? null,
+      listAmountCentsUsed: quota.listAmountCentsUsed,
+      listAmountCentsLimit: quota.listAmountCentsLimit ?? null,
+      listAmountCentsRemaining: quota.listAmountCentsRemaining ?? null,
+      perProductLimit: quota.perProductLimit ?? null,
+      unitsByProduct: quota.unitsByProduct.map((u) => ({ productId: u.productId, units: u.units })),
+    }
   }
 
   async findOrCreateCustomer(name: string, email?: string | null, phone?: string | null): Promise<CustomerResult> {
@@ -1204,8 +1303,15 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
           staffUserId: input.staffUserId,
           completeWalkInId: input.completeWalkInId ?? null,
           completeAppointmentId: input.completeAppointmentId ?? null,
-          items: input.items,
+          items: input.items.map(toPosSaleItemInput),
           tipCents: input.tipCents,
+          // Venta a staff (spec §4.3): solo el COMPRADOR viaja — precio staff,
+          // topes del mes y permisos los resuelve el API en la transacción del
+          // cobro. Se omite del input cuando no aplica: una venta normal manda
+          // el mismo payload de siempre.
+          ...(input.staffSale
+            ? { staffSale: { buyerStaffUserId: input.staffSale.buyerStaffUserId } }
+            : {}),
           payments: input.payments.map((p) => ({
             provider: p.provider,
             amountCents: p.amountCents,
@@ -1271,7 +1377,7 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
         variables: {
           input: {
             saleId: input.saleId,
-            items: input.items,
+            items: input.items.map(toPosSaleItemInput),
             payments: input.payments.map((p) => ({
               provider: p.provider,
               amountCents: p.amountCents,

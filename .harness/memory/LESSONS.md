@@ -43,3 +43,4 @@
 - [build] (x1, T-026) Al agregar un método a la interfaz de un repositorio, agrega su no-op en src/test/mocks/repositories.ts en el mismo cambio: sin eso el typecheck rompe en todos los tests del feature.
 - [test] (x1, T-027) window.location es inmodificable en jsdom (vi.spyOn(window.location, 'reload') lanza 'Cannot redefine property'); para espiar una recarga se sustituye el global entero con vi.stubGlobal('location', { ...window.location, reload }).
 - [test] (x1, T-027) Vitest corre con import.meta.env.DEV === true: código gateado por !DEV queda inerte en los tests salvo vi.stubEnv('DEV', false) en el test que lo prueba (y eso mismo lo deja inerte gratis en las suites de otras pantallas).
+- [build] (x1, T-028) codegen escanea también los graphql()/gql de los tests: una query de test inválida contra el schema rompe el codegen entero y bloquea cualquier check de drift.

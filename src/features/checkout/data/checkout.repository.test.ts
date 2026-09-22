@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ApolloClient, ApolloLink, InMemoryCache, Observable, gql } from '@apollo/client'
+import { print } from 'graphql'
 import { ApolloCheckoutRepository } from './checkout.repository'
 import { CheckoutRejectedError } from '../domain/checkout.types'
 
@@ -384,5 +385,259 @@ describe('ApolloCheckoutRepository.evictCatalogCache', () => {
     // Lo que no es catálogo no se toca: evictar de más borraría dinero que
     // otra pantalla acaba de traer de la red.
     expect(Object.keys(root).some((k) => k.startsWith('posDaySales'))).toBe(true)
+  })
+})
+
+/* ── Venta a staff (spec venta a staff §4.2 y §4.3) ─────────────────────────
+ *
+ * El API es la autoridad: resuelve el precio staff (variante > producto >
+ * costo), mide el cupo del mes y valida la línea al cobrar. El POS solo pide,
+ * muestra y manda — estos casos fijan esa frontera.
+ */
+
+// Captura el DOCUMENTO enviado (además de las variables) para poder asertar
+// qué campos pide el POS, no solo qué hace con la respuesta.
+function makeQuerySpyClient(payload: Record<string, unknown>) {
+  const sent: { queries: string[] } = { queries: [] }
+  const link = new ApolloLink(
+    (operation) =>
+      new Observable((observer) => {
+        sent.queries.push(print(operation.query))
+        observer.next({ data: payload })
+        observer.complete()
+      }),
+  )
+  return { client: new ApolloClient({ link, cache: new InMemoryCache() }), sent }
+}
+
+const PRODUCTS_PAYLOAD = {
+  products: [
+    {
+      __typename: 'Product',
+      id: 'prod-pomada',
+      name: 'Pomada Clásica',
+      sku: 'POM-01',
+      imageUrl: null,
+      categoryId: 'cat-1',
+      sortOrder: 0,
+      isActive: true,
+      staffSaleEligible: true,
+      staffPriceResolvedCents: 12000,
+      variants: [
+        { __typename: 'ProductVariant', id: 'var-chica', priceCents: 25000, staffPriceResolvedCents: 12000 },
+        { __typename: 'ProductVariant', id: 'var-grande', priceCents: 40000, staffPriceResolvedCents: 19000 },
+      ],
+    },
+    {
+      __typename: 'Product',
+      id: 'prod-navaja',
+      name: 'Navaja',
+      sku: null,
+      imageUrl: null,
+      categoryId: null,
+      sortOrder: 1,
+      isActive: true,
+      // No elegible Y sin precio staff: los dos motivos por los que el API
+      // rechaza la línea. El POS los pinta, no los decide.
+      staffSaleEligible: false,
+      staffPriceResolvedCents: null,
+      variants: [{ __typename: 'ProductVariant', id: 'var-navaja', priceCents: 30000, staffPriceResolvedCents: null }],
+    },
+  ],
+}
+
+describe('ApolloCheckoutRepository.getProducts — precio staff', () => {
+  it('mapea elegibilidad y precio staff resuelto del producto y de cada variante', async () => {
+    const { client } = makeQuerySpyClient(PRODUCTS_PAYLOAD)
+    const products = await new ApolloCheckoutRepository(client).getProducts('loc-1')
+
+    const pomada = products[0]
+    expect(pomada.priceCents).toBe(25000)
+    expect(pomada.staffSaleEligible).toBe(true)
+    expect(pomada.staffPriceCents).toBe(12000)
+    // Cada variante trae SU precio staff: es el que decide si la línea
+    // necesita `productVariantId` y cuánto se cobra.
+    expect(pomada.variants).toEqual([
+      { id: 'var-chica', priceCents: 25000, staffPriceCents: 12000 },
+      { id: 'var-grande', priceCents: 40000, staffPriceCents: 19000 },
+    ])
+
+    // null = no se puede vender a staff; nunca 0 (vender en $0 por falta de dato).
+    const navaja = products[1]
+    expect(navaja.staffSaleEligible).toBe(false)
+    expect(navaja.staffPriceCents).toBeNull()
+    expect(navaja.variants[0].staffPriceCents).toBeNull()
+  })
+
+  it('nunca pide el costo crudo del producto: solo el precio staff ya resuelto', async () => {
+    const { client, sent } = makeQuerySpyClient(PRODUCTS_PAYLOAD)
+    await new ApolloCheckoutRepository(client).getProducts('loc-1')
+    // El costo es dato de administración: no tiene por qué llegar a una
+    // terminal de mostrador ni quedar en el cache del dispositivo.
+    expect(sent.queries[0]).not.toContain('costCents')
+    expect(sent.queries[0]).toContain('staffPriceResolvedCents')
+  })
+})
+
+const QUOTA_PAYLOAD = {
+  staffSaleQuota: {
+    __typename: 'StaffSaleQuota',
+    enabled: true,
+    allowServicesInTicket: true,
+    unitsUsed: 5,
+    unitsLimit: 6,
+    unitsRemaining: 1,
+    listAmountCentsUsed: 120000,
+    listAmountCentsLimit: null,
+    listAmountCentsRemaining: null,
+    perProductLimit: 2,
+    unitsByProduct: [{ __typename: 'StaffSaleProductUnits', productId: 'prod-pomada', units: 2 }],
+  },
+}
+
+describe('ApolloCheckoutRepository.getStaffSaleQuota', () => {
+  it('mapea el cupo del mes y distingue "sin tope" (null) de cero', async () => {
+    const { client } = makeQuerySpyClient(QUOTA_PAYLOAD)
+    const quota = await new ApolloCheckoutRepository(client).getStaffSaleQuota('loc-1', 'staff-9')
+    expect(quota).toEqual({
+      enabled: true,
+      allowServicesInTicket: true,
+      unitsUsed: 5,
+      unitsLimit: 6,
+      unitsRemaining: 1,
+      listAmountCentsUsed: 120000,
+      listAmountCentsLimit: null,
+      listAmountCentsRemaining: null,
+      perProductLimit: 2,
+      unitsByProduct: [{ productId: 'prod-pomada', units: 2 }],
+    })
+  })
+
+  it('va SIEMPRE a la red: el cupo cambia con cada compra, incluso desde otra iPad', async () => {
+    let requests = 0
+    const link = new ApolloLink(
+      () =>
+        new Observable((observer) => {
+          requests++
+          observer.next({
+            data: {
+              staffSaleQuota: {
+                ...QUOTA_PAYLOAD.staffSaleQuota,
+                // Otra terminal le vendió: ya no le queda cupo.
+                unitsUsed: requests === 1 ? 5 : 6,
+                unitsRemaining: requests === 1 ? 1 : 0,
+              },
+            },
+          })
+          observer.complete()
+        }),
+    )
+    const repo = new ApolloCheckoutRepository(new ApolloClient({ link, cache: new InMemoryCache() }))
+
+    const first = await repo.getStaffSaleQuota('loc-1', 'staff-9')
+    expect(first.unitsRemaining).toBe(1)
+    const second = await repo.getStaffSaleQuota('loc-1', 'staff-9')
+    expect(second.unitsRemaining).toBe(0)
+    expect(requests).toBe(2)
+  })
+
+  it('sin comprador explícito manda buyerStaffUserId null (= el de la sesión, lo resuelve el API)', async () => {
+    const { client, captured } = makeCapturingClient(QUOTA_PAYLOAD)
+    await new ApolloCheckoutRepository(client).getStaffSaleQuota('loc-1')
+    expect(captured.variables).toEqual({ locationId: 'loc-1', buyerStaffUserId: null })
+  })
+})
+
+const CREATED_SALE = {
+  createPOSSale: {
+    __typename: 'Sale',
+    id: 'sale-9',
+    status: 'PAID',
+    paymentStatus: 'PAID',
+    totalCents: 12000,
+    paidTotalCents: 12000,
+  },
+}
+
+describe('ApolloCheckoutRepository.createSale — venta a staff', () => {
+  it('manda staffSale.buyerStaffUserId y el productVariantId de la línea', async () => {
+    const { client, captured } = makeCapturingClient(CREATED_SALE)
+    await new ApolloCheckoutRepository(client).createSale({
+      ...SALE_INPUT,
+      staffSale: { buyerStaffUserId: 'staff-9' },
+      items: [
+        { serviceId: null, productId: 'prod-pomada', catalogComboId: null, productVariantId: 'var-grande', qty: 1, unitPriceCents: 19000, staffUserId: 'b1' },
+      ],
+    })
+    const input = captured.variables?.input as Record<string, unknown>
+    // Solo viaja el COMPRADOR: precio staff, topes y permisos los resuelve el API.
+    expect(input.staffSale).toEqual({ buyerStaffUserId: 'staff-9' })
+    expect(input.items).toEqual([
+      { serviceId: null, productId: 'prod-pomada', catalogComboId: null, productVariantId: 'var-grande', qty: 1, unitPriceCents: 19000, staffUserId: 'b1' },
+    ])
+  })
+
+  it('sin staffSale el input es idéntico al de siempre (ni staffSale ni productVariantId)', async () => {
+    const { client, captured } = makeCapturingClient(CREATED_SALE)
+    await new ApolloCheckoutRepository(client).createSale(SALE_INPUT)
+    const input = captured.variables?.input as Record<string, unknown>
+    expect(input).toEqual({
+      locationId: 'loc-1',
+      registerSessionId: 'sess-1',
+      customerId: 'cust-1',
+      staffUserId: 'b1',
+      completeWalkInId: null,
+      completeAppointmentId: null,
+      items: [{ serviceId: 'svc-corte', productId: null, catalogComboId: null, qty: 1, unitPriceCents: 28000, staffUserId: 'b1' }],
+      tipCents: 0,
+      payments: [{ provider: 'CASH', amountCents: 28000 }],
+      appliedCouponCodes: [],
+    })
+    // `toEqual` ignora las llaves en undefined: lo que se verifica aquí es que
+    // los campos nuevos NO existen en el payload de una venta normal.
+    expect(Object.hasOwn(input, 'staffSale')).toBe(false)
+    const [line] = input.items as Record<string, unknown>[]
+    expect(Object.hasOwn(line, 'productVariantId')).toBe(false)
+  })
+})
+
+describe('ApolloCheckoutRepository.createSale — rechazos de venta a staff', () => {
+  it('STAFF_SALE_QUOTA_EXCEEDED: conserva el mensaje del API con el conteo del mes', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith('Kevin lleva 5 de 6 productos este mes.', 'STAFF_SALE_QUOTA_EXCEEDED'),
+    )
+    expect(rejection.code).toBe('STAFF_SALE_QUOTA_EXCEEDED')
+    expect(rejection.message).toBe('Kevin lleva 5 de 6 productos este mes.')
+  })
+
+  it('STAFF_SALE_NOT_ELIGIBLE: el API lo manda como BAD_USER_INPUT, se reconoce por el mensaje', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith('"Navaja" no está disponible para venta a staff.', 'BAD_USER_INPUT'),
+    )
+    expect(rejection.code).toBe('STAFF_SALE_NOT_ELIGIBLE')
+    expect(rejection.message).toMatch(/no está disponible para venta a staff/i)
+  })
+
+  it('STAFF_SALE_VARIANT_REQUIRED: falta elegir variante (también BAD_USER_INPUT)', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith(
+        'Elige la variante de "Pomada Clásica": sus variantes tienen precio de staff distinto.',
+        'BAD_USER_INPUT',
+      ),
+    )
+    expect(rejection.code).toBe('STAFF_SALE_VARIANT_REQUIRED')
+    expect(rejection.message).toMatch(/elige la variante de "pomada clásica"/i)
+  })
+
+  it('un BAD_USER_INPUT que no es de venta a staff sigue siendo UNKNOWN', async () => {
+    const rejection = await rejectionOf(makeClientRejectingWith('El total no cuadra con los pagos.', 'BAD_USER_INPUT'))
+    expect(rejection.code).toBe('UNKNOWN')
+  })
+
+  it('el día que el API tipe los códigos, se reconocen sin mirar el texto', async () => {
+    const eligible = await rejectionOf(makeClientRejectingWith('Producto no vendible a staff.', 'STAFF_SALE_NOT_ELIGIBLE'))
+    expect(eligible.code).toBe('STAFF_SALE_NOT_ELIGIBLE')
+    const variant = await rejectionOf(makeClientRejectingWith('Falta la variante.', 'STAFF_SALE_VARIANT_REQUIRED'))
+    expect(variant.code).toBe('STAFF_SALE_VARIANT_REQUIRED')
   })
 })

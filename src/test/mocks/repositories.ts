@@ -19,6 +19,7 @@ import type {
   CatalogService,
   CreateSaleInput,
   SaleResult,
+  StaffSaleQuota,
   StockLevel,
 } from '@/features/checkout/domain/checkout.types.ts'
 import type { RegisterRepository } from '@/features/register/data/register.repository.ts'
@@ -191,8 +192,26 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
 
   async getProducts(_locationId: string): Promise<CatalogProduct[]> {
     return [
-      { id: 'prod-1', name: 'Cera para cabello', sku: 'WAX-01', priceCents: 25000, imageUrl: null, categoryId: null, sortOrder: 0 },
+      { id: 'prod-1', name: 'Cera para cabello', sku: 'WAX-01', priceCents: 25000, imageUrl: null, categoryId: null, sortOrder: 0, staffSaleEligible: true, staffPriceCents: 12000, variants: [{ id: 'var-1', priceCents: 25000, staffPriceCents: 12000 }] },
     ]
+  }
+
+  // Cupo de venta a staff: por defecto política activa y SIN topes (null =
+  // sin tope, nunca 0). Los tests que prueban el cupo lo sobre-escriben con
+  // vi.fn; la política real la decide el API.
+  async getStaffSaleQuota(_locationId: string, _buyerStaffUserId?: string | null): Promise<StaffSaleQuota> {
+    return {
+      enabled: true,
+      allowServicesInTicket: true,
+      unitsUsed: 0,
+      unitsLimit: null,
+      unitsRemaining: null,
+      listAmountCentsUsed: 0,
+      listAmountCentsLimit: null,
+      listAmountCentsRemaining: null,
+      perProductLimit: null,
+      unitsByProduct: [],
+    }
   }
 
   async getCombos(): Promise<CatalogCombo[]> {
