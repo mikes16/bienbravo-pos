@@ -28,6 +28,11 @@ interface SaleData {
   totalCents: number
   /** Propina cobrada, ya incluida en `totalCents`. */
   tipCents?: number | null
+  /** Impuesto de la venta tal como lo devuelve el API (`taxTotalCents`); el
+   *  POS nunca lo calcula. Con la tasa vigente (0, precios sin IVA) el ticket
+   *  impreso no imprime ni Subtotal ni Impuesto —solo Total— y no deja
+   *  renglones vacíos en su lugar. Con impuesto > 0 el desglose reaparece. */
+  taxTotalCents?: number | null
   payments: PaymentEntry[]
   createdAt: string
   customer: CustomerLite | null
@@ -81,6 +86,10 @@ function shortSaleCode(id: string): string {
 export function PrintableTicket({ sale, locationName, operatorName, timezone, reprint = false }: Props) {
   const code = shortSaleCode(sale.id)
   const tipCents = sale.tipCents ?? 0
+  const taxCents = sale.taxTotalCents ?? 0
+  const hasTax = taxCents > 0
+  // Base que, con impuesto y propina, da el TOTAL impreso.
+  const baseCents = sale.totalCents - tipCents - taxCents
 
   return (
     <div className="bb-print-receipt" aria-hidden>
@@ -139,19 +148,27 @@ export function PrintableTicket({ sale, locationName, operatorName, timezone, re
 
       <div className="bb-print-rule" />
 
-      {/* Desglose subtotal + propina — solo cuando hubo propina, para que
-          quede claro qué se cobró y por qué. */}
-      {tipCents > 0 && (
+      {/* Desglose previo al total. Subtotal e Impuesto solo cuando la venta
+          trae impuesto (R5: con tasa 0 el ticket imprime únicamente TOTAL, sin
+          renglones vacíos donde estaban); la propina se imprime siempre que
+          exista, para que quede claro qué se cobró y por qué. */}
+      {hasTax && (
         <>
           <div className="bb-print-meta-row">
             <span>Subtotal</span>
-            <span>{formatMoney(sale.totalCents - tipCents)}</span>
+            <span>{formatMoney(baseCents)}</span>
           </div>
           <div className="bb-print-meta-row">
-            <span>Propina</span>
-            <span>+{formatMoney(tipCents)}</span>
+            <span>Impuesto</span>
+            <span>+{formatMoney(taxCents)}</span>
           </div>
         </>
+      )}
+      {tipCents > 0 && (
+        <div className="bb-print-meta-row">
+          <span>Propina</span>
+          <span>+{formatMoney(tipCents)}</span>
+        </div>
       )}
 
       {/* Total */}

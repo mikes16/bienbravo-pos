@@ -30,7 +30,7 @@ describe('ReceiptScreen', () => {
     expect(screen.getAllByText(/antonio/i).length).toBeGreaterThan(0)
   })
 
-  it('shows subtotal + propina breakdown when the sale carried a tip', () => {
+  it('shows the propina line — without Subtotal/Impuesto — when the sale carried a tip', () => {
     const saleWithTip = {
       ...SALE,
       totalCents: 30000,
@@ -42,7 +42,10 @@ describe('ReceiptScreen', () => {
     }
     renderWithProviders(<ReceiptScreen sale={saleWithTip} onListo={() => {}} />)
     // Preview en pantalla + PrintableTicket → cada texto aparece 2 veces.
-    expect(screen.getAllByText(/^subtotal$/i).length).toBeGreaterThan(0)
+    // R5: la venta no trae impuesto (tasa 0), así que el recibo no imprime
+    // Subtotal ni Impuesto — solo la propina y el Total.
+    expect(screen.queryAllByText(/^subtotal$/i)).toHaveLength(0)
+    expect(screen.queryAllByText(/^impuesto$/i)).toHaveLength(0)
     expect(screen.getAllByText(/^propina$/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText('+$20').length).toBeGreaterThan(0)
     expect(screen.getAllByText('$300').length).toBeGreaterThan(0)
