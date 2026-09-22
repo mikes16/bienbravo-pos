@@ -1292,4 +1292,35 @@ describe('CheckoutPage — rechazo del servidor por datos viejos', () => {
       expect(screen.getByRole('dialog', { name: /pago/i })).toBeInTheDocument()
     })
   }
+
+  /* ── Venta a staff: la barra montada en el cobro (spec §4.5) ───────────── */
+
+  it('venta a staff: el interruptor enciende el modo y el ticket deja de admitir cupones', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+
+    // Con `pos.staff_sale.*` el interruptor existe y arranca apagado; el bloque
+    // de cupones es el de siempre.
+    const toggle = await screen.findByRole('switch', { name: /venta a staff/i })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('button', { name: /agregar cupón/i })).toBeInTheDocument()
+
+    await user.click(toggle)
+
+    // Encender pide el cupo ANTES de tocar el carrito ([D-055]); la política del
+    // mock viene activa y sin topes.
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'))
+    expect(screen.getByRole('group', { name: 'Cupo del mes' })).toHaveTextContent(
+      /sin tope este mes/i,
+    )
+    // Una venta a staff no admite cupones (§4.3.5): el input desaparece y se
+    // dice por qué, en vez de dejar un código que el API rechazaría.
+    expect(screen.queryByRole('button', { name: /agregar cupón/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/no admite cupones/i)).toBeInTheDocument()
+  })
 })

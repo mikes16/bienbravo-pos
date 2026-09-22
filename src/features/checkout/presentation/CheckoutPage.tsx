@@ -12,6 +12,7 @@ import { AtendiendoHeader } from './AtendiendoHeader'
 import { BarberSelectorSheet } from './BarberSelectorSheet'
 import { CustomerChip } from './CustomerChip'
 import { CustomerLookupSheet } from './CustomerLookupSheet'
+import { StaffSaleBar } from './StaffSaleBar'
 import { CartList } from './CartList'
 import { PaidLinesSection } from './PaidLinesSection'
 import { CartTotals } from './CartTotals'
@@ -351,6 +352,22 @@ export function CheckoutPage() {
           onTap={canReadCustomers ? () => setCustomerSheetOpen(true) : () => {}}
           onClear={() => ck.dispatch({ type: 'setCustomer', customer: null })}
         />
+        {/* Venta a staff (spec §4.5). Sin `pos.staff_sale.*` la barra devuelve
+            null y el cobro se ve exactamente como siempre. Fuera del cobro de
+            una cita prepagada: `submitExtras` no manda `staffSale` (handoff
+            T-031), así que ahí el interruptor prometería un precio staff que
+            el API nunca registraría como tal. */}
+        {!ck.isPrepaid && (
+          <StaffSaleBar
+            staffSale={ck.staffSale}
+            barbers={ck.barbers}
+            // Encender pide el cupo A LA RED antes de tocar el carrito y puede
+            // terminar sin activarse ([D-055]): el resultado se lee en
+            // `staffSale` (error + enabled), no en esta promesa.
+            onToggle={(next) => void ck.setStaffSaleEnabled(next)}
+            onSelectBuyer={(id) => void ck.setStaffSaleBuyer(id)}
+          />
+        )}
       </div>
       {/* Líneas ya pagadas de la cita (read-only PAGADO). Vacío/null en venta
           normal → PaidLinesSection no renderiza nada. */}
@@ -375,13 +392,23 @@ export function CheckoutPage() {
           mutation addItemsToAppointmentSale cobra el delta exacto y no acepta
           códigos, así que ocultamos el bloque para no inducir un mismatch. */}
       {!ck.isPrepaid && (
-        <CouponsBlock
-          appliedCoupons={ck.appliedCoupons}
-          couponError={ck.couponError}
-          onApply={ck.applyCoupon}
-          onRemove={ck.removeCoupon}
-          canApply={canApplyCoupon}
-        />
+        <>
+          <CouponsBlock
+            appliedCoupons={ck.appliedCoupons}
+            couponError={ck.couponError}
+            onApply={ck.applyCoupon}
+            onRemove={ck.removeCoupon}
+            // Una venta a staff no admite cupones (spec §4.3.5): el bloque
+            // desaparece mientras el modo está encendido en vez de dejar un
+            // input que el API rechazaría.
+            canApply={canApplyCoupon && !ck.couponsDisabled}
+          />
+          {canApplyCoupon && ck.couponsDisabledMessage && (
+            <p className="border-t border-[var(--color-leather-muted)]/40 px-4 py-3 text-[12px] leading-snug text-[var(--color-bone-muted)]">
+              {ck.couponsDisabledMessage}
+            </p>
+          )}
+        </>
       )}
       <CartTotals
         subtotalCents={totals.subtotalCents}
@@ -457,10 +484,19 @@ export function CheckoutPage() {
             </button>
           )
         ) : (
+          // `staffName` sigue siendo el OPERADOR de la sesión ([D-011]/[D-012]),
+          // no el comprador de la venta a staff: en una compra de recepción son
+          // dos personas distintas y las dos tienen que verse — el comprador en
+          // la barra ("Compra: …") y quien cobra en el CTA ("Como …").
+          // `canCharge` es false cuando el modo staff tiene algo que el API
+          // rechazaría (línea sin precio staff, tope rebasado, cupo ilegible);
+          // con el modo apagado siempre es true, así que el cobro normal no
+          // cambia. El cobro de extras de una cita prepagada no lo usa: ese
+          // flujo no manda `staffSale` (handoff T-031) y la barra no se monta.
           <CobrarCTA
             totalCents={totalAfterDiscountCents}
             staffName={operatorName}
-            disabled={ck.cartState.lines.length === 0 || ck.submitting}
+            disabled={ck.cartState.lines.length === 0 || ck.submitting || !ck.staffSale.canCharge}
             onTap={openPaymentSheet}
           />
         )

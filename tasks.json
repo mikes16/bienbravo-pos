@@ -3411,9 +3411,9 @@
       ],
       "priority": 4,
       "type": "feature",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
-      "redispatches": 0,
+      "redispatches": 1,
       "split_from": "T-032",
       "review_feedback": []
     },
