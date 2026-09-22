@@ -250,8 +250,15 @@ export function createPosApolloClient(): ApolloClient {
   // Safari sí la envía.
   const httpUri = '/api/graphql'
   // WS NO se puede proxiar por rewrites de Vercel: conecta directo al origen de
-  // la API (VITE_API_URL). La única subscription (walkInQueueUpdated) es pública
-  // — no depende de la cookie, así que el handshake cross-site funciona igual.
+  // la API (VITE_API_URL). Las CUATRO subscriptions que abre el POS hoy
+  // (walkInQueueUpdated, saleEvent, appointmentUpdated y posDataChanged) son
+  // públicas en el API: sus resolvers no llevan guard, no hay guard global y el
+  // servidor de graphql-ws (api/src/main.ts) arma el context sólo con
+  // `connectionParams` — nunca lee la cookie del upgrade. Por eso el handshake
+  // cross-site funciona aunque Safari/iPad (ITP) no mande la cookie de terceros.
+  // El aislamiento lo da el filtro por `slug` (único por tenant) y el hecho de
+  // que el payload sea un ping: el dato viaja después por la consulta HTTP
+  // autenticada de arriba.
   const wsUri = ((import.meta.env.VITE_API_URL ?? '') + '/graphql').replace(/^http/, 'ws')
 
   const cache = makeCache()
@@ -290,10 +297,17 @@ export function createPosApolloClient(): ApolloClient {
   // WebSocket link para subscriptions. Reconnect automático infinito —
   // el POS de sucursal nunca debe quedar sin push silente. keepAlive 12s
   // detecta zombies antes de que el browser lo note.
-  // Auth: las cookies bb_session_pos viajan en el WS upgrade request si el
-  // server tiene CORS con credentials:true (ya configurado en api/main.ts).
-  // Sin esto el handshake se haría unauthed, pero como la única subscription
-  // hoy (walkInQueueUpdated) es pública, funciona igual.
+  // Auth: el handshake viaja SIN credenciales utilizables (la cookie de
+  // terceros no llega desde Safari/iPad y el API tampoco la leería). Hoy da
+  // igual porque las cuatro subscriptions del canal de frescura son públicas;
+  // el día que alguna exija sesión hay que mandarla por `connectionParams`, no
+  // confiar en la cookie del upgrade.
+  //
+  // OJO: `retryAttempts` sólo cubre la CAÍDA DEL SOCKET, y al reconectar
+  // graphql-ws re-suscribe las operaciones vivas — nunca una que el servidor
+  // rechazó (su observable ya terminó). Esa re-suscripción es responsabilidad
+  // de FreshnessProvider, que reabre la fuente con espera creciente; por eso
+  // allá un error de suscripción no se puede tragar.
   const wsLink = new GraphQLWsLink(
     createClient({
       url: wsUri,

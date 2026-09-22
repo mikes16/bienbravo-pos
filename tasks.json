@@ -2597,6 +2597,197 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-035",
+      "title": "Canal de frescura: un error de suscripción no muere en silencio",
+      "description": "Hallazgo Important del Principal (run 2026-09-19-a). En src/core/freshness/FreshnessProvider.tsx (~línea 323) el callback `error` de cada suscripción de EVENT_SOURCES solo hace console.warn en DEV y deja el observable terminado: graphql-ws re-suscribe operaciones vivas al reconectar pero NO una que el servidor rechazó, y wsStatus sigue diciendo 'connected' con el canal muerto — el fallo silencioso (R8) que el run vino a matar. Cambios: (1) Al recibir `error` en una suscripción, re-suscribir ESA operación con backoff exponencial (1 s, 2 s, 4 s… tope 30 s) usando timeouts encadenados de una sola vez ([D-015]: nada de setInterval, ni el token en comentarios); mientras el reintento esté en curso, y tras 5 fallos seguidos, degradar `connection` a 'reconnecting' para que RefreshControl lo muestre; al recuperarse volver a 'connected' y refrescar los temas de esa fuente (cuenta como puesta al día). Las otras fuentes no se ven afectadas. (2) Dejar rastro también en producción: usa el helper de telemetría existente en src/core/telemetry/ si aplica (revísalo) o console.error fuera del gate DEV; nunca tragar el error. (3) SOLO LECTURA en ../bienbravo-api: cómo autentican las suscripciones saleEvent, appointmentUpdated y posDataChanged frente a walkInQueueUpdated (cookie en el handshake WS / connectionParams). Documenta el hallazgo en el handoff; si alguna exige cookie que Safari/iPad no manda cross-site, repórtalo en BLOCKERS como coordinación con el API — no lo arregles del lado del POS a ciegas ni toques el repo del API. (4) Actualiza los dos comentarios de src/core/apollo/client.ts (~253 y ~295) que aún dicen que la única subscription (walkInQueueUpdated) es pública cuando ya son cuatro. Tests en FreshnessProvider.test.tsx con timers falsos: un error de suscripción re-suscribe con backoff y no rompe las demás fuentes; mientras reintenta, connection deja de ser 'connected'; al recuperarse vuelve a 'connected' y refresca los temas de esa fuente; un error repetido 5 veces deja 'reconnecting' visible.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Re-suscripción con backoff, degradación visible de connection y recuperación con refresco de temas",
+          "check": "npm test -- src/core/freshness/FreshnessProvider.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Comentarios de client.ts al día y sin sondeo en el canal",
+          "check": "! grep -q 'única subscription' src/core/apollo/client.ts && ! grep -q 'setInterval' src/core/freshness/FreshnessProvider.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/core/freshness src/core/apollo",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-19-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1: diagnóstico completo y los tres pasos del fix (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/freshness/FreshnessProvider.tsx",
+          "reason": "EVENT_SOURCES y el callback error a corregir; motor createFreshnessEngine (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/apollo/wsStatus.ts",
+          "reason": "Emisor de estado del socket: distingue primera conexión de reconexión (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/apollo/client.ts",
+          "reason": "Callbacks on de graphql-ws y los dos comentarios desactualizados (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-007.md",
+          "reason": "Contrato del canal: connection, lastUpdatedAt y reglas de ráfaga que no deben romperse (AC-1)"
+        }
+      ],
+      "files": [
+        "src/core/freshness/FreshnessProvider.tsx",
+        "src/core/freshness/FreshnessProvider.test.tsx",
+        "src/core/apollo/client.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-036",
+      "title": "Rechazo por STOCK: mapear por código del API y no prometer recuperación por texto",
+      "description": "Hallazgo Important del Principal (run 2026-09-19-a). En producción el API lanza el faltante de existencias como Error pelón y el filtro de excepciones enmascara el mensaje: STOCK_MESSAGE_PATTERN (src/features/checkout/domain/checkout.types.ts ~329) no matchea y el rechazo cae en UNKNOWN (sin recarga de existencias ni shortages), así que el criterio de T-026 es falso en producción para el rechazo más frecuente. El arreglo de fondo es del API: que assertStockAvailable (pos.resolver.ts) lance GraphQLError con extensions.code 'INSUFFICIENT_STOCK'. PROHIBIDO tocar ../bienbravo-api (repo independiente; solo consulta de lectura). Del lado del POS: (1) Verifica en checkoutRejectionCodeFrom que un GraphQLError con extensions.code 'INSUFFICIENT_STOCK' se mapea a STOCK conservando el mensaje en español del API; si el switch no lo acepta, agrégalo. Conserva el patrón de texto solo como respaldo de desarrollo. (2) Test en checkout.repository.test.ts: el código 'INSUFFICIENT_STOCK' mapea a STOCK con mensaje y shortages si vienen en extensions; un Error pelón con mensaje enmascarado ('Internal server error') cae en UNKNOWN (documenta en el nombre del test que es el comportamiento de producción hasta que el API publique el código). (3) Reescribe el docstring de STOCK_MESSAGE_PATTERN y el del mapeo para decir la verdad: el código es la ruta de producción; el texto solo funciona en dev. (4) En el handoff, sección Advertencias para dependientes, deja el texto exacto del cambio que necesita el API (archivo, función, código y forma de extensions) para que el humano lo lleve al repo del API. No cambies la lógica de recuperación de useCheckout ni la UI.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "INSUFFICIENT_STOCK por código mapea a STOCK con mensaje; Error enmascarado documentado como UNKNOWN",
+          "check": "npm test -- src/features/checkout/data/checkout.repository.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro y su recuperación siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/application",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/domain src/features/checkout/data",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-19-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #2: por qué el patrón de texto falla en producción y el cambio que necesita el API (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/domain/checkout.types.ts",
+          "reason": "STOCK_MESSAGE_PATTERN, checkoutRejectionCodeFrom y CheckoutRejectedError (AC-1, AC-3)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/data/checkout.repository.ts",
+          "reason": "toSaleRejection: dónde se traduce el error GraphQL al error tipado (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-040] GraphQLError con extensions.code conserva código y mensaje en producción; Error pelón no (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-026.md",
+          "reason": "Contrato de rechazo tipado y el hueco de STOCK ya declarado (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/domain/checkout.types.ts",
+        "src/features/checkout/data/checkout.repository.ts",
+        "src/features/checkout/data/checkout.repository.test.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-037",
+      "title": "Clasificar posSettings y staffSaleQuota en dataClasses",
+      "description": "Hallazgo Important del Principal (run 2026-09-19-a). Dos campos raíz nuevos quedaron sin clasificar contra la letra de [D-003] ('toda query nueva clasifica su campo raíz ahí'): posSettings (src/core/bootstrap/usePosSettings.ts ~106 documenta la omisión como deliberada) y staffSaleQuota (deuda declarada en src/features/checkout/data/checkout.repository.ts). La lista de permitidos los deja fuera de la persistencia igual, pero apoyarse en 'unclassified' a propósito destruye la señal de auditoría de la clase (ya no distingue olvido de intención). Cambios: (1) En src/core/apollo/dataClasses.ts clasificar posSettings como LIVE (ajustes del negocio: sin dinero, nunca persistido, siempre revalidable por el canal) y staffSaleQuota como SENSITIVE (cupo mensual por barbero: dato de staff; nunca persistido; se evicta al bloquear y al cerrar sesión). (2) Reescribir los dos docstrings (usePosSettings.ts y checkout.repository.ts) para citar la clase asignada en vez de la omisión. (3) Extender src/core/apollo/persistence.test.ts: un snapshot con posSettings y staffSaleQuota no persiste ninguno de los dos y sí conserva el catálogo; verifica que src/core/auth/PosAuthProvider.test.tsx (fixture generado desde SENSITIVE_ROOT_FIELDS) siga en verde con el campo nuevo. No cambies la política de fetch de ningún hook ni el comportamiento de usePosSettings ([D-031]: conserva su último valor bueno).",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Ambos campos clasificados en la única fuente",
+          "check": "grep -q 'posSettings' src/core/apollo/dataClasses.ts && grep -q 'staffSaleQuota' src/core/apollo/dataClasses.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Persistencia, evicción al bloquear y ajustes siguen en verde",
+          "check": "npm test -- src/core/apollo src/core/auth/PosAuthProvider.test.tsx src/core/bootstrap/usePosSettings.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/core/apollo src/core/bootstrap/usePosSettings.ts src/features/checkout/data/checkout.repository.ts",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-19-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #3: qué clase corresponde a cada campo y qué docstrings reescribir (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/apollo/dataClasses.ts",
+          "reason": "Única fuente de clasificación STATIC/SESSION/SENSITIVE/LIVE y helpers (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-003] lista de permitidos; [D-016] bloquear evicta solo SENSIBLE; [D-031] ajustes conservan último valor (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-005.md",
+          "reason": "Contrato de dataClasses y pickPersistable (AC-2)"
+        }
+      ],
+      "files": [
+        "src/core/apollo/dataClasses.ts",
+        "src/core/apollo/persistence.test.ts",
+        "src/core/bootstrap/usePosSettings.ts",
+        "src/features/checkout/data/checkout.repository.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }

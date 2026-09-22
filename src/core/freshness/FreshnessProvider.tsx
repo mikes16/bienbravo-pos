@@ -36,6 +36,17 @@ import { PosDataEventKind } from '@/core/graphql/generated/graphql'
  * Reglas: mínimo 5 s entre refrescos del MISMO tema (la ráfaga se agrupa en un
  * refresco, más uno final al cerrar la ventana si llegaron más) y nada se
  * refresca mientras un cobro se está enviando (`setPaused`).
+ *
+ * Un error a nivel de SUSCRIPCIÓN (el servidor rechaza esa operación) no es lo
+ * mismo que una caída del socket: termina ese observable y graphql-ws NO lo
+ * reabre al reconectar — sólo re-suscribe las operaciones vivas. Tragárselo
+ * dejaría esa fuente muerta con el socket diciendo "conectado": el fallo
+ * silencioso de R8 otra vez, ahora sin síntoma visible. Por eso cada fuente se
+ * reabre sola con espera creciente (1 s, 2 s, 4 s… con tope de 30 s, cadena de
+ * temporizadores de UNA vez), el canal se anuncia degradado mientras tanto y al
+ * recuperarse se pone al día con los temas de esa fuente. El error se registra
+ * SIEMPRE, también en producción: un canal roto en una iPad de sucursal no
+ * puede depender de que alguien tenga la consola de dev abierta.
  */
 
 /**
@@ -100,6 +111,58 @@ interface EventSource {
    * sin refrescar nada y sin romper el canal.
    */
   readonly topicsOf: (data: unknown) => readonly FreshnessTopic[]
+  /**
+   * TODO lo que esta fuente puede invalidar. Es lo que se pone al día cuando
+   * la suscripción se recupera tras un rechazo: mientras estuvo muerta pudimos
+   * perdernos cualquiera de sus avisos, no sólo el último.
+   */
+  readonly topics: readonly FreshnessTopic[]
+}
+
+/**
+ * Espera antes de reabrir una suscripción rechazada: 1 s, 2 s, 4 s… con tope
+ * de 30 s. Cada intento arma UN temporizador de una sola vez que, si vuelve a
+ * fallar, arma el siguiente ([D-015]: el POS no repite nada por reloj).
+ */
+const RESUBSCRIBE_BASE_DELAY_MS = 1_000
+const RESUBSCRIBE_MAX_DELAY_MS = 30_000
+
+/**
+ * Cuánto tiene que sobrevivir una re-suscripción para darla por buena. No hay
+ * ACK por operación en graphql-ws: un rechazo del servidor llega en
+ * milisegundos, así que aguantar esta ventana sin error es la mejor señal
+ * disponible de "la fuente volvió" (un aviso recibido antes también vale).
+ */
+const RESUBSCRIBE_SETTLE_MS = 2_000
+
+/** A partir de aquí el fallo dejó de ser un tropiezo y el log lo dice fuerte. */
+const PERSISTENT_FAILURE_STREAK = 5
+
+function resubscribeDelayMs(failures: number): number {
+  const step = Math.max(failures - 1, 0)
+  return Math.min(RESUBSCRIBE_BASE_DELAY_MS * 2 ** step, RESUBSCRIBE_MAX_DELAY_MS)
+}
+
+/**
+ * Deja rastro del error SIEMPRE (no sólo en dev). `core/telemetry` no sirve
+ * aquí: sólo manda web-vitals/navegación por beacon y no tiene canal de
+ * errores, así que hasta que exista un ingest el log del dispositivo es el
+ * rastro. Lo que no puede pasar es que el canal muera en silencio.
+ */
+function reportSourceError(
+  source: EventSource,
+  err: unknown,
+  failures: number,
+  retryInMs: number,
+): void {
+  const streak =
+    failures >= PERSISTENT_FAILURE_STREAK
+      ? ` · ${failures} fallos seguidos: el POS está sin avisos de ${source.topics.join(', ')}`
+      : ''
+  console.error(
+    `[freshness] la suscripción ${source.label} falló; se reabre en ${Math.round(retryInMs / 1000)} s${streak}`,
+    err,
+  )
 }
 
 /**
@@ -124,9 +187,22 @@ const POS_DATA_TOPICS: Readonly<Record<PosDataEventKind, readonly FreshnessTopic
 
 const NO_TOPICS: readonly FreshnessTopic[] = []
 
+/**
+ * Todo lo que `posDataChanged` puede invalidar (unión del mapa, en el orden
+ * estable del canal). Derivado a propósito: un `kind` nuevo clasificado entra
+ * solo en la puesta al día tras re-suscribir.
+ */
+const POS_DATA_ALL_TOPICS: readonly FreshnessTopic[] = FRESHNESS_TOPICS.filter((topic) =>
+  Object.values(POS_DATA_TOPICS).some((topics) => topics.includes(topic)),
+)
+
 /** Fuente de temas fijos: el evento siempre invalida los mismos. */
-function always(topics: readonly FreshnessTopic[]): (data: unknown) => readonly FreshnessTopic[] {
-  return () => topics
+function fixedSource(
+  query: TypedDocumentNode<unknown, { slug: string }>,
+  label: string,
+  topics: readonly FreshnessTopic[],
+): EventSource {
+  return { query, label, topics, topicsOf: () => topics }
 }
 
 /** Fuente de temas por `kind`, leyendo el payload de forma defensiva. */
@@ -147,18 +223,15 @@ function posDataTopics(data: unknown): readonly FreshnessTopic[] {
  * ediciones de comisión.
  */
 const EVENT_SOURCES: readonly EventSource[] = [
-  { query: POS_HOME_SALE_EVENT, label: 'saleEvent', topicsOf: always(['sales']) },
+  fixedSource(POS_HOME_SALE_EVENT, 'saleEvent', ['sales']),
+  fixedSource(POS_HOME_WALK_IN_QUEUE_UPDATED, 'walkInQueueUpdated', ['walkins']),
+  fixedSource(POS_HOME_APPOINTMENT_UPDATED, 'appointmentUpdated', ['appointments']),
   {
-    query: POS_HOME_WALK_IN_QUEUE_UPDATED,
-    label: 'walkInQueueUpdated',
-    topicsOf: always(['walkins']),
+    query: POS_DATA_CHANGED,
+    label: 'posDataChanged',
+    topicsOf: posDataTopics,
+    topics: POS_DATA_ALL_TOPICS,
   },
-  {
-    query: POS_HOME_APPOINTMENT_UPDATED,
-    label: 'appointmentUpdated',
-    topicsOf: always(['appointments']),
-  },
-  { query: POS_DATA_CHANGED, label: 'posDataChanged', topicsOf: posDataTopics },
 ]
 
 interface RegisteredLoader {
@@ -292,9 +365,24 @@ export function FreshnessProvider({ children }: { children: ReactNode }) {
   const client = useApolloClient()
   const { locationSlug } = useLocation()
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
-  const [connection, setConnection] = useState<FreshnessConnection>(() =>
+  const [wsConnection, setWsConnection] = useState<FreshnessConnection>(() =>
     toConnection(getWsStatus().status),
   )
+  /**
+   * Fuentes con la suscripción caída y un reintento en vuelo. Se guarda junto
+   * al slug que las abrió: si cambia la sucursal, el canal es otro y el conteo
+   * viejo deja de aplicar sin necesidad de resetearlo desde un efecto.
+   */
+  const [downSources, setDownSources] = useState<{ slug: string | null; count: number }>({
+    slug: null,
+    count: 0,
+  })
+  const channelDegraded = downSources.count > 0 && downSources.slug === locationSlug
+  // El socket puede estar perfecto y el canal muerto (una operación rechazada
+  // no lo tira): mientras haya una fuente caída la UI NO puede decir
+  // "connected". Derivado en render, no en un efecto.
+  const connection: FreshnessConnection =
+    channelDegraded && wsConnection === 'connected' ? 'reconnecting' : wsConnection
   // `useState` perezoso (no `useMemo`): React puede descartar un `useMemo`
   // para liberar memoria y eso se llevaría el registro de cargadores.
   // `setLastUpdatedAt` ya existe en este mismo render y es estable.
@@ -305,31 +393,131 @@ export function FreshnessProvider({ children }: { children: ReactNode }) {
   // UN canal por sucursal para toda la app. Se reabre sólo si cambia el slug.
   useEffect(() => {
     if (!locationSlug) return
-    const subscriptions = EVENT_SOURCES.map(({ query, topicsOf, label }) =>
-      client
-        .subscribe({
-          query,
-          variables: { slug: locationSlug },
-          // Los eventos no se guardan: son avisos, no datos. Así tampoco
-          // ensucian el cache (ni lo que se evalúa para persistir).
-          fetchPolicy: 'no-cache',
-        })
-        .subscribe({
-          next: (result) => {
-            const topics = topicsOf(result.data)
-            if (topics.length === 0) return
-            engine.trigger(topics)
-          },
-          error: (err: unknown) => {
-            // graphql-ws reintenta solo (retryAttempts: Infinity); aquí sólo
-            // dejamos rastro en dev. La puesta al día al reconectar cubre el
-            // hueco.
-            if (import.meta.env.DEV) console.warn(`[freshness] ${label} error`, err)
-          },
-        }),
-    )
+    const slug = locationSlug
+    let disposed = false
+    /** Etiquetas de las fuentes caídas AHORA (con reintento en vuelo). */
+    const down = new Set<string>()
+    const publishHealth = () => {
+      // Misma cuenta = mismo objeto: un rechazo repetido de la misma fuente no
+      // re-renderiza el árbol.
+      setDownSources((prev) =>
+        prev.slug === slug && prev.count === down.size ? prev : { slug, count: down.size },
+      )
+    }
+
+    /** Abre una fuente y la mantiene viva; devuelve su cierre. */
+    const superviseSource = (source: EventSource): (() => void) => {
+      let subscription: { unsubscribe: () => void } | null = null
+      let retryTimer: ReturnType<typeof setTimeout> | null = null
+      let settleTimer: ReturnType<typeof setTimeout> | null = null
+      let failures = 0
+
+      const clearTimers = () => {
+        if (retryTimer !== null) {
+          clearTimeout(retryTimer)
+          retryTimer = null
+        }
+        if (settleTimer !== null) {
+          clearTimeout(settleTimer)
+          settleTimer = null
+        }
+      }
+
+      /** La fuente volvió a estar viva: fin de la degradación + puesta al día. */
+      const markAlive = () => {
+        clearTimers()
+        failures = 0
+        if (!down.delete(source.label)) return
+        publishHealth()
+        // Mientras estuvo muerta se pudo perder CUALQUIERA de sus avisos (el
+        // pubsub del API es en memoria y no reenvía), así que la puesta al día
+        // es del paquete completo de temas de la fuente, igual que al
+        // reconectar el socket.
+        engine.trigger(source.topics, true)
+      }
+
+      /** Esta apertura murió (rechazo o cierre): se reabre con espera. */
+      const onDead = (err: unknown) => {
+        if (disposed) return
+        clearTimers()
+        subscription = null
+        failures += 1
+        const retryInMs = resubscribeDelayMs(failures)
+        down.add(source.label)
+        publishHealth()
+        reportSourceError(source, err, failures, retryInMs)
+        // Cadena de temporizadores de UNA vez (el siguiente lo arma el
+        // siguiente fallo): nada repetitivo, y reabrir una suscripción no
+        // consulta datos — no es un latido disfrazado.
+        retryTimer = setTimeout(() => {
+          retryTimer = null
+          open(true)
+        }, retryInMs)
+      }
+
+      function open(isRetry: boolean): void {
+        // OJO (Apollo 4): un rechazo de la operación NO llega por el callback
+        // `error` — `startGraphQLSubscription` lo convierte en un resultado
+        // con `error` y acto seguido COMPLETA el observable. Y una suscripción
+        // completada está tan muerta como una que falló: no vuelven a llegar
+        // avisos. Por eso los tres caminos terminan en `onDead`, y `ended`
+        // evita contar dos veces el par resultado-con-error + complete.
+        let ended = false
+        const end = (err: unknown) => {
+          if (ended) return
+          ended = true
+          onDead(err)
+        }
+        subscription = client
+          .subscribe({
+            query: source.query,
+            variables: { slug },
+            // Los eventos no se guardan: son avisos, no datos. Así tampoco
+            // ensucian el cache (ni lo que se evalúa para persistir).
+            fetchPolicy: 'no-cache',
+          })
+          .subscribe({
+            next: (result) => {
+              if (result.error) {
+                end(result.error)
+                return
+              }
+              // Un aviso recibido prueba que la fuente revivió; su puesta al
+              // día cubre los temas de este evento y los que se perdieron.
+              if (down.has(source.label)) {
+                markAlive()
+                return
+              }
+              const topics = source.topicsOf(result.data)
+              if (topics.length === 0) return
+              engine.trigger(topics)
+            },
+            error: end,
+            complete: () => {
+              end(new Error(`la suscripción ${source.label} se cerró sin error`))
+            },
+          })
+        if (isRetry) {
+          settleTimer = setTimeout(() => {
+            settleTimer = null
+            markAlive()
+          }, RESUBSCRIBE_SETTLE_MS)
+        }
+      }
+
+      open(false)
+      return () => {
+        clearTimers()
+        subscription?.unsubscribe()
+        subscription = null
+      }
+    }
+
+    const closers = EVENT_SOURCES.map(superviseSource)
     return () => {
-      for (const subscription of subscriptions) subscription.unsubscribe()
+      disposed = true
+      for (const close of closers) close()
+      down.clear()
     }
   }, [client, locationSlug, engine])
 
@@ -338,7 +526,7 @@ export function FreshnessProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let seenConnections = getWsStatus().connections
     return subscribeWsStatus((next) => {
-      setConnection(toConnection(next.status))
+      setWsConnection(toConnection(next.status))
       if (next.status !== 'connected') return
       const isReconnection =
         next.connections > seenConnections && (next.reconnected || seenConnections > 0)

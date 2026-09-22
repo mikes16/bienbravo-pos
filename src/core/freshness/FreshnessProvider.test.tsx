@@ -26,33 +26,68 @@ vi.mock('@/core/location/useLocation', () => ({
 }))
 
 // Apollo mockeado: un link que deja emitir a mano cada subscription por su
-// nombre de operación. Así distinguimos "llegó un evento de venta" de "llegó
-// uno de la fila", cosa que MockSubscriptionLink no permite (reparte el mismo
-// resultado a todos los observers).
-type Emitter = (data: Record<string, unknown>) => void
-const emitters = new Map<string, Set<Emitter>>()
+// nombre de operación —y también RECHAZARLA—. Así distinguimos "llegó un
+// evento de venta" de "llegó uno de la fila", cosa que MockSubscriptionLink no
+// permite (reparte el mismo resultado a todos los observers), y podemos
+// reproducir el error de una sola operación sin tocar el socket.
+interface Channel {
+  emit: (data: Record<string, unknown>) => void
+  fail: (err: unknown) => void
+  close: () => void
+}
+const channels = new Map<string, Set<Channel>>()
+/** Aperturas por operación: una re-suscripción suma una. */
+const opens = new Map<string, number>()
 
 function createEventLink(): ApolloLink {
   return new ApolloLink(
     (operation) =>
       new Observable<ApolloLink.Result>((observer) => {
         const name = operation.operationName ?? 'anonymous'
-        const emit: Emitter = (data) => observer.next({ data })
-        const set = emitters.get(name) ?? new Set<Emitter>()
-        set.add(emit)
-        emitters.set(name, set)
+        opens.set(name, (opens.get(name) ?? 0) + 1)
+        const channel: Channel = {
+          emit: (data) => observer.next({ data }),
+          fail: (err) => observer.error(err),
+          close: () => observer.complete(),
+        }
+        const set = channels.get(name) ?? new Set<Channel>()
+        set.add(channel)
+        channels.set(name, set)
         return () => {
-          set.delete(emit)
+          set.delete(channel)
         }
       }),
   )
 }
 
-function emit(operationName: string, data: Record<string, unknown>): void {
-  const set = emitters.get(operationName)
+function channelsOf(operationName: string): Channel[] {
+  const set = channels.get(operationName)
   // Si nadie está suscrito, el provider no abrió el canal: es un fallo real.
   if (!set || set.size === 0) throw new Error(`Nadie suscrito a ${operationName}`)
-  for (const send of [...set]) send(data)
+  return [...set]
+}
+
+function emit(operationName: string, data: Record<string, unknown>): void {
+  for (const channel of channelsOf(operationName)) channel.emit(data)
+}
+
+/**
+ * El servidor RECHAZA esa operación: el observable termina. No es una caída
+ * del socket (`wsStatus` ni se entera) y graphql-ws no la reabre al reconectar.
+ */
+function failSubscription(operationName: string): void {
+  const err = new Error(`${operationName} rechazada`)
+  for (const channel of channelsOf(operationName)) channel.fail(err)
+}
+
+/** El servidor CIERRA el stream sin error: tan muerto como si lo rechazara. */
+function closeSubscription(operationName: string): void {
+  for (const channel of channelsOf(operationName)) channel.close()
+}
+
+/** Cuántas veces se abrió esa operación desde el inicio del caso. */
+function opensOf(operationName: string): number {
+  return opens.get(operationName) ?? 0
 }
 
 const AT = '2026-09-19T18:36:00.000Z'
@@ -149,16 +184,27 @@ async function renderFreshness(children: ReactNode) {
 }
 
 describe('FreshnessProvider', () => {
+  /**
+   * El canal grita por `console.error` cuando una suscripción falla (también
+   * en producción). Se silencia aquí para no ensuciar la salida y para poder
+   * afirmar que el rastro existe.
+   */
+  let errorLog: Mock
+
   beforeEach(() => {
     vi.useFakeTimers()
     resetWsStatus()
-    emitters.clear()
+    channels.clear()
+    opens.clear()
     ctxRef.current = null
     saleSeq = 0
+    errorLog = vi.fn()
+    vi.spyOn(console, 'error').mockImplementation(errorLog)
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('no invoca la carga al montar y un evento de venta refresca sólo el tema "sales"', async () => {
@@ -589,5 +635,173 @@ describe('FreshnessProvider', () => {
       reportWsConnected(true)
     })
     expect(calledTopics(loaders)).toEqual([...FRESHNESS_TOPICS])
+  })
+
+  // --- Error de UNA suscripción ------------------------------------------
+  // El servidor rechaza una operación: su observable termina y graphql-ws NO
+  // la reabre al reconectar (sólo re-suscribe las vivas). Si se tragara, esa
+  // fuente quedaría muerta con el socket diciendo "conectado" — R8 otra vez.
+
+  it('un rechazo re-suscribe ESA fuente con espera creciente y no toca a las demás', async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+    expect(opensOf('PosHomeSaleEvent')).toBe(1)
+
+    await act(async () => {
+      failSubscription('PosHomeSaleEvent')
+    })
+    // No se reabre en el mismo tick: el primer intento es al segundo.
+    expect(opensOf('PosHomeSaleEvent')).toBe(1)
+
+    // Y el resto del canal sigue trabajando: la fila no se enteró de nada.
+    await act(async () => {
+      emitWalkIn()
+    })
+    expect(calledTopics(loaders)).toEqual(['walkins'])
+    expect(opensOf('PosHomeWalkInQueueUpdated')).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999)
+    })
+    expect(opensOf('PosHomeSaleEvent')).toBe(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(opensOf('PosHomeSaleEvent')).toBe(2)
+
+    // Segundo rechazo seguido: la espera se duplica (2 s).
+    await act(async () => {
+      failSubscription('PosHomeSaleEvent')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_999)
+    })
+    expect(opensOf('PosHomeSaleEvent')).toBe(2)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(opensOf('PosHomeSaleEvent')).toBe(3)
+  })
+
+  it('mientras reintenta la conexión no dice "connected"; al recuperarse refresca los temas de esa fuente', async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+
+    await act(async () => {
+      reportWsConnected()
+    })
+    expect(ctx().connection).toBe('connected')
+
+    // El socket está impecable: lo que se cayó es la operación.
+    await act(async () => {
+      failSubscription('PosDataChanged')
+    })
+    expect(ctx().connection).toBe('reconnecting')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect(opensOf('PosDataChanged')).toBe(2)
+    // Recién reabierta todavía no se da por buena.
+    expect(ctx().connection).toBe('reconnecting')
+    expect(calledTopics(loaders)).toEqual([])
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+    expect(ctx().connection).toBe('connected')
+    // Puesta al día: TODO lo que ese aviso puede invalidar, no sólo lo último.
+    expect(calledTopics(loaders)).toEqual(['sales', 'register', 'catalog', 'settings'])
+  })
+
+  it('un aviso recibido antes de asentar también cuenta como recuperación', async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+
+    await act(async () => {
+      reportWsConnected()
+      failSubscription('PosHomeSaleEvent')
+    })
+    expect(ctx().connection).toBe('reconnecting')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    await act(async () => {
+      emitSale()
+    })
+
+    expect(ctx().connection).toBe('connected')
+    expect(calledTopics(loaders)).toEqual(['sales'])
+  })
+
+  it('cinco rechazos seguidos dejan "reconnecting" visible y rastro en el log', async () => {
+    await renderFreshness(null)
+    await act(async () => {
+      reportWsConnected()
+    })
+
+    const backoff = [1_000, 2_000, 4_000, 8_000, 16_000]
+    for (const delay of backoff) {
+      await act(async () => {
+        failSubscription('PosHomeSaleEvent')
+      })
+      expect(ctx().connection).toBe('reconnecting')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay)
+      })
+    }
+
+    expect(opensOf('PosHomeSaleEvent')).toBe(1 + backoff.length)
+    expect(ctx().connection).toBe('reconnecting')
+    // El rastro NO está detrás del gate de DEV: es console.error siempre.
+    expect(errorLog).toHaveBeenCalledTimes(backoff.length)
+    expect(String(errorLog.mock.calls[backoff.length - 1][0])).toContain('5 fallos seguidos')
+
+    // Sexto rechazo: la espera topa en 30 s (no sigue duplicando a 32).
+    await act(async () => {
+      failSubscription('PosHomeSaleEvent')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_999)
+    })
+    expect(opensOf('PosHomeSaleEvent')).toBe(6)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(opensOf('PosHomeSaleEvent')).toBe(7)
+  })
+
+  it('una suscripción que se cierra sin error también se reabre', async () => {
+    await renderFreshness(null)
+    await act(async () => {
+      reportWsConnected()
+    })
+
+    // Apollo 4 completa el observable tras un rechazo y el servidor puede
+    // cerrarlo por su cuenta: en los dos casos dejan de llegar avisos.
+    await act(async () => {
+      closeSubscription('PosHomeAppointmentUpdated')
+    })
+    expect(ctx().connection).toBe('reconnecting')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect(opensOf('PosHomeAppointmentUpdated')).toBe(2)
+  })
+
+  it('desmontar el canal cancela el reintento pendiente', async () => {
+    const { unmount } = await renderFreshness(null)
+
+    await act(async () => {
+      failSubscription('PosHomeSaleEvent')
+    })
+    unmount()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(opensOf('PosHomeSaleEvent')).toBe(1)
   })
 })
