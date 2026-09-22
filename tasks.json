@@ -1948,7 +1948,7 @@
       ],
       "priority": 4,
       "type": "feature",
-      "status": "pending",
+      "status": "split",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
@@ -2002,7 +2002,7 @@
         "src/features/checkout/presentation/CheckoutPage.test.tsx"
       ],
       "depends_on": [
-        "T-032"
+        "T-032d"
       ],
       "priority": 5,
       "type": "feature",
@@ -3337,6 +3337,297 @@
           ]
         }
       ]
+    },
+    {
+      "id": "T-032a",
+      "title": "Barra de venta a staff en el cobro: interruptor, comprador, cupo y franja",
+      "description": "Crea src/features/checkout/presentation/StaffSaleBar.tsx y montala en CheckoutPage.tsx dentro de `cartContent`, arriba del CartList (despues del CustomerChip). Solo se renderiza si `ck.staffSale.available` (el viewer tiene pos.staff_sale.create o create_for_others); sin permiso el cobro se ve EXACTAMENTE como hoy. Con la politica apagada el modo no se activa: `setStaffSaleEnabled(true)` es asincrono, pide el cupo primero y deja `staffSale.error` ([D-055]) — la barra pinta ese error y el interruptor se queda apagado.\nContenido:\n(1) Interruptor 'Venta a staff': role='switch' + aria-checked, area tactil >= 44 px (TouchButton o boton propio con min-h-[var(--pos-touch-min)]), onClick -> `void ck.setStaffSaleEnabled(!enabled)`; deshabilitado mientras `staffSale.loading`.\n(2) Encendido: 'Compra: {NOMBRE}' en font-[var(--font-pos-display)]; el nombre sale de `barbers.find(b => b.id === staffSale.buyerStaffUserId)`. Con `staffSale.canSellForOthers`, boton 'Cambiar' que abre BarberSelectorSheet (REUTILIZAR, no crear otro) y llama `void ck.setStaffSaleBuyer(id)`.\n(3) Cupo del mes desde `staffSale.quotaView`: 'Productos: {used+inCart} de {limit}' y 'Valor: ... de ...' con MoneyValue ([D-005], label obligatorio [D-006]); mientras `staffSale.loading` va status='loading' y cents={null} (esqueleto, nunca $0); sin tope (limit === null) -> 'Sin tope este mes'; `quotaView.exceeded` -> renglon en var(--color-bravo) con `staffSale.blockMessage`.\n(4) Mientras esta encendido, franja con borde var(--color-bravo) y etiqueta 'VENTA A STAFF' envolviendo la barra, para que nadie cobre a precio staff por accidente.\nEn CheckoutPage: el CobrarCTA se deshabilita tambien con `!ck.staffSale.canCharge` y CONSERVA staffName={operatorName} ('Cobrar ... como {operador}', [D-011]/[D-012]): operador y comprador pueden ser personas distintas y ambos nombres deben verse. Pasa `canApply={canApplyCoupon && !ck.couponsDisabled}` al CouponsBlock y, si hay `ck.couponsDisabledMessage`, muestralo ahi.\nTest StaffSaleBar.test.tsx: no renderiza sin permiso ni con politica apagada; encender muestra al comprador; 'Cambiar' solo con create_for_others; cupo con tope, sin tope y excedido; cargando no muestra numeros (expect(group).not.toHaveTextContent(/\\d/)). Textos es-MX, tokens existentes, sin tocar el design system.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Visibilidad por permiso y politica, comprador, cupo y estados de carga",
+          "check": "npm test -- src/features/checkout/presentation/StaffSaleBar.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro existente sigue en verde con la barra montada",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y build",
+          "check": "npm run build",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Lint de los archivos tocados",
+          "check": "npx eslint src/features/checkout/presentation/StaffSaleBar.tsx src/features/checkout/presentation/CheckoutPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-5",
+          "desc": "Revision visual en iPad: encender el modo, ver comprador, cupo y la franja VENTA A STAFF; con recepcion, cambiar de comprador",
+          "check": "Manual en iPad landscape",
+          "kind": "manual"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Seccion 4.5: interruptor, comprador y cupo restante visible en el POS (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/presentation/BarberSelectorSheet.tsx",
+          "reason": "Selector de barbero existente que se reutiliza para elegir comprador (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "staffSale, setStaffSaleEnabled y setStaffSaleBuyer: todo el estado que consume la barra"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/shared/pos-ui/MoneyValue.tsx",
+          "reason": "Unica forma de pintar dinero del servidor: esqueleto mientras carga, nunca $0"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-04-29-pos-visual-language-design.md",
+          "reason": "Lenguaje visual y tokens del POS (AC-5)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/StaffSaleBar.tsx",
+        "src/features/checkout/presentation/StaffSaleBar.test.tsx",
+        "src/features/checkout/presentation/CheckoutPage.tsx"
+      ],
+      "depends_on": [
+        "T-031"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-032",
+      "review_feedback": []
+    },
+    {
+      "id": "T-032b",
+      "title": "Carrito en modo staff: precio publico tachado junto al precio staff",
+      "description": "En modo venta a staff, cada linea de PRODUCTO del carrito muestra el precio publico TACHADO junto al precio staff vigente. La marca de linea staff es `listUnitPriceCents` y nada mas ([D-041]): hoy vive en `ck.staffSale.lines` (StaffSaleCartLine[], una por linea de producto, con lineId, listUnitPriceCents | null, blockReason y blockMessage). NO tocar lib/cart.ts ni agregar una bandera booleana paralela por linea.\nPipe (por eso entra CartList.tsx): CheckoutPage deriva con useMemo un `Map<lineId, StaffSaleCartLine>` desde `ck.staffSale.lines` y lo pasa a CartList como prop nueva opcional `staffLines`; CartList reparte a cada CartLineRow la entrada de SU linea — mismo patron que ya usa `excludedByCatalogItem` -> `excludedBarberIds`.\nCartLineRow recibe props opcionales `staffListUnitPriceCents?: number | null` y `staffBlockMessage?: string | null`. Si viene la primera: pinta `formatMoney(staffListUnitPriceCents * line.qty)` con line-through y color var(--color-bone-muted) a la IZQUIERDA del total vigente (que se queda como esta), y el aria-label de la fila nombra los dos precios (precio staff y precio publico anterior) para que el tachado no sea informacion solo visual. Si viene `staffBlockMessage`, la fila lo muestra bajo el nombre en var(--color-bravo) (es lo que impide cobrar: 'Elige la presentacion' o 'no esta disponible para venta a staff').\nSin ninguna de las dos props la fila queda IDENTICA a hoy: los tests actuales de CartLineRow y de CheckoutPage no deben cambiar de comportamiento.\nTests: ampliar CartLineRow.test.tsx con (a) linea de producto con staffListUnitPriceCents: se ven ambos precios y el publico va tachado; (b) sin la prop no aparece ningun precio extra; (c) con staffBlockMessage se pinta el motivo. Consultar por rol/etiqueta accesible, nunca por clase CSS. Textos es-MX, tokens existentes.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Fila de producto en modo staff: precio staff + precio publico tachado y motivo de bloqueo",
+          "check": "npm test -- src/features/checkout/presentation/CartLineRow.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Carrito y cobro existentes siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y build",
+          "check": "npm run build",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Lint de los archivos tocados",
+          "check": "npx eslint src/features/checkout/presentation/CartLineRow.tsx src/features/checkout/presentation/CartList.tsx src/features/checkout/presentation/CheckoutPage.tsx",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Seccion 4.5: los productos elegibles cambian a precio staff con el publico tachado (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "staffSale.lines: StaffSaleCartLine[] con listUnitPriceCents y blockMessage por linea"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/presentation/CartList.tsx",
+          "reason": "Patron de pipe ya existente: excludedByCatalogItem -> excludedBarberIds por linea"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-041] listUnitPriceCents es la UNICA marca de linea staff; [D-042] nunca un precio staff no cobrable"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/CartLineRow.tsx",
+        "src/features/checkout/presentation/CartList.tsx",
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CartLineRow.test.tsx"
+      ],
+      "depends_on": [
+        "T-032a"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-032",
+      "review_feedback": []
+    },
+    {
+      "id": "T-032c",
+      "title": "useCheckout expone la vista de venta a staff por producto del catalogo",
+      "description": "El grid del cobro no puede pintar precio staff ni marcar no elegibles porque el dato NO existe donde la UI lo ve: `catalogItems` (la card del grid) solo trae id/kind/name/priceCents/stockQty, y el CatalogProduct completo (staffSaleEligible, staffPriceCents, variants) vive en el estado interno `products` de useCheckout, que no se expone. Esta tarea crea ese dato; el pintado va en la siguiente.\nEn src/features/checkout/application/useCheckout.ts, dentro del MISMO useMemo que ya arma `staffSale` (derivado en render, nada de efectos), agrega `catalogViews: Map<string, StaffCatalogView>`: una entrada por producto de `products`, con `staffLineView(product, null)` de lib/staff-sale ya aplicado, y la forma `{ eligible, reason, unitPriceCents, listUnitPriceCents, message }` donde `message = staffLineMessage(view)` (null cuando es elegible). Con el modo APAGADO el Map va vacio (no hay nada que pintar) y no se recalcula nada. Un producto que exige presentacion (reason NEEDS_VARIANT) entra como NO elegible, con unitPriceCents null y su mensaje: el tile no puede pintar un precio staff que no existe ([D-042]). Exporta el tipo `StaffCatalogView` y deja en su docblock que la autoridad sigue siendo el API (createPOSSale vuelve a medir precio, elegibilidad y topes) y que esto es display.\nNo cambies ninguna firma existente de `staffSale` ni el contrato de addCatalogItem: es una adicion.\nTests: ampliar src/features/checkout/application/useCheckout.staffSale.test.tsx con (a) modo apagado -> Map vacio; (b) encendido -> el producto elegible trae su precio staff y su precio publico; (c) un producto con staffSaleEligible false y otro con variantes de precio staff distinto aparecen no elegibles con su mensaje. Ojo con la trampa del repo: un efecto con viewer?.staff?.id en deps corre DOS veces al montar.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "catalogViews: vacio con el modo apagado, precio staff por producto elegible y no elegibles con motivo",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro existente sigue en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y build",
+          "check": "npm run build",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Lint del hook",
+          "check": "npx eslint src/features/checkout/application/useCheckout.ts",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Secciones 4.2 y 4.5: precedencia del precio staff y no elegibles marcados en el POS (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/lib/staff-sale.ts",
+          "reason": "staffLineView / staffLineMessage / needsVariant: reglas puras de presentacion ya escritas"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "El useMemo de staffSale donde se agrega catalogViews, y el estado products"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/handoffs/T-031.md",
+          "reason": "Contrato vigente de staffSale que esta tarea amplia sin romper"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.staffSale.test.tsx"
+      ],
+      "depends_on": [
+        "T-032b"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-032",
+      "review_feedback": []
+    },
+    {
+      "id": "T-032d",
+      "title": "Catalogo en modo staff: precio staff en el tile y no elegibles atenuados",
+      "description": "Con `ck.staffSale.catalogViews` (T-032c) el catalogo del cobro pasa a modo venta a staff.\nCheckoutPage pasa a CatalogGrid dos props nuevas: `staffMode={ck.staffSale.enabled}` y `staffViews={ck.staffSale.catalogViews}`.\nCatalogGrid resuelve por item (solo `kind === 'product'` -> `staffViews.get(item.id)`; servicios y combos siguen a precio normal, spec 4.3.4) y baja a CatalogTile (tablet/desktop) y CatalogListRow (movil, mismo grid) props opcionales: `staffMode?: boolean`, `staffPriceCents?: number | null`, `staffUnavailableMessage?: string | null`.\nEn modo staff el tile pinta el PRECIO STAFF en vez del publico (formatMoney) y deja claro en su texto accesible que es precio staff. Un producto no elegible (o que exige presentacion) se ve atenuado (opacity-50 + cursor-not-allowed), con la etiqueta 'No disponible para staff' y el boton `disabled`: NO se puede agregar, exactamente como ya se comporta stockQty === 0 (que sigue mandando si tambien aplica). Sin `staffMode` el tile y la fila se comportan EXACTAMENTE como hoy: las props son aditivas y opcionales.\nNo dupliques la regla: la elegibilidad y el precio vienen del Map del hook, que sale de lib/staff-sale; el tile no decide nada ni vuelve a resolver variantes. `addCatalogItem` ya devuelve { added: false, reason, message } si algo se cuela: no lo reimplementes, solo evita el tap.\nTests: CatalogTile.test.tsx cubre (a) modo staff pinta el precio staff; (b) no elegible -> boton deshabilitado, etiqueta 'No disponible para staff' y onAdd no se llama; (c) sin modo staff nada cambia. Si CatalogGrid.test.tsx necesita ajuste entra por la tolerancia de tests. Consultar por rol/etiqueta accesible, nunca por clase CSS. Textos es-MX, tokens existentes, sin tocar el design system.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Tile en modo staff: precio staff, no elegible atenuado con 'No disponible para staff' y sin poder agregar",
+          "check": "npm test -- src/features/checkout/presentation/CatalogTile.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Grid y cobro existentes siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CatalogGrid.test.tsx src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y build",
+          "check": "npm run build",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Lint de los archivos tocados",
+          "check": "npx eslint src/features/checkout/presentation/CatalogTile.tsx src/features/checkout/presentation/CatalogListRow.tsx src/features/checkout/presentation/CatalogGrid.tsx src/features/checkout/presentation/CheckoutPage.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-5",
+          "desc": "Revision visual en iPad: con el modo encendido, una pomada muestra precio staff y un producto no elegible aparece atenuado y no se agrega",
+          "check": "Manual en iPad landscape",
+          "kind": "manual"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-venta-a-staff-design.md",
+          "reason": "Seccion 4.5: productos elegibles a precio staff y los no elegibles marcados (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CatalogGrid.tsx",
+          "reason": "Reparte a CatalogTile y CatalogListRow; ya tiene el patron de displayPrice y overlay"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/presentation/CatalogTile.tsx",
+          "reason": "Estado deshabilitado + atenuado ya resuelto para stockQty 0: imitarlo para no elegible"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-04-29-pos-visual-language-design.md",
+          "reason": "Lenguaje visual y tokens del POS (AC-5)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/CatalogTile.tsx",
+        "src/features/checkout/presentation/CatalogListRow.tsx",
+        "src/features/checkout/presentation/CatalogGrid.tsx",
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CatalogTile.test.tsx"
+      ],
+      "depends_on": [
+        "T-032c"
+      ],
+      "priority": 4,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-032",
+      "review_feedback": []
     }
   ]
 }
