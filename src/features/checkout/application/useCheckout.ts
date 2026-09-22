@@ -987,8 +987,15 @@ export function useCheckout() {
     if (!product) return
     const view = staffLineView(product, productVariantId)
     if (!view.eligible || view.unitPriceCents === null) {
-      // Esa presentación no se vende a staff: la línea se queda sin precio
-      // staff (y por lo tanto bloqueando el cobro con su motivo).
+      // Esa presentación no se vende a staff: la línea PIERDE su precio staff
+      // (y por lo tanto bloquea el cobro con su motivo). Soltar la entrada del
+      // mapa sin revertir el precio dejaría la línea a precio staff dentro de
+      // una venta normal en cuanto se apagara el modo —`disableStaffSale` sólo
+      // revierte las que SIGUEN en el mapa—, así que primero se comitea de
+      // vuelta el precio público congelado de esa entrada, por el mismo camino
+      // que usa el apagado ([D-042]: nada de precios que el API va a rechazar).
+      const staff = staffLinePrices.get(lineId)
+      if (staff) commitLinePrice(line, staff.listUnitPriceCents)
       setStaffLinePrices((prev) => {
         const next = new Map(prev)
         next.delete(lineId)
@@ -1279,9 +1286,13 @@ export function useCheckout() {
               }
             }
             // El admin la sacó de la venta a staff (o le quitó el precio): la
-            // línea conserva su precio y PIERDE la marca staff, lo que bloquea
-            // el cobro con el motivo en vez de cobrarla a precio público.
-            return { priceCents: line.unitPriceCents, clearBarber: false, staff: null }
+            // línea PIERDE la marca staff, lo que bloquea el cobro con el
+            // motivo, y vuelve a su precio público CONGELADO — conservar el
+            // precio staff la dejaría cobrándose a precio staff dentro de una
+            // venta normal en cuanto se apagara el modo (`disableStaffSale`
+            // sólo revierte las líneas que siguen en el mapa), y el API la
+            // rechazaría por PRICE_MISMATCH ([D-042]).
+            return { priceCents: staff.listUnitPriceCents, clearBarber: false, staff: null }
           }
           return {
             priceCents: productPriceById.get(line.itemId) ?? line.unitPriceCents,

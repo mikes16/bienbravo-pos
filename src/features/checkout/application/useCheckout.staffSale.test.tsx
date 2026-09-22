@@ -59,6 +59,19 @@ const POMADA: CatalogProduct = {
   staffSaleEligible: false, staffPriceCents: 10000,
   variants: [{ id: 'var-pomada', priceCents: 20000, staffPriceCents: 10000 }],
 }
+/**
+ * Dos presentaciones y sólo una con precio staff: elegir la otra deja la línea
+ * sin precio staff que sostener. Vive FUERA de `CATALOG` (lo inyecta sólo el
+ * test que lo usa) para no mover el conteo de `catalogViews` de los demás.
+ */
+const ACEITE: CatalogProduct = {
+  id: 'prod-aceite', name: 'Aceite', sku: null, priceCents: 14000, imageUrl: null, categoryId: null, sortOrder: 3,
+  staffSaleEligible: true, staffPriceCents: null,
+  variants: [
+    { id: 'var-30ml', priceCents: 14000, staffPriceCents: 7000 },
+    { id: 'var-100ml', priceCents: 26000, staffPriceCents: null },
+  ],
+}
 const CATALOG = [CERA, SPRAY, POMADA]
 
 /** Lo que el grid manda a `addCatalogItem` (card del catálogo). */
@@ -409,6 +422,38 @@ describe('useCheckout · venta a staff', () => {
     expect(result.current.staffSale.canCharge).toBe(true)
   })
 
+  it('elegir una presentación que no se vende a staff devuelve la línea a su precio público', async () => {
+    const { repos, checkout } = makeRepos()
+    checkout.getProducts = vi.fn().mockResolvedValue([...CATALOG, ACEITE])
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    act(() => {
+      result.current.addCatalogItem(tile(ACEITE, 'var-30ml'))
+    })
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(7000)
+
+    // La presentación grande no tiene precio staff en ningún nivel: la línea
+    // pierde su precio staff y NO se puede quedar con el de la chica.
+    const lineId = result.current.cartState.lines[0].id
+    act(() => {
+      result.current.setStaffSaleLineVariant(lineId, 'var-100ml')
+    })
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(14000)
+    expect(result.current.staffSale.lines[0]).toMatchObject({
+      listUnitPriceCents: null,
+      productVariantId: null,
+      blockReason: 'NEEDS_VARIANT',
+    })
+    expect(result.current.staffSale.canCharge).toBe(false)
+
+    // Apagar el modo la deja lista para una venta NORMAL: ninguna línea viaja
+    // a precio staff (`disableStaffSale` sólo revierte las que siguen marcadas).
+    await enable(result, false)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(14000)
+    expect(result.current.staffSale.canCharge).toBe(true)
+  })
+
   /* ── 4. Cupo del mes (spec §4.3.6) ── */
 
   it('el tope del mes bloquea el cobro con el mensaje del cupo', async () => {
@@ -526,6 +571,45 @@ describe('useCheckout · venta a staff', () => {
       listUnitPriceCents: 20000,
       blockReason: null,
     })
+    expect(result.current.staffSale.canCharge).toBe(true)
+  })
+
+  it('si el admin la sacó de la venta a staff, el re-precio la devuelve a su precio público', async () => {
+    const { repos, checkout } = makeRepos()
+    let catalog = CATALOG
+    checkout.getProducts = vi.fn(async () => catalog)
+    checkout.createSale = vi
+      .fn()
+      .mockRejectedValue(new CheckoutRejectedError('PRICE_MISMATCH', 'El precio cambió.'))
+    const { result } = await mountLoaded(repos)
+    await enable(result)
+
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(12000)
+
+    // El admin la saca de la venta a staff entre el agregado y el cobro: al
+    // re-preciar ya no hay precio staff que sostener.
+    catalog = [{ ...CERA, staffSaleEligible: false }, SPRAY, POMADA]
+    await act(async () => {
+      await result.current.submit(CASH)
+    })
+
+    expect(result.current.rejectionNotice?.code).toBe('PRICE_MISMATCH')
+    // Vuelve al precio público congelado (nunca se queda a precio staff) y
+    // bloquea el cobro con su motivo mientras el modo siga encendido.
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(25000)
+    expect(result.current.staffSale.lines[0]).toMatchObject({
+      listUnitPriceCents: null,
+      blockReason: 'NOT_ELIGIBLE',
+    })
+    expect(result.current.staffSale.canCharge).toBe(false)
+
+    // Apagar el modo es la salida que instruye el aviso: la línea ya está a
+    // precio público, así que la venta NORMAL sale sin otro rechazo del API.
+    await enable(result, false)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(25000)
     expect(result.current.staffSale.canCharge).toBe(true)
   })
 

@@ -4037,6 +4037,71 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-053",
+      "title": "Modo staff: una línea que pierde su precio staff vuelve al precio público congelado",
+      "description": "Hallazgo Important del Principal (3ª pasada, run 2026-09-22-a). En src/features/checkout/application/useCheckout.ts hay dos ramas que sueltan la entrada de una línea en `staffLinePrices` SIN revertir su `unitPriceCents`: (a) la rama `staff: null` del re-precio tras rechazo (~1284 y el bloque `setStaffLinePrices` ~1325-1337), cuando el admin sacó el producto de la venta a staff entre el agregado y el cobro; (b) la rama no-elegible de `setStaffSaleLineVariant` (~994). Como `disableStaffSale` (~925) sólo revierte las líneas PRESENTES en el mapa, esa línea conserva el precio staff y, al apagar el modo (justo la salida que hoy instruye el texto interino de T-050), viaja a precio staff dentro de una venta NORMAL con `canCharge` true: el API la rechaza con PRICE_MISMATCH y el operador entra en un round trip evitable. Cambios: (1) en las dos ramas, ANTES de borrar la entrada del mapa, comitear de vuelta el `listUnitPriceCents` congelado de esa entrada con `commitLinePrice` (el mismo camino que usa `disableStaffSale`); (2) en modo staff la línea sigue bloqueada por su `blockReason` (nada cambia ahí) y al apagar el modo queda a precio público correcto; (3) no toques elegibilidad, cupo, ni el payload del cobro más allá del precio de esa línea; no agregues banderas paralelas por línea ([D-068]). Tests en src/features/checkout/application/useCheckout.staffSale.test.tsx (arnés existente: setStaffSaleQuota del mock, comprador, cupo, re-precio tras rechazo): (a) modo encendido con una línea ya a precio staff → el re-precio tras rechazo devuelve `staff: null` para ese producto → la línea vuelve a su `listUnitPriceCents` y sigue bloqueada mientras el modo está encendido; al apagar el modo la línea queda a precio público y `canCharge` es true; (b) `setStaffSaleLineVariant` hacia una variante no elegible → la línea vuelve a su precio público congelado; (c) los escenarios existentes (21) siguen en verde sin cambios.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Una línea que pierde su entrada staff (re-precio con staff null o variante no elegible) vuelve al precio público congelado; al apagar el modo no queda ninguna línea a precio staff",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro, la barra y la actividad de venta siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/presentation/StaffSaleBar.test.tsx src/features/checkout/application/useCheckout.saleActivity.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Eslint limpio en el hook",
+          "check": "npx eslint src/features/checkout/application/useCheckout.ts",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1 (3ª pasada): las dos ramas que sueltan la entrada sin revertir y el fix con commitLinePrice (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "disableStaffSale, setStaffSaleLineVariant, el bloque setStaffLinePrices del re-precio tras rechazo y commitLinePrice (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "reason": "Arnés existente del modo staff (re-precio tras rechazo, variante por línea, apagado del modo) a extender (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-068] precio público congelado en staffLinePrices sin banderas paralelas; [D-042]/[D-055] no ofrecer cobros que el API rechaza (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.staffSale.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }
