@@ -15,8 +15,9 @@ reimplementa precios, stock ni permisos.
 - Vitest 3 + Testing Library + jsdom (`vitest.config.ts`, `src/test/setup.ts`). size-limit (`npm run size`). npm.
 
 ## Estructura
-- `src/app/` — `router.tsx` (rutas lazy + `routePrefetchers`), `PosShell.tsx` (header + `BottomTabNav` gateado
-  por permisos), `IdentityStripV2.tsx`, `RouteLoader.tsx`, `useIdleRoutePrefetch.ts`, `Providers.tsx`.
+- `src/app/` — `App.tsx` (shell raíz: monta el router memoizado + `useAutoLock` + `useIdleRoutePrefetch`),
+  `router.tsx` (rutas lazy + `routePrefetchers`), `PosShell.tsx` (header + `BottomTabNav` gateado por permisos),
+  `IdentityStripV2.tsx`, `RouteLoader.tsx`, `useIdleRoutePrefetch.ts`, `Providers.tsx`.
 - `src/core/` — `auth/` (viewer, PIN, lock, `saleActivity.ts`), `bootstrap/` (`BootstrapProvider`: posSettings +
   versión de catálogo), `freshness/` (canal de frescura: `FreshnessProvider`, `useLiveRefresh`, `RefreshControl`,
   `useDeployWatcher`), `permissions/` (`posTabs.ts`: tabs ↔ permisos `pos.tab.*` / `pos.sales.day.read`;
@@ -30,7 +31,8 @@ reimplementa precios, stock ni permisos.
   `src/shared/lib/` (money, date con tz de sucursal, cn, cloudinary, errores, reputation), `src/shared/cash/`
   (conteo de caja).
 - `src/test/mocks/repositories.ts` (repos in-memory + `MOCK_VIEWER`), `src/test/helpers/renderWithProviders.tsx`.
-- `docs/SALES_RULES.md`, `docs/superpowers/specs/` (diseños por feature) + `plans/` (plan de implementación).
+- `docs/SALES_RULES.md`, `docs/superpowers/specs/` (diseños por feature) y `docs/superpowers/plans/` (plan de
+  implementación).
 
 ## Convenciones fijas
 - Los componentes no llaman a Apollo directo: pasan por repositorios inyectados; los tests los mockean.
