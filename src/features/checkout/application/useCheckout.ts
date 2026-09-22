@@ -11,8 +11,22 @@ import {
 } from '@/core/freshness/FreshnessProvider'
 import { useToast } from '@/core/toast/useToast'
 import { cartReducer, initialCart, findUnavailableCreditedBarberId, computeTotals } from '../lib/cart'
+import type { CartLine } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
 import { sortCatalogItems, onlyCategorized } from '../lib/sort-catalog'
+import {
+  STAFF_SALE_MESSAGES,
+  quotaView,
+  staffCartSummary,
+  staffLineView,
+  unitsQuotaMessage,
+} from '../lib/staff-sale'
+import type {
+  StaffCartSummary,
+  StaffLineBlockReason,
+  StaffQuotaView,
+  StaffSummaryLine,
+} from '../lib/staff-sale'
 import { toCheckoutRejection } from '../domain/checkout.types'
 import type {
   AnyCheckoutRejectionCode,
@@ -21,7 +35,9 @@ import type {
   CatalogService,
   CatalogProduct,
   CatalogCombo,
+  StaffSaleQuota,
 } from '../domain/checkout.types'
+import { formatMoney } from '@/shared/lib/money'
 import type { AppointmentPrepayState, AppliedCouponPreview, DraftSaleItemArg } from '../data/checkout.repository'
 import type { CustomerReputationTag } from '@/shared/lib/reputation'
 
@@ -108,6 +124,84 @@ export interface CheckoutRejectionNotice {
 }
 
 const PRICE_CHANGED_MESSAGE = 'Los precios cambiaron. Revisa el total antes de cobrar.'
+
+/* ── Venta a staff: constantes y tipos del modo (spec venta a staff §4.3/§4.5) ── */
+
+/** Vender a staff. Sin ninguno de los dos el interruptor ni se ofrece (spec §5). */
+const STAFF_SALE_CREATE = 'pos.staff_sale.create'
+/** Cobrar la compra de OTRO barbero (caso recepción). */
+const STAFF_SALE_CREATE_FOR_OTHERS = 'pos.staff_sale.create_for_others'
+
+const STAFF_SALE_MESSAGE = {
+  noCoupons: 'Una venta a staff no admite cupones',
+  disabled: 'La venta a staff está desactivada.',
+  quotaUnavailable: 'No se pudo leer el cupo de venta a staff. Reintenta.',
+  noServices: 'Una venta a staff no admite servicios ni combos en este ticket',
+  quotaExceeded: 'Se pasó un tope de la venta a staff de este mes.',
+  noBuyer: 'No se pudo identificar al comprador de la venta a staff.',
+} as const
+
+/** Por qué un concepto no entra al ticket en modo venta a staff. */
+export type StaffSaleAddBlockReason = StaffLineBlockReason | 'SERVICES_NOT_ALLOWED'
+
+/** Lo que devuelve `addCatalogItem`: qué pasó y, si no entró, por qué. */
+export type AddCatalogItemResult =
+  | { added: true }
+  | { added: false; reason: StaffSaleAddBlockReason; message: string }
+
+/**
+ * Precio staff COMITEADO de una línea de producto. `listUnitPriceCents` es el
+ * precio público congelado y es la ÚNICA marca de "esta línea va a precio
+ * staff" ([D-041]): no hay bandera paralela por línea. Vive en un mapa del
+ * hook (lineId → esto) y no dentro de `CartLine` porque `lib/cart.ts` queda
+ * fuera del alcance de esta tarea; el día que la línea gane el campo, el mapa
+ * se colapsa sin cambiar ninguna regla de aquí.
+ */
+interface StaffLinePrice {
+  listUnitPriceCents: number
+  /** Presentación elegida; `null` = el producto no necesita elegir. */
+  productVariantId: string | null
+}
+
+/** Resultado de re-preciar UNA línea tras un rechazo del API. */
+interface RepricedLine {
+  priceCents: number
+  /** El barbero de la línea ya no ofrece el item: se queda sin barbero. */
+  clearBarber: boolean
+  /** Precio staff re-resuelto; `null` = la línea no va a precio staff. */
+  staff: StaffLinePrice | null
+}
+
+/** Una línea de producto del ticket, vista desde el modo venta a staff. */
+export interface StaffSaleCartLine {
+  lineId: string
+  productId: string
+  name: string
+  qty: number
+  /** Lo que se cobra hoy por unidad (staff si la línea ya se convirtió). */
+  unitPriceCents: number
+  /** Precio público congelado; `null` = la línea NO tiene precio staff. */
+  listUnitPriceCents: number | null
+  productVariantId: string | null
+  /** Qué falta para poder cobrarla a staff; `null` = lista. */
+  blockReason: StaffLineBlockReason | null
+  blockMessage: string | null
+}
+
+/**
+ * Qué tope rebasó el carrito, en texto para el operador. El API vuelve a
+ * medirlo al cobrar y su mensaje gana: esto sólo evita que el operador se
+ * entere después de haber cobrado.
+ */
+function staffQuotaBlockMessage(view: StaffQuotaView): string | null {
+  if (view.units.exceeded) return unitsQuotaMessage(view.units)
+  if (view.listAmountCents.exceeded) {
+    return `Esta compra pasa el monto de venta a staff del mes (${formatMoney(view.listAmountCents.limit ?? 0)}).`
+  }
+  const product = view.perProduct.find((p) => p.exceeded)
+  if (product) return `Te pasas del tope de ${product.limit} piezas por producto este mes.`
+  return null
+}
 
 /**
  * Tema del canal de frescura que obliga a volver a pedir el catálogo: el admin
@@ -202,6 +296,11 @@ export function useCheckout() {
   const freshness = useContext(FreshnessContext)
 
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
+  // Productos TAL CUAL los devuelve el API (elegibilidad, precio staff y
+  // variantes incluidos). `catalogItems` es la card del grid y no los carga: el
+  // modo venta a staff necesita el producto completo para resolver el precio
+  // de la línea con `staffLineView`, y el re-precio también.
+  const [products, setProducts] = useState<CatalogProduct[]>([])
   const [categories, setCategories] = useState<Array<{ id: string; name: string; sortOrder: number }>>([])
   const [barbers, setBarbers] = useState<Barber[]>([])
   // Tracks whether the initial Promise.all (catalog + barbers + register) has
@@ -221,6 +320,16 @@ export function useCheckout() {
   const [completeAppointmentId, setCompleteAppointmentId] = useState<string | null>(null)
 
   const [cartState, dispatch] = useReducer(cartReducer, initialCart(viewer?.staff?.id ?? ''))
+
+  // Las líneas del carrito para leerlas DESPUÉS de un await (encender el modo
+  // venta a staff espera al cupo, que va siempre a la red): la clausura del
+  // render donde se tocó el interruptor no ve lo que el operador agregó
+  // mientras el cupo viajaba, y esa línea se quedaría a precio público dentro
+  // de un ticket de staff (PRICE_MISMATCH seguro).
+  const cartLinesRef = useRef(cartState.lines)
+  useEffect(() => {
+    cartLinesRef.current = cartState.lines
+  }, [cartState.lines])
 
   // Barbero atendiendo = default barber real de la venta (no el fallback de
   // display). Alimenta TANTO el filtro de exclusión del grid como el overlay de
@@ -275,6 +384,19 @@ export function useCheckout() {
   // local mientras el cajero no cierre la venta.
   const [appliedCoupons, setAppliedCoupons] = useState<AppliedCouponPreview[]>([])
   const [couponError, setCouponError] = useState<string | null>(null)
+
+  /* ── Estado del modo "venta a staff" (spec venta a staff §4.3 / §4.5) ──
+   * El interruptor, a quién se le carga la compra, su cupo del mes y el precio
+   * staff comiteado por línea. Nada de esto DECIDE: el API vuelve a resolver
+   * precio, elegibilidad y topes dentro de la transacción del cobro.
+   */
+  const [staffSaleEnabled, setStaffSaleEnabledState] = useState(false)
+  /** `null` = el comprador es el barbero de la sesión activa. */
+  const [staffSaleBuyerId, setStaffSaleBuyerId] = useState<string | null>(null)
+  const [staffQuota, setStaffQuota] = useState<StaffSaleQuota | null>(null)
+  const [staffSaleLoading, setStaffSaleLoading] = useState(false)
+  const [staffSaleError, setStaffSaleError] = useState<string | null>(null)
+  const [staffLinePrices, setStaffLinePrices] = useState<Map<string, StaffLinePrice>>(new Map())
 
   /* ── Publicación al bloqueo automático (spec § 3.3) ──────────────────────
    *
@@ -368,6 +490,7 @@ export function useCheckout() {
         )
         const items = buildCatalogItems(services, products, combos, stockByProductId)
         setCatalogItems(sortCatalogItems(onlyCategorized(items), cats))
+        setProducts(products)
         setCategories(cats)
         setBarbers(brbs)
         const openSessionRegister = registers.find((r) => r.openSession)
@@ -573,6 +696,13 @@ export function useCheckout() {
   }, [cartState.lines])
 
   const applyCoupon = useCallback(async (code: string) => {
+    // Un ticket de venta a staff no admite cupones (spec §4.3.5). El bloque de
+    // cupones queda deshabilitado en la UI; si aun así llega un código, se
+    // avisa aquí en vez de gastar un round trip que el cobro rechazaría.
+    if (staffSaleEnabled) {
+      setCouponError(STAFF_SALE_MESSAGE.noCoupons)
+      return
+    }
     const trimmed = code.trim()
     if (!trimmed) {
       setCouponError('Escribe un código de cupón.')
@@ -606,7 +736,7 @@ export function useCheckout() {
     } catch (e) {
       setCouponError((e as { message?: string }).message ?? 'No se pudo validar el cupón.')
     }
-  }, [appliedCoupons, buildDraftItems, cartState.customer, checkout])
+  }, [appliedCoupons, buildDraftItems, cartState.customer, checkout, staffSaleEnabled])
 
   const removeCoupon = useCallback(async (code: string) => {
     setCouponError(null)
@@ -672,6 +802,267 @@ export function useCheckout() {
   }, [itemsKey, appliedCoupons, cartState.lines])
 
   const discountTotalCents = appliedCoupons.reduce((s, c) => s + c.discountAmountCents, 0)
+
+  /* ── Venta a staff (spec venta a staff §4.3 y §4.5) ──────────────────────
+   *
+   * Modo de COBRO, no un cupón: la barbería le vende productos a un barbero a
+   * precio staff, con su cupo del mes. Todo lo de aquí es para no cobrar algo
+   * que el API vaya a rechazar — precio, elegibilidad y topes los vuelve a
+   * medir `createPOSSale` en su transacción (handoff T-030) y su texto gana.
+   */
+
+  const permissions = viewer?.permissions
+  /** Sin ninguno de los dos permisos el interruptor ni se ofrece (spec §5). */
+  const canSellToStaff =
+    permissions?.includes(STAFF_SALE_CREATE) === true ||
+    permissions?.includes(STAFF_SALE_CREATE_FOR_OTHERS) === true
+  /** Cobrarle la compra a OTRO barbero (recepción) exige su propio permiso. */
+  const canSellToOtherStaff = permissions?.includes(STAFF_SALE_CREATE_FOR_OTHERS) === true
+  // Comprador por default: el barbero de la SESIÓN ACTIVA (spec §4.5, [D-012]:
+  // la sesión define a quién se le carga la compra, no el atendiendo).
+  const staffSaleBuyerStaffUserId = staffSaleBuyerId ?? viewer?.staff?.id ?? null
+
+  /**
+   * Fija el precio de UNA línea. El reducer del carrito no tiene acción de
+   * "solo precio" (la única que toca `unitPriceCents` lleva barbero), así que
+   * una línea sin barbero comitea el precio y limpia el barbero en el mismo
+   * tick — React agrupa ambos dispatch y el estado intermedio no se renderiza.
+   * Compartida por el modo venta a staff y por el re-precio tras un rechazo:
+   * las dos tienen que aterrizar el precio de la MISMA forma.
+   */
+  const commitLinePrice = (line: CartLine, unitPriceCents: number, clearBarber = false) => {
+    if (unitPriceCents === line.unitPriceCents && !clearBarber) return
+    if (line.staffUserId && !clearBarber) {
+      dispatch({ type: 'setLineBarberAndPrice', lineId: line.id, staffUserId: line.staffUserId, unitPriceCents })
+      return
+    }
+    dispatch({ type: 'setLineBarberAndPrice', lineId: line.id, staffUserId: line.staffUserId ?? '', unitPriceCents })
+    dispatch({ type: 'clearLineBarber', lineId: line.id })
+  }
+
+  /**
+   * Cupo del mes del comprador. SIEMPRE a la red (el repositorio no acepta
+   * política de caché, [D-017]): es un cupo compartido entre iPads y
+   * sucursales. El contador de secuencia descarta una respuesta vieja cuando
+   * el operador cambió de comprador mientras ésta viajaba.
+   */
+  const staffQuotaSeqRef = useRef(0)
+  const loadStaffQuota = async (buyerStaffUserId: string | null): Promise<StaffSaleQuota | null> => {
+    if (!locationId) return null
+    const seq = ++staffQuotaSeqRef.current
+    setStaffSaleLoading(true)
+    try {
+      const quota = await checkout.getStaffSaleQuota(locationId, buyerStaffUserId)
+      if (seq !== staffQuotaSeqRef.current) return null
+      setStaffQuota(quota)
+      return quota
+    } catch {
+      if (seq !== staffQuotaSeqRef.current) return null
+      // Sin cupo no se muestra un número viejo ni se inventa uno ([D-020]): el
+      // modo se queda como está y el operador ve por qué.
+      setStaffQuota(null)
+      setStaffSaleError(STAFF_SALE_MESSAGE.quotaUnavailable)
+      return null
+    } finally {
+      if (seq === staffQuotaSeqRef.current) setStaffSaleLoading(false)
+    }
+  }
+
+  /**
+   * Pasa las líneas de PRODUCTO a precio staff. Una línea que no se puede
+   * preciar (no elegible, o falta elegir presentación) NO se convierte y se
+   * queda sin marca staff: eso la deja bloqueando el cobro con su motivo, en
+   * vez de mandarla a precio público dentro de un ticket de staff ([D-042]:
+   * nunca un precio staff que no se pueda cobrar).
+   */
+  const applyStaffPricesToCart = (catalogProducts: CatalogProduct[]) => {
+    const byId = new Map(catalogProducts.map((p) => [p.id, p]))
+    const priced = new Map<string, StaffLinePrice>()
+    for (const line of cartLinesRef.current) {
+      if (line.kind !== 'product') continue
+      const product = byId.get(line.itemId)
+      if (!product) continue
+      const view = staffLineView(product, null)
+      if (!view.eligible || view.unitPriceCents === null) continue
+      priced.set(line.id, { listUnitPriceCents: view.listUnitPriceCents, productVariantId: null })
+      commitLinePrice(line, view.unitPriceCents)
+    }
+    setStaffLinePrices(priced)
+  }
+
+  /** Apaga el modo: cada línea vuelve a su precio público congelado. */
+  const disableStaffSale = () => {
+    setStaffSaleEnabledState(false)
+    setStaffSaleError(null)
+    for (const line of cartLinesRef.current) {
+      const staff = staffLinePrices.get(line.id)
+      if (staff) commitLinePrice(line, staff.listUnitPriceCents)
+    }
+    setStaffLinePrices(new Map())
+  }
+
+  /**
+   * Interruptor "Venta a staff". Encenderlo pide el cupo ANTES de tocar nada:
+   * con la política apagada (`quota.enabled === false`) el modo no se activa
+   * (spec §4.3.1) y con el cupo ilegible tampoco. Ya encendido: fuera cupones
+   * (§4.3.5) y las líneas de producto pasan a precio staff.
+   */
+  const setStaffSaleEnabled = async (next: boolean): Promise<void> => {
+    if (next === staffSaleEnabled) return
+    if (!next) {
+      disableStaffSale()
+      return
+    }
+    if (!canSellToStaff) return
+    setStaffSaleError(null)
+    const quota = await loadStaffQuota(staffSaleBuyerStaffUserId)
+    if (!quota) return
+    if (!quota.enabled) {
+      setStaffSaleError(STAFF_SALE_MESSAGE.disabled)
+      return
+    }
+    setStaffSaleEnabledState(true)
+    setAppliedCoupons([])
+    setCouponError(null)
+    applyStaffPricesToCart(products)
+  }
+
+  /**
+   * A quién se le carga la compra. El barbero sólo compra para sí mismo; pedir
+   * otro comprador exige `create_for_others` y, sin él, el cambio se IGNORA
+   * (no es un error del operador: es que ese botón no existe para él). El cupo
+   * es por comprador, así que cambiarlo lo vuelve a pedir.
+   */
+  const setStaffSaleBuyer = async (staffUserId: string): Promise<void> => {
+    if (!canSellToStaff) return
+    if (staffUserId !== viewer?.staff?.id && !canSellToOtherStaff) return
+    if (staffUserId === staffSaleBuyerStaffUserId) return
+    setStaffSaleBuyerId(staffUserId)
+    if (!staffSaleEnabled) return
+    await loadStaffQuota(staffUserId)
+  }
+
+  /**
+   * Elige la presentación de una línea de producto y la precia con el precio
+   * staff de ESA variante, congelando su precio público. Es lo que desbloquea
+   * una línea con `NEEDS_VARIANT`: sin variante el API rechaza el cobro
+   * (`STAFF_SALE_VARIANT_REQUIRED`).
+   */
+  const setStaffSaleLineVariant = (lineId: string, productVariantId: string) => {
+    if (!staffSaleEnabled) return
+    const line = cartState.lines.find((l) => l.id === lineId)
+    if (!line || line.kind !== 'product') return
+    const product = products.find((p) => p.id === line.itemId)
+    if (!product) return
+    const view = staffLineView(product, productVariantId)
+    if (!view.eligible || view.unitPriceCents === null) {
+      // Esa presentación no se vende a staff: la línea se queda sin precio
+      // staff (y por lo tanto bloqueando el cobro con su motivo).
+      setStaffLinePrices((prev) => {
+        const next = new Map(prev)
+        next.delete(lineId)
+        return next
+      })
+      return
+    }
+    setStaffLinePrices((prev) =>
+      new Map(prev).set(lineId, { listUnitPriceCents: view.listUnitPriceCents, productVariantId }),
+    )
+    commitLinePrice(line, view.unitPriceCents)
+  }
+
+  /**
+   * Lo que el modo venta a staff ve del carrito: qué línea ya tiene precio
+   * staff, qué le falta a las demás, el descuento del ticket y el cupo
+   * contrastado contra lo que se está por cobrar. Derivado en render (nada de
+   * efectos): cambia con el carrito, el catálogo y el cupo.
+   */
+  const staffSale = useMemo(() => {
+    const base = {
+      available: canSellToStaff,
+      canSellForOthers: canSellToOtherStaff,
+      enabled: staffSaleEnabled,
+      buyerStaffUserId: staffSaleBuyerStaffUserId,
+      loading: staffSaleLoading,
+      error: staffSaleError,
+      quota: staffQuota,
+    }
+    if (!staffSaleEnabled) {
+      return {
+        ...base,
+        lines: [] as StaffSaleCartLine[],
+        summary: null as StaffCartSummary | null,
+        quotaView: null as StaffQuotaView | null,
+        canCharge: true,
+        blockMessage: null as string | null,
+      }
+    }
+    const byId = new Map(products.map((p) => [p.id, p]))
+    // Forma que consume `lib/staff-sale`: la marca de línea staff es
+    // `listUnitPriceCents` y nada más ([D-041]).
+    const summaryLines: StaffSummaryLine[] = cartState.lines.map((l) => ({
+      kind: l.kind,
+      itemId: l.itemId,
+      qty: l.qty,
+      unitPriceCents: l.unitPriceCents,
+      listUnitPriceCents: staffLinePrices.get(l.id)?.listUnitPriceCents ?? null,
+    }))
+    const lines: StaffSaleCartLine[] = cartState.lines
+      .filter((l) => l.kind === 'product')
+      .map((line) => {
+        const staff = staffLinePrices.get(line.id) ?? null
+        const product = byId.get(line.itemId)
+        const view = product ? staffLineView(product, staff?.productVariantId ?? null) : null
+        // Con precio staff comiteado la línea está lista; si no, el motivo sale
+        // del catálogo de HOY (y sin producto en el catálogo no hay precio
+        // staff que resolver: tampoco se puede cobrar).
+        const blockReason: StaffLineBlockReason | null = staff ? null : (view?.reason ?? 'NOT_ELIGIBLE')
+        return {
+          lineId: line.id,
+          productId: line.itemId,
+          name: line.name,
+          qty: line.qty,
+          unitPriceCents: line.unitPriceCents,
+          listUnitPriceCents: staff?.listUnitPriceCents ?? null,
+          productVariantId: staff?.productVariantId ?? null,
+          blockReason,
+          blockMessage: blockReason ? STAFF_SALE_MESSAGES[blockReason] : null,
+        }
+      })
+    const view = staffQuota ? quotaView(staffQuota, summaryLines) : null
+    const servicesBlocked =
+      staffQuota?.allowServicesInTicket === false && cartState.lines.some((l) => l.kind !== 'product')
+    const blockedLine = lines.find((l) => l.blockMessage !== null)
+    // Lo que impide cobrar, en orden: la línea que no se puede preciar, el
+    // servicio que esta política no admite, el cupo que no se pudo leer y el
+    // tope rebasado. `null` = se puede cobrar (y el API revalida igual).
+    const blockMessage = ((): string | null => {
+      if (blockedLine) return blockedLine.blockMessage
+      if (servicesBlocked) return STAFF_SALE_MESSAGE.noServices
+      if (view === null) return STAFF_SALE_MESSAGE.quotaUnavailable
+      if (view.exceeded) return staffQuotaBlockMessage(view) ?? STAFF_SALE_MESSAGE.quotaExceeded
+      return null
+    })()
+    return {
+      ...base,
+      lines,
+      summary: staffCartSummary(summaryLines),
+      quotaView: view,
+      canCharge: blockMessage === null,
+      blockMessage,
+    }
+  }, [
+    canSellToStaff,
+    canSellToOtherStaff,
+    cartState.lines,
+    products,
+    staffLinePrices,
+    staffQuota,
+    staffSaleBuyerStaffUserId,
+    staffSaleEnabled,
+    staffSaleError,
+    staffSaleLoading,
+  ])
 
   // Debounce de la búsqueda: sin esto, teclear "john" disparaba 1 request por
   // tecla (4 round trips). Con 280ms agrupamos las pulsaciones en 1 sola
@@ -747,6 +1138,7 @@ export function useCheckout() {
     const overlay = new Map<string, { priceCents: number; isExcluded: boolean }>()
     for (const r of servicePricing) overlay.set(r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded })
     for (const r of comboPricing) overlay.set(r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded })
+    setProducts(products)
     setPriceOverlay(overlay)
     setOverlayBarberId(attendingBarberId)
     // El grid también tiene que mostrar el precio nuevo: si no, el operador
@@ -806,23 +1198,50 @@ export function useCheckout() {
     const productPriceById = new Map(products.map((p) => [p.id, p.priceCents]))
     const lines = cartState.lines
     const repriced = await Promise.all(
-      lines.map(async (line) => {
+      lines.map(async (line): Promise<RepricedLine> => {
         if (line.kind === 'product') {
-          return { priceCents: productPriceById.get(line.itemId) ?? line.unitPriceCents, clearBarber: false }
+          const staff = staffLinePrices.get(line.id)
+          if (staffSaleEnabled && staff) {
+            // Línea de venta a staff: se re-precia con el precio staff de SU
+            // variante y se refresca el precio público congelado de ESA misma
+            // variante ([D-036]: una sola ruta de precio por línea). Nunca se
+            // convierte en silencio a precio público ni ignora la presentación.
+            const product = products.find((p) => p.id === line.itemId)
+            const view = product ? staffLineView(product, staff.productVariantId) : null
+            if (view?.eligible && view.unitPriceCents !== null) {
+              return {
+                priceCents: view.unitPriceCents,
+                clearBarber: false,
+                staff: {
+                  listUnitPriceCents: view.listUnitPriceCents,
+                  productVariantId: staff.productVariantId,
+                },
+              }
+            }
+            // El admin la sacó de la venta a staff (o le quitó el precio): la
+            // línea conserva su precio y PIERDE la marca staff, lo que bloquea
+            // el cobro con el motivo en vez de cobrarla a precio público.
+            return { priceCents: line.unitPriceCents, clearBarber: false, staff: null }
+          }
+          return {
+            priceCents: productPriceById.get(line.itemId) ?? line.unitPriceCents,
+            clearBarber: false,
+            staff: null,
+          }
         }
         const lineBarberId = line.staffUserId || cartState.defaultBarberId || null
         // El overlay ya trae el precio de ESTE barbero cuando es el atendiendo;
         // para los demás se resuelve línea por línea (barbero > sucursal > base).
         const fromOverlay = lineBarberId === attendingBarberId ? overlay.get(line.itemId) : undefined
         if (fromOverlay && !fromOverlay.isExcluded) {
-          return { priceCents: fromOverlay.priceCents, clearBarber: false }
+          return { priceCents: fromOverlay.priceCents, clearBarber: false, staff: null }
         }
         try {
           const resolved =
             line.kind === 'combo'
               ? await checkout.resolveComboPriceForBarber(line.itemId, locId, lineBarberId)
               : await checkout.resolveServicePriceForBarber(line.itemId, locId, lineBarberId)
-          if (!resolved.isExcluded) return { priceCents: resolved.priceCents, clearBarber: false }
+          if (!resolved.isExcluded) return { priceCents: resolved.priceCents, clearBarber: false, staff: null }
           // Ese barbero ya no ofrece el item (el override vale $0 y NUNCA se
           // comitea): la línea se queda sin barbero, a precio de sucursal, y
           // el operador elige otro en el picker. Mismo criterio que
@@ -831,30 +1250,32 @@ export function useCheckout() {
             line.kind === 'combo'
               ? await checkout.resolveComboPriceForBarber(line.itemId, locId, null)
               : await checkout.resolveServicePriceForBarber(line.itemId, locId, null)
-          return { priceCents: atLocation.priceCents, clearBarber: true }
+          return { priceCents: atLocation.priceCents, clearBarber: true, staff: null }
         } catch {
           // Una resolución que truena no puede borrar el carrito: la línea
           // conserva su precio y el API volverá a rechazarla si sigue mal.
-          return { priceCents: line.unitPriceCents, clearBarber: false }
+          return { priceCents: line.unitPriceCents, clearBarber: false, staff: null }
         }
       }),
     )
     lines.forEach((line, idx) => {
       const { priceCents, clearBarber } = repriced[idx]
-      if (priceCents === line.unitPriceCents && !clearBarber) return
-      if (line.staffUserId && !clearBarber) {
-        dispatch({ type: 'setLineBarberAndPrice', lineId: line.id, staffUserId: line.staffUserId, unitPriceCents: priceCents })
-        return
-      }
-      // El reducer del carrito no tiene una acción de "solo precio": la única
-      // que toca `unitPriceCents` lleva barbero. Para una línea SIN barbero
-      // (o que acaba de perderlo) se comitea el precio y se limpia el barbero
-      // en el mismo tick — React agrupa ambos dispatch, así que el estado
-      // intermedio no llega a renderizarse. Cuando `lib/cart` gane un
-      // `setLinePrice`, este par se colapsa en un solo dispatch.
-      dispatch({ type: 'setLineBarberAndPrice', lineId: line.id, staffUserId: line.staffUserId ?? '', unitPriceCents: priceCents })
-      dispatch({ type: 'clearLineBarber', lineId: line.id })
+      commitLinePrice(line, priceCents, clearBarber)
     })
+    if (staffSaleEnabled) {
+      // El precio público congelado se mueve con el re-precio: si no, el
+      // descuento staff del reporte y el tope de monto quedarían medidos
+      // contra un precio que ya no existe.
+      setStaffLinePrices((prev) => {
+        const next = new Map(prev)
+        lines.forEach((line, idx) => {
+          const staff = repriced[idx].staff
+          if (staff) next.set(line.id, staff)
+          else next.delete(line.id)
+        })
+        return next
+      })
+    }
     return lines.reduce((sum, line, idx) => sum + repriced[idx].priceCents * line.qty, 0)
   }
 
@@ -1024,6 +1445,14 @@ export function useCheckout() {
       )
       return null
     }
+    // Venta a staff: no se manda un ticket que el API ya se sabe que rechaza
+    // (línea sin precio staff, servicio que la política no admite, tope del mes
+    // rebasado). El API lo revalida igual; esto evita el rechazo DESPUÉS de que
+    // el operador cobró.
+    if (staffSaleEnabled && (!staffSale.canCharge || !staffSaleBuyerStaffUserId)) {
+      setError(staffSale.blockMessage ?? STAFF_SALE_MESSAGE.noBuyer)
+      return null
+    }
     setSubmitting(true)
     publishSubmitting(true)
     setError(null)
@@ -1037,12 +1466,22 @@ export function useCheckout() {
         staffUserId: cartState.defaultBarberId || null,
         completeWalkInId: context?.kind === 'walk-in' ? context.walkInId : null,
         completeAppointmentId,
+        // Venta a staff: sólo viaja el COMPRADOR (spec §4.3). El precio staff,
+        // los topes del mes y los permisos los resuelve el API en la misma
+        // transacción del cobro; `null` = venta normal, payload de siempre.
+        staffSale:
+          staffSaleEnabled && staffSaleBuyerStaffUserId
+            ? { buyerStaffUserId: staffSaleBuyerStaffUserId }
+            : null,
         items: cartState.lines.map((l) => ({
           serviceId: l.kind === 'service' ? l.itemId : null,
           productId: l.kind === 'product' ? l.itemId : null,
           catalogComboId: l.kind === 'combo' ? l.itemId : null,
           qty: l.qty,
           unitPriceCents: l.unitPriceCents,
+          // La presentación elegida viaja para que el API resuelva el precio
+          // staff de ESA variante (§4.2). Null en venta normal.
+          productVariantId: staffLinePrices.get(l.id)?.productVariantId ?? null,
           // Per-line barber attribution drives commission math. Falls back to
           // the cart's default barber when an item wasn't reassigned by the
           // operator (which is the dominant case — single-barber sale).
@@ -1082,6 +1521,17 @@ export function useCheckout() {
       setAppliedCoupons([])
       setCouponError(null)
       setRejectionNotice(null)
+      // Venta a staff cobrada: el modo se apaga solo (el siguiente cliente es
+      // una venta normal) y el cupo queda INVALIDADO — esta compra ya consumió
+      // unidades y monto, así que el número viejo mentiría. La próxima vez que
+      // se encienda el interruptor se vuelve a pedir a la red.
+      if (staffSaleEnabled) {
+        setStaffSaleEnabledState(false)
+        setStaffSaleBuyerId(null)
+        setStaffQuota(null)
+        setStaffSaleError(null)
+      }
+      setStaffLinePrices(new Map())
       return reconstructed
     } catch (e) {
       // El servidor rechazó: clasificamos, nos ponemos al día y dejamos el
@@ -1275,8 +1725,41 @@ export function useCheckout() {
     name: string
     priceCents: number
     categoryId: string | null
-  }) => {
+    /**
+     * Presentación elegida. Sólo la pide la venta a staff, y sólo cuando el
+     * producto tiene variantes con precio distinto (`needsVariant`).
+     */
+    productVariantId?: string | null
+  }): AddCatalogItemResult => {
     const lineId = crypto.randomUUID()
+    // ── Modo venta a staff: qué entra al ticket y a qué precio (spec §4.3) ──
+    let staffLine: { price: StaffLinePrice; unitPriceCents: number } | null = null
+    if (staffSaleEnabled) {
+      if (item.kind !== 'product') {
+        // Servicios y combos van a precio NORMAL, y sólo si la política los
+        // admite en el mismo ticket (§4.3.4); si no, no entran.
+        if (staffQuota?.allowServicesInTicket === false) {
+          return { added: false, reason: 'SERVICES_NOT_ALLOWED', message: STAFF_SALE_MESSAGE.noServices }
+        }
+      } else {
+        const product = products.find((p) => p.id === item.id)
+        const view = product ? staffLineView(product, item.productVariantId ?? null) : null
+        if (view === null || !view.eligible || view.unitPriceCents === null) {
+          // No elegible, sin precio staff o falta elegir presentación: la línea
+          // NO entra al ticket ([D-042]: nada de precios aproximados) y el
+          // motivo vuelve para que la UI diga qué pasó o abra el selector.
+          const reason = view?.reason ?? 'NOT_ELIGIBLE'
+          return { added: false, reason, message: STAFF_SALE_MESSAGES[reason] }
+        }
+        staffLine = {
+          price: {
+            listUnitPriceCents: view.listUnitPriceCents,
+            productVariantId: item.productVariantId ?? null,
+          },
+          unitPriceCents: view.unitPriceCents,
+        }
+      }
+    }
     const overlayPriceCents =
       item.kind === 'service' || item.kind === 'combo' ? priceOverlay?.get(item.id)?.priceCents : undefined
     dispatch({
@@ -1286,10 +1769,12 @@ export function useCheckout() {
         kind: item.kind,
         itemId: item.id,
         name: item.name,
-        unitPriceCents: overlayPriceCents ?? item.priceCents,
+        unitPriceCents: staffLine?.unitPriceCents ?? overlayPriceCents ?? item.priceCents,
         categoryId: item.categoryId,
       },
     })
+    const staffPrice = staffLine?.price
+    if (staffPrice) setStaffLinePrices((prev) => new Map(prev).set(lineId, staffPrice))
     if ((item.kind === 'service' || item.kind === 'combo') && cartState.defaultBarberId) {
       void resolveAndCommitLinePrice(lineId, item.kind, item.id, cartState.defaultBarberId).then((outcome) => {
         // Si el barbero atendiendo está excluido de este servicio/combo, la línea
@@ -1304,6 +1789,7 @@ export function useCheckout() {
         if (outcome === 'excluded') dispatch({ type: 'removeLine', lineId })
       })
     }
+    return { added: true }
   }
 
   // Líneas PAGADO (read-only) de la venta prepagada, listas para render. El
@@ -1398,5 +1884,20 @@ export function useCheckout() {
     removeCoupon,
     couponError,
     discountTotalCents,
+    // Un ticket de venta a staff no admite cupones (spec §4.3.5): el bloque se
+    // deshabilita con este motivo en vez de dejar aplicar uno que el cobro
+    // rechazaría.
+    couponsDisabled: staffSaleEnabled,
+    couponsDisabledMessage: staffSaleEnabled ? STAFF_SALE_MESSAGE.noCoupons : null,
+    /* ── Venta a staff (spec venta a staff §4.3/§4.5) ──────────────────────
+     * `staffSale` es todo lo que la UI necesita para pintar el modo:
+     * permisos, comprador, cupo del mes contrastado con el carrito, descuento
+     * del ticket, qué línea le falta algo y si se puede cobrar. El POS sólo
+     * MUESTRA: `createPOSSale` vuelve a medir todo al cobrar.
+     */
+    staffSale,
+    setStaffSaleEnabled,
+    setStaffSaleBuyer,
+    setStaffSaleLineVariant,
   }
 }

@@ -56,3 +56,4 @@
 - [D-050] 2026-09-22 (T-044) Un hook que re-sincroniza dentro de un catch traga SOLO el fallo del re-sync (await load().catch(() => {})) y re-lanza el error original del servidor: un tropiezo de red no puede suplantar al rechazo que el caller debe mostrar.
 - [D-051] 2026-09-22 (T-016c) El escalón de numeral de una cifra MoneyValue dentro de una rejilla de 3 tarjetas es S (36 px): M (56 px) no cabe en la iPad. Quien quiera más peso visual rompe la rejilla en filas, no achica el token.
 - [D-052] 2026-09-22 (T-016d) El splash de un cierre de caja YA confirmado por el servidor gana sobre cualquier estado de la lectura: el re-sync posterior a closeSession puede fallar y no se puede anunciar 'no se pudo confirmar' sobre una caja que sí cerró.
+- [D-053] 2026-09-22 (T-045) El gate de caja (useCajaGate) se suscribe SÓLO al tema register (no a sales): PAYMENT ya emite ambos ([D-026]), así que agregar sales sólo duplicaría la consulta del gate por cada venta de la sucursal.

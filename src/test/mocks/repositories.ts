@@ -62,6 +62,11 @@ export const MOCK_VIEWER: PosViewer = {
     'pos.refund.approve',
     'pos.register.open',
     'pos.register.close',
+    // Venta a staff (spec venta a staff §5): el operador del mock puede
+    // vendérsela a sí mismo y cobrarle la compra a otro barbero. Un test de
+    // permisos restringidos arma su propio viewer con `{ ...MOCK_VIEWER, permissions }`.
+    'pos.staff_sale.create',
+    'pos.staff_sale.create_for_others',
     // Tabs del POS (cada tab inferior se gatea por su permiso)
     'pos.tab.clock',
     'pos.tab.today',
@@ -197,21 +202,32 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
   }
 
   // Cupo de venta a staff: por defecto política activa y SIN topes (null =
-  // sin tope, nunca 0). Los tests que prueban el cupo lo sobre-escriben con
-  // vi.fn; la política real la decide el API.
+  // sin tope, nunca 0). La política real la decide el API.
+  #staffSaleQuota: StaffSaleQuota = {
+    enabled: true,
+    allowServicesInTicket: true,
+    unitsUsed: 0,
+    unitsLimit: null,
+    unitsRemaining: null,
+    listAmountCentsUsed: 0,
+    listAmountCentsLimit: null,
+    listAmountCentsRemaining: null,
+    perProductLimit: null,
+    unitsByProduct: [],
+  }
+
+  /**
+   * Arma el escenario del cupo (política apagada, topes, consumo del mes) sin
+   * tener que reemplazar el método: `setStaffSaleQuota({ unitsLimit: 2 })`.
+   * Un test que además quiera CONTAR las lecturas sigue envolviendo el método
+   * con `vi.fn`/`vi.spyOn`.
+   */
+  setStaffSaleQuota(quota: Partial<StaffSaleQuota>): void {
+    this.#staffSaleQuota = { ...this.#staffSaleQuota, ...quota }
+  }
+
   async getStaffSaleQuota(_locationId: string, _buyerStaffUserId?: string | null): Promise<StaffSaleQuota> {
-    return {
-      enabled: true,
-      allowServicesInTicket: true,
-      unitsUsed: 0,
-      unitsLimit: null,
-      unitsRemaining: null,
-      listAmountCentsUsed: 0,
-      listAmountCentsLimit: null,
-      listAmountCentsRemaining: null,
-      perProductLimit: null,
-      unitsByProduct: [],
-    }
+    return this.#staffSaleQuota
   }
 
   async getCombos(): Promise<CatalogCombo[]> {
