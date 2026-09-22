@@ -2006,7 +2006,7 @@
       ],
       "priority": 5,
       "type": "feature",
-      "status": "pending",
+      "status": "blocked",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
