@@ -35,3 +35,4 @@
 - [build] (x1, T-020) Para medir drift de codegen sin poder usar git add, compara el hash de los archivos generados antes y después de correr codegen.
 - [test] (x1, T-021) Un aviso de tema X también llega a los cargadores de X además del refresco que emita el propio oyente: al contar llamadas, parametriza el conteo por tema en vez de aflojar la aserción.
 - [build] (x1, T-021) Antes de reportar un warning de lint como preexistente, revisa los exports del archivo en HEAD: exports nuevos en un .tsx de componente sí introducen react-refresh/only-export-components.
+- [test] (x1, T-022) Con MockedProvider de Apollo 4 fija mockLinkDefaultOptions={{ delay: 0 }}: el delay aleatorio de 20-50 ms deja una consulta en vuelo cuando el test cree que ya falló y la siguiente se deduplica con ella, así que los asserts de error/recuperación pasan o fallan por la razón equivocada.

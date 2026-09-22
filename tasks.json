@@ -1398,7 +1398,7 @@
       ],
       "priority": 3,
       "type": "feature",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
