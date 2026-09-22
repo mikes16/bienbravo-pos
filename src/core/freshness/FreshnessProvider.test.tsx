@@ -5,6 +5,7 @@ import { ApolloClient, ApolloLink, InMemoryCache, Observable } from '@apollo/cli
 import { ApolloProvider } from '@apollo/client/react'
 import {
   FreshnessProvider,
+  FRESHNESS_TOPICS,
   MIN_REFRESH_GAP_MS,
   type FreshnessContextValue,
   type FreshnessTopic,
@@ -320,5 +321,104 @@ describe('FreshnessProvider', () => {
     expect(sales).not.toHaveBeenCalled()
     expect(walkins).not.toHaveBeenCalled()
     expect(ctx().lastUpdatedAt).toBeNull()
+  })
+
+  // --- Tema `register` (Caja) -------------------------------------------
+  // Caja todavía NO tiene suscripción en el API (ver el docblock de
+  // FreshnessTopic): se comporta como los demás por reconexión, foco y
+  // refreshAll, y no lo arrastra ningún evento existente.
+
+  it("'register' es parte de todos los temas, en orden estable", () => {
+    // Si mañana se agrega un tema, este caso es el recordatorio de mantener
+    // el orden y de actualizar `lastRunAt` del motor.
+    expect(FRESHNESS_TOPICS).toEqual(['sales', 'walkins', 'appointments', 'register'])
+  })
+
+  it("refreshAll() refresca 'register'; un evento de venta NO lo toca", async () => {
+    const register = vi.fn()
+    const sales = vi.fn()
+    await renderFreshness(
+      <>
+        <Probe load={register} topics={['register']} />
+        <Probe load={sales} topics={['sales']} />
+      </>,
+    )
+
+    await act(async () => {
+      emitSale()
+    })
+    expect(sales).toHaveBeenCalledTimes(1)
+    // Caja no se entera de una venta por el tema equivocado.
+    expect(register).not.toHaveBeenCalled()
+
+    await act(async () => {
+      ctx().refreshAll()
+    })
+    expect(register).toHaveBeenCalledTimes(1)
+  })
+
+  it("la reconexión también pone al día 'register'", async () => {
+    const register = vi.fn()
+    await renderFreshness(<Probe load={register} topics={['register']} />)
+
+    await act(async () => {
+      reportWsConnected()
+    })
+    expect(register).not.toHaveBeenCalled()
+
+    await act(async () => {
+      reportWsDisconnected()
+      reportWsConnected(true)
+    })
+    expect(register).toHaveBeenCalledTimes(1)
+  })
+
+  it("un cargador en ['sales', 'register'] corre UNA sola vez por refreshAll", async () => {
+    const both = vi.fn()
+    await renderFreshness(<Probe load={both} topics={['sales', 'register']} />)
+
+    await act(async () => {
+      ctx().refreshAll()
+    })
+    expect(both).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      ctx().refreshAll()
+    })
+    expect(both).toHaveBeenCalledTimes(2)
+  })
+
+  it("la ventana de 5 s de 'register' es independiente de la de 'sales'", async () => {
+    const sales = vi.fn()
+    const register = vi.fn()
+    await renderFreshness(
+      <>
+        <Probe load={sales} topics={['sales']} />
+        <Probe load={register} topics={['register']} />
+      </>,
+    )
+
+    // Abre la ventana de 'sales' (y sólo la de ese tema).
+    await act(async () => {
+      emitSale()
+    })
+    expect(sales).toHaveBeenCalledTimes(1)
+    expect(register).not.toHaveBeenCalled()
+
+    // El foco pide todos los temas RESPETANDO la ventana: 'sales' está dentro
+    // de la suya y queda pendiente; 'register' estrena la propia y corre ya.
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    expect(sales).toHaveBeenCalledTimes(1)
+    expect(register).toHaveBeenCalledTimes(1)
+
+    // Al cerrarse la ventana de 'sales' corre lo pendiente de ESE tema; la
+    // ventana de 'register', recién abierta, no vuelve a disparar.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_REFRESH_GAP_MS)
+    })
+    expect(sales).toHaveBeenCalledTimes(2)
+    expect(register).toHaveBeenCalledTimes(1)
   })
 })

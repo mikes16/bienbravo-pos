@@ -36,10 +36,28 @@ import {
  * refresca mientras un cobro se está enviando (`setPaused`).
  */
 
-export type FreshnessTopic = 'sales' | 'walkins' | 'appointments'
+/**
+ * Temas del canal. Una pantalla se registra sólo en los suyos (una carga por
+ * CLASE de dato, no una por pantalla).
+ *
+ * `register` (Caja) es un tema SIN fuente de eventos todavía, y eso es
+ * deliberado: la suscripción del API que avisará de apertura/cierre/corrección
+ * de caja (spec 3.3 c: "eventos que hoy no existen") llega en una tarea
+ * posterior del API. Por eso `EVENT_SOURCES` sigue teniendo tres entradas — no
+ * hay nada que cablear aquí ni un olvido que arreglar. Mientras tanto el tema
+ * sí se dispara por reconexión, por foco/visibilidad y por `refreshAll()`,
+ * porque los tres usan `FRESHNESS_TOPICS` completo. El día que la suscripción
+ * exista, agregar su entrada a `EVENT_SOURCES` es todo el cambio.
+ */
+export type FreshnessTopic = 'sales' | 'walkins' | 'appointments' | 'register'
 
 /** Orden estable; se usa como "todos los temas". */
-export const FRESHNESS_TOPICS: readonly FreshnessTopic[] = ['sales', 'walkins', 'appointments']
+export const FRESHNESS_TOPICS: readonly FreshnessTopic[] = [
+  'sales',
+  'walkins',
+  'appointments',
+  'register',
+]
 
 /** Mínimo entre dos refrescos del mismo tema. Agrupa ráfagas de eventos. */
 export const MIN_REFRESH_GAP_MS = 5_000
@@ -76,6 +94,9 @@ interface EventSource {
  * Las tres suscripciones que ya existen en el API. Su carga útil es mínima a
  * propósito (tipo + sucursal + id, sin montos ni nombres): son pings de
  * invalidación; el dato viaja después por la consulta HTTP autenticada.
+ *
+ * No hay entrada para `register` porque el API aún no publica ese evento (ver
+ * el docblock de `FreshnessTopic`): la lista tiene tres elementos a propósito.
  */
 const EVENT_SOURCES: readonly EventSource[] = [
   { query: POS_HOME_SALE_EVENT, topic: 'sales', label: 'saleEvent' },
@@ -104,7 +125,12 @@ export interface FreshnessEngine {
 export function createFreshnessEngine(onRefreshed: (at: Date) => void): FreshnessEngine {
   const registered = new Set<RegisteredLoader>()
   /** Último refresco por tema. `0` = nunca: el primer evento entra de inmediato. */
-  const lastRunAt: Record<FreshnessTopic, number> = { sales: 0, walkins: 0, appointments: 0 }
+  const lastRunAt: Record<FreshnessTopic, number> = {
+    sales: 0,
+    walkins: 0,
+    appointments: 0,
+    register: 0,
+  }
   /** Temas que pidieron refresco dentro de la ventana o estando en pausa. */
   const pending = new Set<FreshnessTopic>()
   /** Un temporizador de CIERRE DE VENTANA por tema (one-shot, no periódico). */
