@@ -16,14 +16,17 @@ reimplementa precios, stock ni permisos.
 
 ## Estructura
 - `src/app/` — `router.tsx` (rutas lazy + `routePrefetchers`), `PosShell.tsx` (header + `BottomTabNav` gateado
-  por permisos), `IdentityStripV2.tsx`, `useIdleRoutePrefetch.ts`, `Providers.tsx`.
-- `src/core/` — `auth/` (viewer, PIN, lock), `permissions/` (`posTabs.ts`: tabs ↔ permisos `pos.tab.*` /
-  `pos.sales.day.read`; `usePermission`), `location/`, `repositories/` (`registry.ts` + `RepositoryProvider`),
-  `apollo/client.ts` (typePolicies), `graphql/generated/`, `toast/`, `telemetry/`.
+  por permisos), `IdentityStripV2.tsx`, `RouteLoader.tsx`, `useIdleRoutePrefetch.ts`, `Providers.tsx`.
+- `src/core/` — `auth/` (viewer, PIN, lock, `saleActivity.ts`), `bootstrap/` (`BootstrapProvider`: posSettings +
+  versión de catálogo), `freshness/` (canal de frescura: `FreshnessProvider`, `useLiveRefresh`, `RefreshControl`,
+  `useDeployWatcher`), `permissions/` (`posTabs.ts`: tabs ↔ permisos `pos.tab.*` / `pos.sales.day.read`;
+  `usePermission`), `location/`, `repositories/` (`registry.ts` + `RepositoryProvider`), `apollo/` (`client.ts`
+  typePolicies, `dataClasses.ts` clasifica campos para caché/evicción), `graphql/generated/`, `toast/`, `telemetry/`.
 - `src/features/<feature>/{data,domain,lib,application,presentation}/` + `index.ts`: `auth`, `home` (Hoy),
-  `checkout`, `register` (Caja), `clock`, `agenda`, `walkins`, `my-day` (Mis ventas), `day-sales` (Ventas del día).
+  `checkout`, `register` (Caja), `clock`, `agenda`, `walkins`, `my-day` (Mis ventas), `day-sales` (Ventas del
+  día); `_dev/` (páginas de prueba, ruta solo bajo `import.meta.env.DEV`, fuera del build de producción).
 - `src/shared/pos-ui/` (TouchButton, BottomTabNav, sheets, iconos game-icons), `src/shared/lib/` (money, date
-  con tz de sucursal, cn), `src/shared/cash/`.
+  con tz de sucursal, cn, cloudinary, errores), `src/shared/cash/` (conteo de caja).
 - `src/test/mocks/repositories.ts` (repos in-memory + `MOCK_VIEWER`), `src/test/helpers/renderWithProviders.tsx`.
 - `docs/SALES_RULES.md`, `docs/superpowers/specs/` (diseños por feature).
 

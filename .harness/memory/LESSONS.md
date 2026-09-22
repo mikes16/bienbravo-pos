@@ -46,3 +46,4 @@
 - [build] (x1, T-028) codegen escanea también los graphql()/gql de los tests: una query de test inválida contra el schema rompe el codegen entero y bloquea cualquier check de drift.
 - [build] (x1, T-029) Ensanchar una unión de literales del dominio puede romper un archivo fuera de tu alcance que la indexa (Record literal + Exclude<…>): antes de agregar miembros, grepea quién indexa por ese tipo; si el consumidor enumera 'los casos que sé manejar', el miembro nuevo va en una unión hermana, no dentro.
 - [build] (x1, T-029) Si una query nueva agrega un campo raíz y core/apollo/dataClasses.ts queda fuera de files[], deja la deuda de clasificación ([D-003]) escrita en el handoff en el mismo cambio.
+- [datos] (x1, T-030) Un límite/cupo que el API manda como usado + límite + restante se pinta usando SU restante cuando existe (una anulación o ajuste devuelve cupo y límite − usado no siempre cuadra); derivar la resta solo como respaldo.
