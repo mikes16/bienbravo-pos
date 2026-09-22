@@ -18,13 +18,17 @@ function makeVm(overrides: Partial<HoyViewModel> = {}): HoyViewModel {
 }
 
 describe('HoyView', () => {
-  it('renders greeting with first name only', () => {
+  // R9: la identidad del operador se mudó a la barra superior
+  // (IdentityStripV2, 28 px y persistente). Hoy ya no saluda ni repite el
+  // nombre: era el dato chico que hacía que se cobrara en sesión ajena.
+  it('does not greet the operator nor repeat their name', () => {
     render(
       <MemoryRouter>
         <HoyView vm={makeVm({ staffName: 'Eli Cruz García' })} onCtaClick={() => {}} onGateAction={() => {}} onAddWalkIn={() => {}} />
       </MemoryRouter>,
     )
-    expect(screen.getByText(/eli/i)).toBeInTheDocument()
+    expect(screen.queryByText(/hola/i)).toBeNull()
+    expect(screen.queryByText(/eli cruz garcía/i)).toBeNull()
   })
 
   it('renders commission amount with formatMoney', () => {

@@ -24,24 +24,45 @@ describe('IdentityStripV2', () => {
     expect(screen.getByText(/sucursal norte/i)).toBeInTheDocument()
   })
 
-  it('renders "En piso" badge when operator is clocked-in and free', () => {
+  // R9: el nombre COMPLETO es el ancla de la sesión — con iniciales sueltas
+  // un barbero cobraba en el perfil de otro sin darse cuenta.
+  it('renders the operator full name as text', () => {
+    render(<IdentityStripV2 {...baseProps} staffName="Aarón Cruz" />)
+    expect(screen.getByText('Aarón Cruz')).toBeInTheDocument()
+  })
+
+  it('keeps the full name in the DOM even when it is long (truncation is visual only)', () => {
+    render(<IdentityStripV2 {...baseProps} staffName="Aarón Guadalupe Cruz Martínez" />)
+    expect(screen.getByText('Aarón Guadalupe Cruz Martínez')).toBeInTheDocument()
+  })
+
+  it('renders "En piso" status under the name when operator is clocked-in and free', () => {
     render(<IdentityStripV2 {...baseProps} operatorStatus="en_piso" />)
-    expect(screen.getByText(/en piso/i)).toBeInTheDocument()
+    expect(screen.getByText(/en piso · sesión activa/i)).toBeInTheDocument()
   })
 
-  it('renders "En servicio" badge when operator is busy', () => {
+  it('renders "En servicio" status when operator is busy', () => {
     render(<IdentityStripV2 {...baseProps} operatorStatus="en_servicio" />)
-    expect(screen.getByText(/en servicio/i)).toBeInTheDocument()
+    expect(screen.getByText(/en servicio · sesión activa/i)).toBeInTheDocument()
   })
 
-  it('renders "Sin checar" badge when operator has not clocked in', () => {
+  it('renders "Sin checar" status when operator has not clocked in', () => {
     render(<IdentityStripV2 {...baseProps} operatorStatus="fuera_de_turno" />)
-    expect(screen.getByText(/sin checar/i)).toBeInTheDocument()
+    expect(screen.getByText(/sin checar · sesión activa/i)).toBeInTheDocument()
   })
 
-  it('hides badge while operator status is loading', () => {
+  it('shows only "Sesión activa" while operator status is loading (no invented status)', () => {
     render(<IdentityStripV2 {...baseProps} operatorStatus={null} />)
     expect(screen.queryByText(/en piso|en servicio|sin checar/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/sesión activa/i)).toBeInTheDocument()
+  })
+
+  it('places the status line after the name (status reads under it)', () => {
+    render(<IdentityStripV2 {...baseProps} staffName="Eli Cruz" operatorStatus="en_piso" />)
+    const name = screen.getByText('Eli Cruz')
+    const status = screen.getByText(/en piso · sesión activa/i)
+    // Document order: el estado va después del nombre, no antes.
+    expect(name.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('renders the time formatted as HH:MM 24h', () => {
@@ -54,22 +75,36 @@ describe('IdentityStripV2', () => {
     expect(screen.getByText('EC')).toBeInTheDocument()
   })
 
-  it('renders staff photo when photoUrl provided', () => {
+  it('renders staff photo labelled with the operator name when photoUrl provided', () => {
     render(
       <IdentityStripV2
         {...baseProps}
-        staffName="Eli"
+        staffName="Eli Cruz"
         staffPhotoUrl="https://example.com/eli.jpg"
       />,
     )
-    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://example.com/eli.jpg')
+    const photo = screen.getByRole('img', { name: 'Eli Cruz' })
+    expect(photo).toHaveAttribute('src', 'https://example.com/eli.jpg')
+  })
+
+  it('renders the lock control as a button with visible "Bloquear" text', () => {
+    render(<IdentityStripV2 {...baseProps} />)
+    const lock = screen.getByRole('button', { name: 'Bloquear sesión' })
+    expect(lock).toHaveTextContent('Bloquear')
+  })
+
+  it('gives the lock button a 44px touch area', () => {
+    render(<IdentityStripV2 {...baseProps} />)
+    expect(screen.getByRole('button', { name: 'Bloquear sesión' })).toHaveStyle({
+      minHeight: '44px',
+    })
   })
 
   it('calls onLock when lock button tapped', async () => {
     const onLock = vi.fn()
     const user = userEvent.setup()
     render(<IdentityStripV2 {...baseProps} onLock={onLock} />)
-    await user.click(screen.getByRole('button', { name: /bloquear|lock/i }))
+    await user.click(screen.getByRole('button', { name: 'Bloquear sesión' }))
     expect(onLock).toHaveBeenCalledTimes(1)
   })
 

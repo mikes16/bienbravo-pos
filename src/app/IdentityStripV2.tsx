@@ -1,4 +1,3 @@
-import { StatusBadge, type StatusTone } from '@/shared/pos-ui'
 import type { PosBarberStatus } from '@/core/auth/auth.repository'
 import { cldThumb } from '@/shared/lib/cloudinary'
 import { formatTimeInTz } from '@/shared/lib/date'
@@ -21,7 +20,8 @@ interface IdentityStripV2Props {
    *  - 'en_piso'        → clocked-in y libre (puede atender)
    *  - 'en_servicio'    → atendiendo a un cliente ahora
    *  - 'fuera_de_turno' → no ha marcado entrada hoy
-   *  - null             → loading (badge se esconde)
+   *  - null             → loading (la línea bajo el nombre solo dice
+   *                       "SESIÓN ACTIVA", sin estado inventado)
    *
    * Mismo lenguaje semántico que el lock roster — el operador ve en el
    * header su mismo estado de las cards.
@@ -38,17 +38,18 @@ interface IdentityStripV2Props {
 }
 
 /**
- * Mapea el status semántico del operador al tono + label del StatusBadge
- * shared. Mantiene el componente de presentación libre del dominio.
+ * Label del estado laboral en el dialecto de la barra (mono uppercase).
+ * Mismas tres palabras que el roster del lock screen: el operador no
+ * aprende un vocabulario nuevo por pantalla.
  */
-function statusToBadge(status: PosBarberStatus): { tone: StatusTone; label: string } {
+function statusLabel(status: PosBarberStatus): string {
   switch (status) {
     case 'en_piso':
-      return { tone: 'active', label: 'En piso' }
+      return 'EN PISO'
     case 'en_servicio':
-      return { tone: 'busy', label: 'En servicio' }
+      return 'EN SERVICIO'
     case 'fuera_de_turno':
-      return { tone: 'inactive', label: 'Sin checar' }
+      return 'SIN CHECAR'
   }
 }
 
@@ -62,6 +63,19 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
+/**
+ * Barra superior persistente del POS — variante A "Nombre en la barra" de R9.
+ *
+ * El nombre COMPLETO del operador se canta a 28 px porque el error que
+ * corrige es de atribución: un barbero cobraba en la sesión de otro sin
+ * darse cuenta (las iniciales de 36 px y el saludo de 13 px no se veían).
+ * Por eso el nombre es el único elemento del cluster derecho que jamás
+ * desaparece: cuando el ancho aprieta ceden en este orden la fecha, el
+ * reloj y el estado, y el nombre sólo se trunca con elipsis.
+ *
+ * El candado dejó de ser un ícono mudo: es un botón con texto "Bloquear"
+ * y área táctil de 44 px, para que ceder el POS sea una acción obvia.
+ */
 export function IdentityStripV2({
   brand = 'BIENBRAVO',
   sucursalName,
@@ -82,54 +96,69 @@ export function IdentityStripV2({
     .format(now)
     .toUpperCase()
   const initials = getInitials(staffName)
+  // La sesión es un hecho aunque el estado laboral aún cargue: sin status
+  // la línea dice sólo "SESIÓN ACTIVA" (nunca un estado placeholder).
+  const sessionLine = operatorStatus
+    ? `${statusLabel(operatorStatus)} · SESIÓN ACTIVA`
+    : 'SESIÓN ACTIVA'
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 sm:h-16 sm:px-5">
-      <div className="flex items-baseline gap-3">
-        <span className="text-[13px] font-bold tracking-[0.08em] text-[var(--color-bone)]">{brand}</span>
-        <span className="hidden font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] sm:inline">
+    <header className="flex min-h-[68px] shrink-0 items-center justify-between gap-3 border-b border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 py-2 sm:gap-4 sm:px-5">
+      <div className="flex min-w-0 items-baseline gap-3">
+        <span className="truncate text-[13px] font-bold tracking-[0.08em] text-[var(--color-bone)]">{brand}</span>
+        <span className="hidden truncate font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] sm:inline">
           {sucursalName}
         </span>
       </div>
 
-      <div className="flex items-center gap-3 sm:gap-4">
-        {/* Operator status badge — refleja el status laboral del barbero
-            logueado: en piso / en servicio / sin checar. Mismo lenguaje
-            semántico que las cards del lock roster — el operador ve su
-            propio estado con el mismo dialecto visual. Si aún no carga,
-            esconde el badge (no muestra placeholder confuso). */}
-        {operatorStatus && (() => {
-          const { tone, label } = statusToBadge(operatorStatus)
-          return <StatusBadge tone={tone} label={label} className="hidden sm:flex" />
-        })()}
-        <div className="text-right">
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-3 sm:gap-4">
+        {/* Reloj — primero en ceder junto con su fecha: la hora está también
+            en el device y en cada ticket, el nombre no. */}
+        <div className="hidden shrink-0 text-right sm:block">
           <p className="text-[14px] font-bold leading-none tabular-nums text-[var(--color-bone)]">{timeStr}</p>
-          <p className="mt-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+          <p className="mt-0.5 hidden font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--color-bone-muted)] md:block">
             {dateStr}
           </p>
         </div>
 
-        {staffPhotoUrl ? (
-          <img
-            src={cldThumb(staffPhotoUrl, { w: 36, h: 36, dpr: 'auto' }) ?? staffPhotoUrl}
-            alt={staffName}
-            loading="lazy"
-            decoding="async"
-            className="h-9 w-9 rounded-full object-cover"
-          />
-        ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-leather-muted)] bg-[var(--color-cuero-viejo)] text-[11px] font-bold text-[var(--color-bone)]">
-            {initials}
+        {/* Bloque de identidad: avatar 44 px + nombre completo + estado.
+            min-w-0 en toda la cadena para que truncate tenga efecto. */}
+        <div className="flex min-w-0 items-center gap-3">
+          {staffPhotoUrl ? (
+            <img
+              src={cldThumb(staffPhotoUrl, { w: 44, h: 44, dpr: 'auto' }) ?? staffPhotoUrl}
+              alt={staffName}
+              loading="lazy"
+              decoding="async"
+              className="h-11 w-11 shrink-0 rounded-full border border-[var(--color-bone)] object-cover"
+            />
+          ) : (
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--color-bone)] bg-[var(--color-cuero-viejo)] text-[13px] font-bold text-[var(--color-bone)]">
+              {initials}
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="truncate font-[var(--font-pos-display)] text-[28px] font-extrabold uppercase leading-[0.9] tracking-[0.01em] text-[var(--color-bone)]">
+              {staffName}
+            </p>
+            <p className="mt-1 hidden truncate font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)] min-[420px]:block">
+              {sessionLine}
+            </p>
           </div>
-        )}
+        </div>
 
         <button
           type="button"
           onClick={onLock}
-          className="flex h-9 w-9 cursor-pointer items-center justify-center text-[var(--color-bone-muted)] hover:bg-[var(--color-cuero-viejo)] hover:text-[var(--color-bone)]"
+          // minHeight inline (no sólo clase): jsdom no calcula layout, así el
+          // área táctil de 44 px queda asertable en el test. Mismo patrón que
+          // el botón Reintentar de MoneyValue.
+          style={{ minHeight: '44px' }}
+          className="flex shrink-0 cursor-pointer items-center gap-2 border border-[var(--color-leather-muted)] px-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--color-bone)] hover:bg-[var(--color-cuero-viejo)] sm:px-4"
           aria-label="Bloquear sesión"
         >
-          <LockIcon className="h-4 w-4" />
+          <LockIcon className="h-[15px] w-[15px] shrink-0" />
+          Bloquear
         </button>
       </div>
     </header>

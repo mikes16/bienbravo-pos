@@ -64,12 +64,16 @@ describe('HoyPage', () => {
     window.localStorage.setItem('bb-pos-location-id', 'loc1')
   })
 
-  it('renders the greeting after data load', async () => {
+  // R9 movió la identidad del operador a la barra superior: Hoy ya no
+  // saluda, así que el humo de "cargó la vista" ahora lo da el bloque de
+  // comisiones (primer contenido propio de la pantalla).
+  it('renders the day view after data load', async () => {
     renderWithProviders(<HoyPage />, {
       repos: { ...makeClockedInRepos(), auth: new TestAuthRepo() },
       apolloMocks: cajaOpenMocks(),
     })
-    expect(await screen.findByText(/hola/i)).toBeInTheDocument()
+    expect(await screen.findByText(/comisiones hoy/i)).toBeInTheDocument()
+    expect(screen.queryByText(/hola/i)).toBeNull()
   })
 
   it('shows the clock-in gate when the operator has not started their day', async () => {

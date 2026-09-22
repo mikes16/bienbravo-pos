@@ -47,17 +47,14 @@ export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeW
     return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
   }
 
-  const firstName = vm.staffName.split(' ')[0] ?? vm.staffName
-
   return (
     <div className="flex h-full flex-col">
-      <div className="px-5 pt-3 pb-2">
-        <p className="text-[13px] text-[var(--color-bone-muted)]">
-          Hola, <strong className="font-bold text-[var(--color-bone)]">{firstName}</strong>.
-        </p>
-      </div>
-
-      <div className="flex items-baseline gap-4 border-b border-[var(--color-leather-muted)]/40 px-5 pb-3">
+      {/* R9: el saludo con el nombre del operador se eliminó de aquí. La
+          identidad de la sesión vive en la barra superior (IdentityStripV2),
+          que es persistente en todas las pestañas y la canta a 28 px; aquí
+          era un dato chico, redundante y sólo visible en "Hoy". El padding
+          superior que gastaba ese bloque pasa a las comisiones. */}
+      <div className="flex items-baseline gap-4 border-b border-[var(--color-leather-muted)]/40 px-5 pt-4 pb-3">
         <span className="font-[var(--font-pos-display)] text-[38px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-[var(--color-bone)]">
           {vm.commission.loading ? '—' : formatMoney(vm.commission.amountCents)}
         </span>

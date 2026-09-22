@@ -11,3 +11,5 @@
 - [D-005] 2026-09-22 (T-006) Dinero del servidor en pantallas nuevas se pinta con MoneyValue, nunca con MoneyDisplay directo: MoneyDisplay queda como formateador interno.
 - [D-006] 2026-09-22 (T-006) label es prop obligatoria de MoneyValue (raíz role=group + aria-label): toda cifra de dinero queda anunciada y se consulta en tests con getByRole('group', { name }).
 - [D-007] 2026-09-22 (T-006) aria-busy solo se emite en loading y updating (atributo ausente en el resto, nunca "false"), siguiendo la convención ya usada en CatalogListRow/CatalogTile.
+- [D-008] 2026-09-22 (T-007) Los eventos de subscription se piden con fetchPolicy 'no-cache': son pings de invalidación, no datos; no deben entrar al cache ni a lo que se evalúa para persistir [D-003].
+- [D-009] 2026-09-22 (T-007) La primera conexión del socket NO dispara refresco; sólo las reconexiones, una vez y para todos los temas. Al reanudar tras pausa lo pendiente corre sin esperar la ventana de 5 s.
