@@ -252,13 +252,15 @@ describe('ApolloCheckoutRepository.getSaleDetail', () => {
  * `extensions.code` → error tipado del dominio; la recuperación se prueba en
  * CheckoutPage.test.tsx.
  */
-function makeClientRejectingWith(message: string, code?: string) {
+function makeClientRejectingWith(message: string, code?: string, extras?: Record<string, unknown>) {
+  const extensions = { ...(code ? { code } : {}), ...(extras ?? {}) }
+  const hasExtensions = Object.keys(extensions).length > 0
   const link = new ApolloLink(
     () =>
       new Observable((observer) => {
         observer.next({
           data: null,
-          errors: [code ? { message, extensions: { code } } : { message }],
+          errors: [hasExtensions ? { message, extensions } : { message }],
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any)
         observer.complete()
@@ -316,7 +318,30 @@ describe('ApolloCheckoutRepository.createSale — rechazos tipados', () => {
     expect(rejection.code).toBe('REGISTER_SESSION_STALE')
   })
 
-  it('STOCK: se reconoce por el patrón del mensaje (el API lo lanza sin código propio)', async () => {
+  it('STOCK por código INSUFFICIENT_STOCK (ruta de producción): mapea a STOCK con el mensaje del API intacto', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith(
+        'Stock insuficiente en esta sucursal:\nShampoo: 1 disponible(s), 3 solicitado(s)\nAjusta inventario antes de cobrar.',
+        'INSUFFICIENT_STOCK',
+      ),
+    )
+    expect(rejection.code).toBe('STOCK')
+    // El texto en español del API se muestra tal cual en el aviso del cobro.
+    expect(rejection.message).toMatch(/stock insuficiente en esta sucursal/i)
+    expect(rejection.message).toMatch(/shampoo: 1 disponible\(s\), 3 solicitado\(s\)/i)
+  })
+
+  it('STOCK por código: los faltantes que el API mande en extensions no alteran el mapeo (el POS los recalcula contra su stock)', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith('Stock insuficiente en esta sucursal: Shampoo.', 'INSUFFICIENT_STOCK', {
+        shortages: [{ productId: 'prod-shampoo', name: 'Shampoo', availableQty: 1, requestedQty: 3 }],
+      }),
+    )
+    expect(rejection.code).toBe('STOCK')
+    expect(rejection.message).toMatch(/stock insuficiente/i)
+  })
+
+  it('STOCK por el patrón del mensaje: respaldo de DESARROLLO, donde el filtro del API no enmascara el texto', async () => {
     const rejection = await rejectionOf(
       makeClientRejectingWith(
         'Stock insuficiente en esta sucursal:\nShampoo: 1 disponible(s), 3 solicitado(s)\nAjusta inventario antes de cobrar.',
@@ -326,9 +351,14 @@ describe('ApolloCheckoutRepository.createSale — rechazos tipados', () => {
     expect(rejection.code).toBe('STOCK')
   })
 
-  it('STOCK: también por código, para el día que el API lo tipe', async () => {
-    const rejection = await rejectionOf(makeClientRejectingWith('No alcanza el inventario.', 'INSUFFICIENT_STOCK'))
-    expect(rejection.code).toBe('STOCK')
+  it('STOCK enmascarado en PRODUCCIÓN cae en UNKNOWN: comportamiento vigente hasta que el API publique INSUFFICIENT_STOCK', async () => {
+    // assertStockAvailable (pos.resolver.ts) lanza un `Error` pelón: con
+    // NODE_ENV=production el filtro del API lo normaliza a
+    // INTERNAL_SERVER_ERROR + "Internal server error", así que no queda ni
+    // código ni texto que reconocer y el cobro no se pone al día solo.
+    const rejection = await rejectionOf(makeClientRejectingWith('Internal server error', 'INTERNAL_SERVER_ERROR'))
+    expect(rejection.code).toBe('UNKNOWN')
+    expect(rejection.message).toBe('Internal server error')
   })
 
   it('UNKNOWN: cualquier otro código conserva su mensaje', async () => {

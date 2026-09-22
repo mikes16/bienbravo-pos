@@ -265,7 +265,8 @@ export interface StaffSaleQuota {
  *  - `REGISTER_SESSION_STALE`: la caja abierta es de un día anterior; el API
  *    no acepta cobros hasta que se haga el corte.
  *  - `STOCK`: no alcanza el inventario de la sucursal para los productos del
- *    carrito.
+ *    carrito. Se reconoce por `extensions.code: 'INSUFFICIENT_STOCK'`; el
+ *    patrón de texto es respaldo de desarrollo (ver `STOCK_MESSAGE_PATTERN`).
  *  - `UNKNOWN`: cualquier otra cosa (red, permisos, bug). Se muestra tal cual.
  */
 export type CheckoutRejectionCode =
@@ -316,15 +317,17 @@ export class CheckoutRejectedError extends Error {
 }
 
 /**
- * Faltante de stock: el API NO manda código propio para este caso — lo lanza
- * como `Error` plano desde `assertStockAvailable` (pos.resolver.ts), así que el
- * filtro de excepciones lo normaliza a `INTERNAL_SERVER_ERROR` y lo único
- * estable es el encabezado del mensaje ("Stock insuficiente en esta
- * sucursal: …"). Se reconoce por ese patrón Y por un código explícito, para
- * que el día que el API lo tipe (`INSUFFICIENT_STOCK`) esto siga funcionando
- * sin tocar el POS. Ojo: con `NODE_ENV=production` el filtro reemplaza el
- * mensaje por uno genérico, así que ahí el caso cae en `UNKNOWN` hasta que el
- * API mande el código.
+ * Faltante de stock, RESPALDO SÓLO DE DESARROLLO. La ruta buena es el código
+ * (`INSUFFICIENT_STOCK` en el switch de abajo); este patrón no la sustituye:
+ * hoy `assertStockAvailable` (pos.resolver.ts del API) lanza un `Error` pelón,
+ * y el filtro de excepciones del API lo normaliza a `INTERNAL_SERVER_ERROR`
+ * reemplazando además el texto por "Internal server error" cuando
+ * `NODE_ENV === 'production'`. Es decir: en producción no hay nada que
+ * reconocer aquí y el rechazo MÁS FRECUENTE del cobro cae en `UNKNOWN` (banner
+ * genérico, sin recarga de existencias ni faltantes). En desarrollo el mensaje
+ * sí viaja íntegro ("Stock insuficiente en esta sucursal: …") y el patrón lo
+ * rescata, por eso sigue aquí. Se retira cuando el API publique el código (el
+ * cambio exacto que necesita el API está en el handoff de T-036).
  */
 const STOCK_MESSAGE_PATTERN = /stock insuficiente/i
 
@@ -341,7 +344,14 @@ const STOCK_MESSAGE_PATTERN = /stock insuficiente/i
 const STAFF_SALE_NOT_ELIGIBLE_PATTERN = /no est[áa] disponible para venta a staff/i
 const STAFF_SALE_VARIANT_REQUIRED_PATTERN = /elige la variante/i
 
-/** Clasificación por texto, cuando el código del API no alcanza. */
+/**
+ * Clasificación por TEXTO: último recurso cuando el error no trae
+ * `extensions.code` propio. Es confiable sólo para lo que el API lanza como
+ * `GraphQLError` —el filtro lo devuelve intacto ([D-040]), caso de los
+ * rechazos de venta a staff que salen como `BAD_USER_INPUT`—. Para `STOCK` es
+ * un respaldo de desarrollo y nada más: en producción el mensaje llega
+ * enmascarado (ver `STOCK_MESSAGE_PATTERN`).
+ */
 function rejectionCodeFromMessage(message: string): AnyCheckoutRejectionCode {
   if (STOCK_MESSAGE_PATTERN.test(message)) return 'STOCK'
   if (STAFF_SALE_NOT_ELIGIBLE_PATTERN.test(message)) return 'STAFF_SALE_NOT_ELIGIBLE'
@@ -350,10 +360,16 @@ function rejectionCodeFromMessage(message: string): AnyCheckoutRejectionCode {
 }
 
 /**
- * Traduce el `extensions.code` de un GraphQLError (o su mensaje, cuando el API
- * no manda código) al código de dominio. Función pura: quien lee el error de
- * Apollo es el repositorio. El `message` del API viaja intacto en el error —
- * ya viene en español y accionable.
+ * Traduce el `extensions.code` de un GraphQLError (o su mensaje, como respaldo)
+ * al código de dominio. Función pura: quien lee el error de Apollo es el
+ * repositorio. El `message` del API viaja intacto en el error — ya viene en
+ * español y accionable.
+ *
+ * El CÓDIGO es la única ruta que funciona en producción: el filtro de
+ * excepciones del API conserva código y mensaje de un `GraphQLError` ([D-040])
+ * y enmascara cualquier `Error` pelón. Un rechazo que sólo se reconozca por
+ * texto está roto en producción hasta que el API le dé código — hoy es el caso
+ * de `STOCK`.
  */
 export function checkoutRejectionCodeFrom(
   code: string | null | undefined,
@@ -366,6 +382,10 @@ export function checkoutRejectionCodeFrom(
       return 'BARBER_EXCLUDED'
     case 'REGISTER_SESSION_STALE':
       return 'REGISTER_SESSION_STALE'
+    // Ruta de producción del faltante de existencias: en cuanto
+    // `assertStockAvailable` lo lance como `GraphQLError` con este código, la
+    // recuperación de `useCheckout` (recarga de existencias + faltantes +
+    // confirmar) funciona sin tocar una línea más del POS.
     case 'INSUFFICIENT_STOCK':
       return 'STOCK'
     case 'STAFF_SALE_QUOTA_EXCEEDED':

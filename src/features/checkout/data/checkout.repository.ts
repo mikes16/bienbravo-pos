@@ -27,8 +27,15 @@ import type {
 /**
  * Traduce el fallo de una mutation de cobro al error tipado del dominio: lee
  * `extensions.code` del primer GraphQLError y lo clasifica
- * (`checkoutRejectionCodeFrom`). Un fallo que no es de GraphQL (red caída,
- * timeout) no trae código y cae en `UNKNOWN` conservando su mensaje.
+ * (`checkoutRejectionCodeFrom`), conservando el `message` en español del API.
+ *
+ * El código es la ruta de producción: el filtro de excepciones del API sólo
+ * deja pasar intactos los `GraphQLError` ([D-040]); un `Error` pelón del
+ * resolver llega como `INTERNAL_SERVER_ERROR` + "Internal server error" y cae
+ * en `UNKNOWN` — hoy le pasa al faltante de existencias (`assertStockAvailable`
+ * de pos.resolver.ts, ver `STOCK_MESSAGE_PATTERN` en el dominio). Un fallo que
+ * no es de GraphQL (red caída, timeout) tampoco trae código y también cae en
+ * `UNKNOWN` conservando su mensaje.
  *
  * Mismo patrón que `toCustomerNameTakenException` (shared/lib/customer-errors):
  * el parsing de `CombinedGraphQLErrors` vive en la capa de datos, no en la UI.
