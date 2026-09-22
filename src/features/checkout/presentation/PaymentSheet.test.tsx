@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { PaymentSheet } from './PaymentSheet'
@@ -178,5 +178,63 @@ describe('PaymentSheet — split mode', () => {
       ]),
       tipCents: 0,
     })
+  })
+})
+
+/* ── R9: la confirmación de pago también dice a nombre de quién se cobra. El
+      error reportado (un barbero cobra dentro de la sesión de otro) ocurre en
+      el momento del cobro, así que el último botón del flujo lo declara. ── */
+describe('PaymentSheet — operador de la sesión', () => {
+  it('el CTA de confirmar declara al operador sin perder la acción', async () => {
+    const user = userEvent.setup()
+    render(
+      <PaymentSheet open totalCents={28000} staffName="Aarón Cruz" onClose={() => {}} onConfirm={() => {}} />,
+    )
+    await user.click(screen.getByRole('button', { name: /tarjeta/i }))
+    const cta = screen.getByRole('button', { name: /confirmar pago · como aarón/i })
+    // El nombre corto (primera palabra) es visible, no solo accesible.
+    expect(within(cta).getByText(/^Como Aarón$/)).toBeInTheDocument()
+    expect(within(cta).getByText('Confirmar pago')).toBeInTheDocument()
+  })
+
+  it('el operador de la sesión no cambia la lógica de cobro', async () => {
+    const onConfirm = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <PaymentSheet open totalCents={100000} staffName="Aarón Cruz" onClose={() => {}} onConfirm={onConfirm} />,
+    )
+    await user.click(screen.getByRole('button', { name: /tarjeta/i }))
+    await user.click(screen.getByRole('button', { name: /confirmar pago · como aarón/i }))
+    expect(onConfirm).toHaveBeenCalledWith({
+      payments: [{ provider: 'CARD_TERMINAL', amountCents: 100000 }],
+      tipCents: 0,
+    })
+  })
+
+  it('con otra sesión activa el CTA cambia de nombre', async () => {
+    const user = userEvent.setup()
+    render(
+      <PaymentSheet open totalCents={28000} staffName="Beto Ramos" onClose={() => {}} onConfirm={() => {}} />,
+    )
+    await user.click(screen.getByRole('button', { name: /tarjeta/i }))
+    expect(screen.getByRole('button', { name: /confirmar pago · como beto/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /como aarón/i })).not.toBeInTheDocument()
+  })
+
+  it('sin sesión resuelta el CTA conserva su texto de siempre', async () => {
+    const user = userEvent.setup()
+    render(<PaymentSheet open totalCents={28000} onClose={() => {}} onConfirm={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /tarjeta/i }))
+    expect(screen.getByRole('button', { name: 'Confirmar pago' })).toBeInTheDocument()
+    expect(screen.queryByText(/^Como /)).not.toBeInTheDocument()
+  })
+
+  it('en vuelo el CTA sigue siendo Procesando… y sigue bloqueado', () => {
+    render(
+      <PaymentSheet open totalCents={28000} staffName="Aarón Cruz" submitting onClose={() => {}} onConfirm={() => {}} />,
+    )
+    const cta = screen.getByRole('button', { name: /procesando/i })
+    expect(cta).toBeDisabled()
+    expect(cta).toHaveAttribute('aria-busy', 'true')
   })
 })

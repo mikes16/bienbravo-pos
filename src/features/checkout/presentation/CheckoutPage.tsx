@@ -152,6 +152,13 @@ export function CheckoutPage() {
   // al cerrar venta, pero el cajero necesita ver el monto correcto en CTA
   // y PaymentSheet (validación de pagos vs total).
   const totalAfterDiscountCents = Math.max(0, totals.subtotalCents - ck.discountTotalCents)
+  // Operador = barbero de la SESIÓN ACTIVA, no el barbero atribuido a las
+  // líneas (`attendingBarber`): son cosas distintas. El cajero puede cobrar un
+  // servicio que hizo otro; lo que el CTA y la confirmación de pago declaran es
+  // a nombre de quién se está cobrando, que es justo donde el cliente reportó
+  // el error (cobrar dentro de la sesión de alguien más). Vacío mientras el
+  // viewer carga → los botones caen a su texto de siempre.
+  const operatorName = viewer?.staff?.fullName ?? ''
 
   if (ck.successSale) {
     return (
@@ -361,6 +368,7 @@ export function CheckoutPage() {
             <CobrarCTA
               label="Cobrar extras"
               totalCents={totalAfterDiscountCents}
+              staffName={operatorName}
               disabled={ck.submitting}
               onTap={() => setPaymentSheetOpen(true)}
             />
@@ -379,6 +387,7 @@ export function CheckoutPage() {
         ) : (
           <CobrarCTA
             totalCents={totalAfterDiscountCents}
+            staffName={operatorName}
             disabled={ck.cartState.lines.length === 0 || ck.submitting}
             onTap={() => setPaymentSheetOpen(true)}
           />
@@ -555,6 +564,7 @@ export function CheckoutPage() {
       <PaymentSheet
         open={paymentSheetOpen}
         totalCents={totalAfterDiscountCents}
+        staffName={operatorName}
         submitting={ck.submitting}
         error={ck.error}
         canAddTip={canAddTip}

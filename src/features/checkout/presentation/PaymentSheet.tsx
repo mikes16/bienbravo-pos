@@ -47,8 +47,24 @@ interface PaymentSheetProps {
    * client-side de `pos.tip.add` que el API también gatea en createPOSSale.
    */
   canAddTip?: boolean
+  /**
+   * Nombre completo del barbero de la SESIÓN ACTIVA (mismo dato que recibe
+   * `CobrarCTA`). La confirmación de pago es el último punto de no retorno del
+   * cobro, así que repite a nombre de quién se cobra. Vacío/ausente → la
+   * confirmación se ve exactamente como antes.
+   */
+  staffName?: string
   onClose: () => void
   onConfirm: (input: PaymentInput) => void
+}
+
+/**
+ * Primer nombre = primera palabra (misma regla que el CTA de cobro; se repite
+ * aquí para no exportar utilidades desde un archivo de componente). Las
+ * mayúsculas son CSS: el DOM conserva la capitalización real del nombre.
+ */
+function firstNameOf(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] ?? ''
 }
 
 const METHOD_LABELS: Record<UiMethod, string> = {
@@ -57,7 +73,7 @@ const METHOD_LABELS: Record<UiMethod, string> = {
   TRANSFER: 'Transferencia',
 }
 
-export function PaymentSheet({ open, totalCents, submitting = false, error = null, canAddTip = true, onClose, onConfirm }: PaymentSheetProps) {
+export function PaymentSheet({ open, totalCents, submitting = false, error = null, canAddTip = true, staffName = '', onClose, onConfirm }: PaymentSheetProps) {
   const [method, setMethod] = useState<UiMethod | null>(null)
   const [cashCounts, setCashCounts] = useState<CashCounts>(emptyCashCounts())
   const [tipCents, setTipCents] = useState(0)
@@ -93,6 +109,11 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
     (mode === 'simple'
       ? method !== null && !cashIsShort
       : splitMatches && splits.some((r) => r.amountCents > 0))
+
+  // Operador de la sesión activa + verbo de la acción. Se calculan aquí para
+  // que el texto visible y el nombre accesible del CTA salgan del mismo lugar.
+  const who = firstNameOf(staffName)
+  const confirmAction = error ? 'Reintentar pago' : mode === 'split' ? 'Cobrar' : 'Confirmar pago'
 
   function handleConfirm() {
     if (submitting) return
@@ -300,8 +321,16 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
             size="primary"
             disabled={!canConfirm}
             aria-busy={submitting}
+            // Mismo patrón que el CTA de cobro: el nombre accesible declara la
+            // acción y a nombre de quién se cobra ("Confirmar pago · como
+            // Aarón"). Mientras la venta está en vuelo el botón ya no es una
+            // acción ofrecida, así que conserva su texto de siempre.
+            aria-label={!submitting && who ? `${confirmAction} · como ${who}` : undefined}
             onClick={handleConfirm}
-            className="rounded-none uppercase tracking-[0.06em]"
+            className={cn(
+              'rounded-none uppercase tracking-[0.06em]',
+              !submitting && who && 'flex-col gap-1',
+            )}
           >
             {submitting ? (
               <span className="inline-flex items-center justify-center gap-2">
@@ -311,12 +340,17 @@ export function PaymentSheet({ open, totalCents, submitting = false, error = nul
                 />
                 Procesando…
               </span>
-            ) : error ? (
-              'Reintentar pago'
-            ) : mode === 'split' ? (
-              'Cobrar'
             ) : (
-              'Confirmar pago'
+              <>
+                <span className={cn(who && 'font-mono text-[11px] font-bold leading-none tracking-[0.18em]')}>
+                  {confirmAction}
+                </span>
+                {who ? (
+                  <span className="font-[var(--font-pos-display)] text-[20px] font-extrabold leading-none tracking-[0.02em]">
+                    Como {who}
+                  </span>
+                ) : null}
+              </>
             )}
           </TouchButton>
           {submitting && (

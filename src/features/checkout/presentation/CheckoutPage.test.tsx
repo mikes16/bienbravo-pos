@@ -806,3 +806,117 @@ describe('CheckoutPage (integration)', () => {
     expect(screen.queryByLabelText('Beto')).not.toBeInTheDocument()
   })
 })
+
+/* ── R9 (variante A): el botón de cobro dice a nombre de quién se cobra. El
+      error que reportó el negocio pasa AL COBRAR —un barbero cobra dentro de
+      la sesión de otro—, así que el nombre va en el botón, y es el de la
+      SESIÓN ACTIVA, no el del barbero atribuido a las líneas. ── */
+
+// Segunda sesión para contrastar: mismo POS, otro operador en la tablet.
+class OtherSessionAuthRepo extends InMemoryAuthRepository {
+  override async getViewer() {
+    return { ...MOCK_VIEWER, staff: { ...MOCK_VIEWER.staff, id: 'staff-9', fullName: 'Aarón Cruz' } }
+  }
+}
+
+describe('CheckoutPage — cobrar como {operador}', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('bb-pos-location-id', 'loc1')
+  })
+
+  // Roster sin "Carlos" (b3) para que el nombre del CTA solo pueda venir de la
+  // sesión (MOCK_VIEWER = Carlos Barbero) y nunca del barbero de la línea.
+  function reposSinCarlos() {
+    const repos = makeRepos()
+    const roster = BARBERS.filter((b) => b.id !== 'b3')
+    repos.checkout.getBarbers = vi.fn().mockResolvedValue(roster)
+    repos.checkout.getAvailableBarbers = vi
+      .fn()
+      .mockResolvedValue(roster.map((b) => ({ ...b, hasClockedIn: true, isOccupied: false })))
+    return repos
+  }
+
+  it('el CTA de cobro lleva el nombre del operador de la sesión y conserva el monto', async () => {
+    const user = userEvent.setup()
+    const repos = reposSinCarlos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    // Nombre accesible = acción + monto + operador.
+    const cta = await screen.findByRole('button', { name: /cobrar · \$280 como carlos/i }, { timeout: 3000 })
+    // Y las dos líneas siguen siendo visibles (el monto no se perdió).
+    expect(within(cta).getByText(/\$280/)).toBeInTheDocument()
+    expect(within(cta).getByText(/^Como Carlos$/)).toBeInTheDocument()
+  })
+
+  it('el nombre es el de la sesión, no el del barbero atribuido a la línea', async () => {
+    const user = userEvent.setup()
+    const repos = reposSinCarlos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    // El servicio se acredita a Antonio (atendiendo)…
+    expect(
+      await screen.findByRole('button', { name: /cambiar barbero: antonio/i }, { timeout: 3000 }),
+    ).toBeInTheDocument()
+    // …y aun así el cobro se hace a nombre de quien opera la tablet.
+    expect(screen.getByRole('button', { name: /^cobrar/i })).toHaveAccessibleName(/como carlos/i)
+    expect(screen.queryByRole('button', { name: /cobrar.*como antonio/i })).not.toBeInTheDocument()
+  })
+
+  it('con otra sesión activa el CTA cambia de nombre', async () => {
+    const user = userEvent.setup()
+    const repos = reposSinCarlos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new OtherSessionAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    expect(
+      await screen.findByRole('button', { name: /cobrar · \$280 como aarón/i }, { timeout: 3000 }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /como carlos/i })).not.toBeInTheDocument()
+  })
+
+  it('la confirmación de pago repite a nombre de quién se cobra', async () => {
+    const user = userEvent.setup()
+    const repos = reposSinCarlos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    await user.click(await screen.findByRole('button', { name: /cobrar.*como carlos/i }, { timeout: 3000 }))
+    const dialog = await screen.findByRole('dialog', { name: /pago/i })
+    await user.click(within(dialog).getByRole('button', { name: /tarjeta/i }))
+    expect(
+      within(dialog).getByRole('button', { name: /confirmar pago · como carlos/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('el nombre en el CTA no cambia la lógica de cobro: sigue cerrando la venta', async () => {
+    const user = userEvent.setup()
+    const repos = reposSinCarlos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    await user.click(await screen.findByRole('button', { name: /cobrar.*como carlos/i }, { timeout: 3000 }))
+    await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
+    await user.click(screen.getByRole('button', { name: /confirmar pago · como carlos/i }))
+    await waitFor(() => {
+      expect(repos.checkout.createSale).toHaveBeenCalled()
+    })
+  })
+})
