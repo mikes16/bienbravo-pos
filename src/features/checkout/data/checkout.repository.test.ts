@@ -370,8 +370,8 @@ describe('ApolloCheckoutRepository.evictCatalogCache', () => {
   it('tira catálogo y precios por línea del cache, y deja lo demás intacto', async () => {
     const cache = new InMemoryCache()
     cache.writeQuery({
-      query: gql`query Seed($locationId: ID!) { services(locationId: $locationId) { id } posDaySales { id } }`,
-      variables: { locationId: 'loc-1' },
+      query: gql`query Seed($locationId: ID!, $date: String!) { services(locationId: $locationId) { id } posDaySales(locationId: $locationId, date: $date) { id } }`,
+      variables: { locationId: 'loc-1', date: '2026-01-01' },
       data: {
         services: [{ __typename: 'Service', id: 'svc-corte' }],
         posDaySales: [{ __typename: 'Sale', id: 'sale-1' }],
