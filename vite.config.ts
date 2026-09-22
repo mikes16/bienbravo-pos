@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig, type PluginOption } from 'vite'
+import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { visualizer } from 'rollup-plugin-visualizer'
@@ -21,8 +21,38 @@ const analyze = process.env.ANALYZE
 const buildId =
   process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? `dev-${Date.now().toString(36)}`
 
+/**
+ * Publica `dist/version.json` con el MISMO `buildId` que se inyecta como
+ * `__BUILD_ID__` en el bundle. Es el único dato que una pestaña abierta desde
+ * hace horas puede consultar para saber que el JavaScript que está corriendo
+ * ya no es el desplegado (`src/core/freshness/useDeployWatcher.ts`).
+ *
+ * Va como asset del propio bundle (no como archivo en `public/`) justamente
+ * para que las dos mitades no puedan desincronizarse: el valor sale de la
+ * misma constante en el mismo build.
+ *
+ * Nombre FIJO y fuera de `assets/` a propósito: `assets/*` se sirve con
+ * `immutable` por un año (ver vercel.json) y un manifiesto cacheado así no
+ * serviría de nada. `vercel.json` le pone `Cache-Control: no-store`.
+ *
+ * Solo en build: en `vite dev` el watcher está inerte y el archivo no existe.
+ */
+function versionManifest(): Plugin {
+  return {
+    name: 'bienbravo:version-manifest',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: `${JSON.stringify({ buildId })}\n`,
+      })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), ...analyze],
+  plugins: [react(), tailwindcss(), versionManifest(), ...analyze],
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
   },

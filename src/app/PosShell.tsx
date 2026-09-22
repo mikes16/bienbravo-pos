@@ -13,6 +13,7 @@ import { ToastViewport } from '@/core/toast/ToastViewport'
 import { useCajaGate } from '@/features/register/application/useCajaGate.ts'
 import { StaleCajaBlocker, StaleCajaBanner } from '@/features/register/presentation/StaleCajaBlocker.tsx'
 import { RefreshControl } from '@/core/freshness/RefreshControl.tsx'
+import { useDeployWatcher } from '@/core/freshness/useDeployWatcher.ts'
 import { IdentityStripV2 } from './IdentityStripV2.tsx'
 import { RouteLoader } from './RouteLoader.tsx'
 import { routePrefetchers } from './router.tsx'
@@ -36,6 +37,26 @@ function useLiveClock() {
     return () => clearTimeout(id)
   }, [])
   return now
+}
+
+/**
+ * Franja de "hay versión nueva". Sólo se ve en el ÚNICO caso en que el POS no
+ * puede recargarse solo: con una venta en curso (el carrito vive en memoria y
+ * una recarga lo borraría). En cualquier otro momento —bloqueado o sin venta—
+ * `useDeployWatcher` recarga de inmediato y esta franja no llega a pintarse.
+ *
+ * Es informativa, sin acción: el operador no tiene que hacer nada más que
+ * terminar lo que está haciendo. `role="status"` para que se anuncie una vez.
+ */
+function DeployUpdateNotice() {
+  return (
+    <div
+      role="status"
+      className="shrink-0 border-t border-[var(--color-leather-muted)] bg-[var(--color-carbon-elevated)] px-4 py-2 text-center font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--color-bone)]"
+    >
+      Hay una versión nueva. Se actualizará al terminar esta venta.
+    </div>
+  )
 }
 
 /**
@@ -71,6 +92,11 @@ export function PosShell() {
   // hasta que alguien haga el corte. Se re-verifica en cada desbloqueo (el
   // shell se monta de nuevo), al volver el foco y en cada ruta mientras bloquea.
   const cajaGate = useCajaGate(locationId, path)
+  // Detector de despliegue nuevo (spec § 3.6). Vive aquí porque el shell se
+  // monta al desbloquear con PIN, que es uno de sus dos disparadores; el otro
+  // es la reconexión del socket. No consulta nada en reposo. Cuando puede,
+  // recarga solo; `updateAvailable` es el caso en que NO puede (venta en curso).
+  const { updateAvailable } = useDeployWatcher()
 
   if (loading) return null
   if (!viewer || isLocked) return <Navigate to="/" replace />
@@ -140,6 +166,10 @@ export function PosShell() {
         trailing={<RefreshControl timezone={locationTimezone} />}
       />
       <main className="flex-1 overflow-hidden">{main}</main>
+      {/* Versión nueva esperando a que termine la venta. Va ARRIBA del aviso de
+          bloqueo: ese es el que se toca (queda pegado a los tabs, al alcance
+          del pulgar) y éste es sólo informativo. */}
+      {updateAvailable && <DeployUpdateNotice />}
       {/* Aviso de los últimos segundos antes del bloqueo automático. Va aquí,
           entre el contenido y los tabs, porque ocupa su propia fila del shell:
           así no tapa el CTA de cobro (pegado al fondo del carrito) ni los
