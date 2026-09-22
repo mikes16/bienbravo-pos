@@ -4,10 +4,7 @@
      Formato de entrada: "[tag] (xN, T-XXX/T-YYY) regla generalizable".
      Tags cerrados: test | estilo | api | deps | build | datos | seguridad. -->
 - [test] (x1, T-013) Con MoneyValue/MoneyDisplay el símbolo y el número son spans distintos: getByText('$360') ya no encuentra nada (el matcher por defecto solo une los nodos de texto DIRECTOS). Asertar con getByRole('group', { name }) + toHaveTextContent.
-- [build] (x1, T-016) En una propuesta de split (splits/T-NNN.json) cada entrada de context de las hijas usa exactamente type/path/reason según .harness/schema/tasks.schema.json (nada de kind/why/note): apply-split rechaza el archivo entero si no cumple.
 - [test] (x1, T-016a) Un helper de render compartido que inyecta un contexto debe crear el valor UNA vez por llamada (fuera del Wrapper) y envolver sólo los children: identidad estable evita re-registros en bucle y el provider propio de un test gana por anidamiento.
-- [build] (x1, T-017b) Cuando un check de lint abarca un directorio con deuda pre-existente, acótalo a los archivos de files[] al redactar el AC: si no, la tarea queda rehén de un archivo que su ejecutor no puede tocar.
-- [build] (x1, T-017b) NEEDS_SPLIT no existe para una hija de split: applySplit frena el segundo nivel y la deja blocked revirtiendo el árbol. Si a una hija le falta un archivo fuera de files[], la salida es FAILED con el bloqueo descrito y la tarea de desbloqueo lista para import.
 - [build] (x1, T-019) El check de drift git diff --exit-code -- src/core/graphql/generated solo mide drift real de codegen si primero haces git add -A de ese path: sin stage compara contra HEAD y marca como drift el cambio legítimo del propio sync.
 - [build] (x1, T-020) Un enum de src/core/graphql/generated/graphql.ts se puede importar como VALOR desde código del bundle inicial: rollup lo tree-shakea y no arrastra los demás enums (verificable con grep del identificador en dist/assets/main-*.js).
 - [build] (x1, T-020) Para medir drift de codegen sin poder usar git add, compara el hash de los archivos generados antes y después de correr codegen.
@@ -40,3 +37,4 @@
 - [test] (x1, T-032a) Cuando dos elementos comparten el mismo texto (el rótulo de un modo y el control que lo enciende), dales rol propio a cada uno en el mismo cambio (heading vs switch): con getByText la consulta queda ambigua y el test acaba acoplado al orden del DOM.
 - [test] (x1, T-032b) El rol implícito de <s>/<del> NO lo resuelve el motor de roles de Testing Library (getByRole('deletion') falla): si quieres consultar por rol un elemento semántico poco común, pon el role explícito en el mismo cambio.
 - [test] (x1, T-032c) Para afirmar 'el catálogo ya cargó' no uses una colección derivada que filtra (catalogItems con onlyCategorized descarta fixtures con categoryId null): aserta por un camino sin filtro, p. ej. agregar la línea y ver su precio.
+- [test] (x1, T-032d) El matcher por defecto de getByText sólo une nodos de texto DIRECTOS: una etiqueta corta repetida en el aria-label del botón contenedor NO hace ambigua la consulta; se puede asertar la etiqueta con getByText y el botón con getByRole(..., { name }) en el mismo test.

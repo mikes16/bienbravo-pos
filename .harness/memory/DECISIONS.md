@@ -61,3 +61,4 @@
 - [D-055] 2026-09-22 (T-031) Encender el modo venta a staff es asíncrono (el cupo se pide a la red ANTES de tocar el carrito): con la política apagada o el cupo ilegible el modo no se activa nunca.
 - [D-056] 2026-09-22 (T-032a) La UI de un modo de cobro no se monta en un flujo cuya mutation no lo soporta: StaffSaleBar queda fuera del cobro de una cita prepagada porque submitExtras no manda staffSale — prometería un precio staff que el API nunca registraría como tal.
 - [D-057] 2026-09-22 (T-032b) Un precio superado se marca con <s role="deletion"> (rol explícito) y el elemento que lo reemplaza se nombra en el aria-label del contenedor: ningún tachado del POS puede ser solo CSS.
+- [D-058] 2026-09-22 (T-032d) En una card del catálogo en modo staff, 'agotado' gana a la etiqueta de venta a staff (reponer es lo accionable); el bloqueo aplica igual y el texto accesible menciona ambas razones.
