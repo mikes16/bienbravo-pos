@@ -13,8 +13,19 @@ const analyze = process.env.ANALYZE
   ? [visualizer({ filename: 'dist/stats.html', gzipSize: true, brotliSize: true }) as PluginOption]
   : []
 
+// Identificador del build. Es la versión del cache persistido (ver
+// src/core/apollo/client.ts): cambia en cada deploy, así que cada deploy purga
+// UNA vez el cache guardado en el dispositivo y nadie tiene que acordarse de
+// subir una constante a mano tras un cambio de schema. En Vercel viene el SHA
+// del commit; en CI genérico, el de GitHub; en local, el timestamp del arranque.
+const buildId =
+  process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? `dev-${Date.now().toString(36)}`
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), ...analyze],
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+  },
   resolve: {
     alias: { '@': path.join(__dirname, 'src') },
   },

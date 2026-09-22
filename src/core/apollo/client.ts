@@ -1,14 +1,20 @@
 import { ApolloClient, HttpLink, InMemoryCache, split } from '@apollo/client'
+import type { NormalizedCacheObject } from '@apollo/client'
 import { BatchHttpLink } from '@apollo/client/link/batch-http'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
+import { PERSISTED_ROOT_FIELDS, rootFieldName } from './dataClasses'
 
-// Bump cuando el shape del schema cambie de forma que el cache persistido
-// pueda quedar inconsistente (campos requeridos nuevos, enums renombrados,
-// type policies modificadas). El cliente compara contra lo guardado en
-// localStorage y purga si difieren — evita renders con fields faltantes.
-const SCHEMA_VERSION = '2026-06-04-v1'
+/**
+ * Identificador del build, inyectado por Vite (`define: { __BUILD_ID__ }` en
+ * vite.config.ts). Sustituye a la vieja constante manual que había que acordarse
+ * de subir a mano tras cada cambio de schema: si alguien la olvidaba, el POS
+ * restauraba datos con forma vieja. Ahora cada deploy trae un id distinto y
+ * purga el cache guardado UNA vez. En test (vitest no aplica el `define`) cae a
+ * un valor fijo para que los casos sean deterministas.
+ */
+const BUILD_ID: string = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'test'
 
 const STORAGE_KEY = 'bb-pos-apollo-cache'
 const STORAGE_VERSION_KEY = 'bb-pos-apollo-cache-version'
@@ -66,20 +72,93 @@ function makeCache(): InMemoryCache {
 }
 
 /**
+ * Filtra un snapshot de `cache.extract()` dejando SOLO lo que puede vivir en el
+ * dispositivo. Función pura (sin `window`, sin cache): es el corazón testeable
+ * de la garantía "el dinero nunca se guarda".
+ *
+ * Criterio — LISTA DE PERMITIDOS, no de excluidos:
+ *   1. De `ROOT_QUERY` se conservan únicamente las llaves cuyo nombre de campo
+ *      está en PERSISTED_ROOT_FIELDS (catálogo + sesión). Un campo raíz nuevo
+ *      que nadie clasificó NO se persiste: olvidarse de clasificar falla hacia
+ *      el lado seguro.
+ *   2. Se arrastran las entidades alcanzables desde esas llaves siguiendo
+ *      `__ref` de forma recursiva (Service → CatalogCategory → …).
+ *   3. Todo lo demás se descarta: ROOT_MUTATION, ROOT_SUBSCRIPTION, `__META`,
+ *      y cualquier entidad huérfana (Sale, Customer, Register…) que solo era
+ *      alcanzable desde un campo de dinero.
+ */
+export function pickPersistable(snapshot: NormalizedCacheObject): NormalizedCacheObject {
+  const out: NormalizedCacheObject = {}
+  const rootQuery = snapshot.ROOT_QUERY
+  if (!rootQuery || typeof rootQuery !== 'object') return out
+
+  const keptRoot: Record<string, unknown> = {}
+  for (const [storeFieldName, value] of Object.entries(rootQuery)) {
+    if (storeFieldName === '__typename') {
+      keptRoot.__typename = value
+      continue
+    }
+    if (!PERSISTED_ROOT_FIELDS.has(rootFieldName(storeFieldName))) continue
+    keptRoot[storeFieldName] = value
+  }
+  out.ROOT_QUERY = keptRoot as NormalizedCacheObject[string]
+
+  // Alcance transitivo por __ref. Una entidad solo sobrevive si algún campo
+  // permitido la referencia (directa o indirectamente).
+  const pending: string[] = []
+  collectRefs(keptRoot, pending)
+  const seen = new Set<string>(['ROOT_QUERY'])
+  while (pending.length > 0) {
+    const id = pending.pop() as string
+    if (seen.has(id)) continue
+    seen.add(id)
+    const entity = snapshot[id]
+    if (!entity) continue
+    out[id] = entity
+    collectRefs(entity, pending)
+  }
+
+  return out
+}
+
+/** Recorre cualquier valor del store y acumula los ids de las `Reference`. */
+function collectRefs(value: unknown, into: string[]): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectRefs(item, into)
+    return
+  }
+  if (value === null || typeof value !== 'object') return
+  const ref = (value as { __ref?: unknown }).__ref
+  if (typeof ref === 'string') {
+    into.push(ref)
+    return
+  }
+  for (const nested of Object.values(value)) collectRefs(nested, into)
+}
+
+/**
  * Persistencia inline del InMemoryCache a localStorage. Decisión: NO usar
  * apollo3-cache-persist porque su peer dep está pegada a Apollo 3.x.
  *
  * Patrón:
- *   - Al boot: restaurar desde localStorage si la versión persistida coincide
- *     con SCHEMA_VERSION (evita drift después de deploys del API)
- *   - Polling cada 2s: si cache.extract() cambió desde la última escritura,
- *     persistimos. Más simple y robusto que monkey-patchear broadcastWatches.
+ *   - Al boot: restaurar desde localStorage si el build id persistido coincide
+ *     con el actual (cada deploy purga una vez), y pasando lo guardado por
+ *     pickPersistable — un cache viejo escrito por la versión anterior (que
+ *     guardaba TODO) se descarta en el mismo paso.
+ *   - Polling cada 2s: si el snapshot FILTRADO cambió desde la última
+ *     escritura, persistimos. Más simple y robusto que monkey-patchear
+ *     broadcastWatches, y como filtramos antes de comparar, el churn de
+ *     ventas/caja ya no dispara escrituras.
  *   - pagehide: flush sincrónico al cerrar la pestaña para no perder los
  *     últimos updates del usuario.
  *   - Cap a 1.5MB; si excede, descartamos el cache stored (el session en
  *     memoria sigue vivo). Próximo boot empieza limpio.
  */
-function attachCachePersistence(cache: InMemoryCache): { purge: () => void } {
+export function attachCachePersistence(cache: InMemoryCache): {
+  purge: () => void
+  flush: () => void
+  stop: () => void
+} {
   const purge = () => {
     try {
       window.localStorage.removeItem(STORAGE_KEY)
@@ -89,16 +168,21 @@ function attachCachePersistence(cache: InMemoryCache): { purge: () => void } {
     }
   }
 
-  // Restore al boot — solo si la versión coincide.
+  // Restore al boot — solo si el build id coincide. El filtro se aplica también
+  // aquí (no solo al escribir): así un cache escrito por la versión anterior —o
+  // por alguien que editó localStorage a mano— no puede reinyectar dinero ni
+  // datos de clientes en la memoria de la app.
   try {
     const persistedVersion = window.localStorage.getItem(STORAGE_VERSION_KEY)
-    if (persistedVersion === SCHEMA_VERSION) {
+    if (persistedVersion === BUILD_ID) {
       const raw = window.localStorage.getItem(STORAGE_KEY)
       if (raw) {
-        cache.restore(JSON.parse(raw))
+        cache.restore(pickPersistable(JSON.parse(raw) as NormalizedCacheObject))
       }
     } else if (persistedVersion !== null) {
-      // Versión vieja → purga el cache stale.
+      // Build anterior → purga el cache stale (migración de una sola vez por
+      // deploy; también es lo que borra el cache "guardaba todo" de la versión
+      // previa a la lista de permitidos).
       purge()
     }
   } catch {
@@ -114,14 +198,16 @@ function attachCachePersistence(cache: InMemoryCache): { purge: () => void } {
 
   const persistOnce = (): void => {
     try {
-      const snapshot = JSON.stringify(cache.extract())
+      // FILTRAR ANTES DE SERIALIZAR: lo que no está en la lista de permitidos
+      // nunca llega a tocar localStorage.
+      const snapshot = JSON.stringify(pickPersistable(cache.extract()))
       if (snapshot === lastSerialized) return
       if (snapshot.length > MAX_CACHE_SIZE_BYTES) {
         purge()
         return
       }
       window.localStorage.setItem(STORAGE_KEY, snapshot)
-      window.localStorage.setItem(STORAGE_VERSION_KEY, SCHEMA_VERSION)
+      window.localStorage.setItem(STORAGE_VERSION_KEY, BUILD_ID)
       lastSerialized = snapshot
     } catch {
       // QuotaExceeded o similar → purga para que el próximo boot empiece
@@ -130,12 +216,17 @@ function attachCachePersistence(cache: InMemoryCache): { purge: () => void } {
     }
   }
 
-  window.setInterval(persistOnce, PERSIST_INTERVAL_MS)
+  const intervalId = window.setInterval(persistOnce, PERSIST_INTERVAL_MS)
   // pagehide es lo más confiable para "tab cerrando" — se dispara también
   // en bfcache navigations en mobile, donde unload puede no correr.
   window.addEventListener('pagehide', persistOnce)
 
-  return { purge }
+  const stop = (): void => {
+    window.clearInterval(intervalId)
+    window.removeEventListener('pagehide', persistOnce)
+  }
+
+  return { purge, flush: persistOnce, stop }
 }
 
 /**
