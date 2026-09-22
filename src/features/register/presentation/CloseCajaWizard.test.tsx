@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CloseCajaWizard } from './CloseCajaWizard'
@@ -37,11 +37,13 @@ async function advanceToFinalClose(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('checkbox'))
 }
 
+const OPEN_REGISTERS = [
+  { id: 'reg-a', name: 'Caja', isActive: true, locationId: 'loc1', openSession: SESSION },
+]
+
 function makeRepos() {
   const repos = createMockRepositories()
-  repos.register.getRegisters = vi.fn().mockResolvedValue([
-    { id: 'reg-a', name: 'Caja', isActive: true, locationId: 'loc1', openSession: SESSION },
-  ])
+  repos.register.getRegisters = vi.fn().mockResolvedValue(OPEN_REGISTERS)
   repos.register.closeSession = vi.fn().mockResolvedValue({ ...SESSION, status: 'CLOSED' })
   return repos
 }
@@ -49,6 +51,75 @@ function makeRepos() {
 describe('CloseCajaWizard', () => {
   beforeEach(() => {
     window.localStorage.setItem('bb-pos-location-id', 'loc1')
+  })
+
+  // El corte es el momento más caro del día: cerrar contra un esperado viejo
+  // descuadra la caja de la sucursal. Mientras la lectura no vuelva de la red
+  // (o si vuelve mal) el asistente NO arranca.
+  it('carga sin responder: esqueleto, sin pasos ni CTA', async () => {
+    const repos = makeRepos()
+    let resolveLoad!: (value: typeof OPEN_REGISTERS) => void
+    repos.register.getRegisters = vi
+      .fn()
+      .mockReturnValue(new Promise<typeof OPEN_REGISTERS>((res) => { resolveLoad = res }))
+
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    expect(await screen.findByRole('status')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByText(/cuenta el efectivo/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /siguiente/i })).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveLoad(OPEN_REGISTERS)
+    })
+    expect(await screen.findByText(/cuenta el efectivo/i)).toBeInTheDocument()
+  })
+
+  it('carga fallida: aviso explicado y el corte NO arranca', async () => {
+    const repos = makeRepos()
+    repos.register.getRegisters = vi.fn().mockRejectedValue(new Error('network down'))
+
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    // (a) Se explica por qué no se puede cortar (antes: pantalla en blanco).
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('No se pudo confirmar el estado de la caja. Revisa la conexión.')
+    // (b) Ningún paso ni CTA: no hay forma de avanzar ni de enviar el cierre.
+    expect(screen.queryByText(/cuenta el efectivo/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /siguiente/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /cerrar caja/i })).not.toBeInTheDocument()
+    // (c) Las dos salidas: reintentar la carga o volver a Caja.
+    expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /volver a caja/i })).toBeInTheDocument()
+  })
+
+  it('Reintentar con la carga ya exitosa: el wizard arranca normal', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    repos.register.getRegisters = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValue(OPEN_REGISTERS)
+
+    renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    await screen.findByRole('alert')
+    await user.click(screen.getByRole('button', { name: /reintentar/i }))
+
+    expect(await screen.findByText(/cuenta el efectivo/i)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    // Y el corte ya se puede recorrer de verdad.
+    await user.click(screen.getByRole('button', { name: /siguiente/i }))
+    expect(await screen.findByText(/confirma los totales digitales/i)).toBeInTheDocument()
   })
 
   it('starts at step 1 (count cash)', async () => {

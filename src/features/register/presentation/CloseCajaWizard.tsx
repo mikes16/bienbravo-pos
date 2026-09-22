@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { WizardShell, TouchButton } from '@/shared/pos-ui'
+import { WizardShell, TouchButton, SkeletonRow } from '@/shared/pos-ui'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useRegister } from '../application/useRegister'
@@ -24,7 +24,22 @@ export function CloseCajaWizard() {
   // sin el perm. Durante loading (viewer === null) dejamos pasar para no
   // romper renderings síncronos.
   const canClose = !viewer || viewer.permissions.includes('pos.register.close')
-  const { registers, closeSession } = useRegister(locationId)
+  const { registers, status, closeSession, refresh } = useRegister(locationId)
+
+  /**
+   * La lectura de caja falló (servidor u offline). Un fallo TIRA lo que había
+   * ([D-018]), así que aquí NO hay esperado que mostrar: el corte no arranca.
+   * Cerrar contra un `expected*Cents` de hace media hora descuadra la caja de
+   * la sucursal, que es justo el escenario caro que esta pantalla evita.
+   */
+  const loadFailed = status === 'error' || status === 'offline'
+
+  // `refresh()` RECHAZA cuando la carga falla (el canal de frescura cuenta con
+  // eso, ver useRegister): acá se traga para no dejar una promesa sin manejar
+  // — el fallo ya se está pintando en esta misma pantalla.
+  const retry = useCallback(() => {
+    void refresh().catch(() => {})
+  }, [refresh])
 
   // `registers === null` es "aún no sé" ([D-020]), no "no hay cajas": sin
   // respuesta del servidor no hay sesión que mostrar y el wizard espera.
@@ -67,10 +82,10 @@ export function CloseCajaWizard() {
     return () => clearTimeout(t)
   }, [successOpen, navigate])
 
-  if (!session) return null
-
   // Defensive: gate por deeplink. CajaPage también gatea, pero si alguien
   // navega directo a /caja/cerrar sin permiso, no debería ver el wizard.
+  // Va ANTES de la espera de la carga: sin el permiso da igual qué conteste
+  // el servidor, y explicar el bloqueo es mejor que un esqueleto eterno.
   if (!canClose) {
     return (
       <div className="flex h-full items-center justify-center px-6">
@@ -86,6 +101,83 @@ export function CloseCajaWizard() {
             ← Volver
           </TouchButton>
         </div>
+      </div>
+    )
+  }
+
+  // Un cierre YA confirmado por el servidor manda sobre cualquier estado de la
+  // lectura: el re-sync que `closeSession` dispara detrás puede fallar (red) y
+  // dejar `registers` en null — anunciar "no se pudo confirmar" encima de una
+  // caja que sí cerró sería mentirle al operador.
+  if (successOpen) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 py-12 text-center">
+        <p className="font-[var(--font-pos-display)] text-[36px] font-extrabold leading-tight tracking-[-0.02em] text-[var(--color-success)]">
+          ✓ Caja cerrada
+        </p>
+        <p className="text-[14px] text-[var(--color-bone-muted)]">
+          Resumen guardado · regresando a Hoy
+        </p>
+      </div>
+    )
+  }
+
+  // El corte se hace contra cifras recién traídas de la red. Si no se pudieron
+  // confirmar, el asistente NO se pinta: sin pasos y sin CTA no hay forma de
+  // avanzar ni de enviar el cierre. Las dos salidas son reintentar la carga o
+  // volver a Caja.
+  if (loadFailed) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div role="alert">
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+              {status === 'offline' ? 'Sin conexión' : 'Error'}
+            </p>
+            <h1
+              className="mb-2 text-2xl font-bold text-[var(--color-bone)]"
+              style={{ fontFamily: 'var(--font-pos-display)' }}
+            >
+              Cerrar caja
+            </h1>
+            <p className="text-sm text-[var(--color-bone-muted)]">
+              No se pudo confirmar el estado de la caja. Revisa la conexión.
+            </p>
+          </div>
+          <div className="mt-5 flex items-center justify-center gap-3">
+            <TouchButton variant="primary" size="min" onClick={retry}>
+              Reintentar
+            </TouchButton>
+            <TouchButton variant="secondary" size="min" onClick={() => navigate('/caja')}>
+              ← Volver a caja
+            </TouchButton>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Todavía no sé si hay sesión abierta ni con qué montos ([D-020]): esqueleto,
+  // nunca el paso 1 con un esperado sin confirmar. Antes esto era un
+  // `return null` — pantalla en blanco sin explicación. También cubre el
+  // instante entre "el servidor dice que ya no hay sesión" y el rebote a /caja
+  // que dispara el efecto de arriba.
+  if (!session) {
+    return (
+      <div
+        role="status"
+        aria-busy="true"
+        className="flex h-full flex-col items-center justify-center gap-4 px-8 py-12 text-center"
+      >
+        <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--color-bone-muted)]">
+          Cerrar caja
+        </p>
+        <SkeletonRow heightPx={48} widthPercent={50} />
+        <SkeletonRow heightPx={20} widthPercent={30} />
+        <SkeletonRow heightPx={56} widthPercent={60} />
+        <p className="text-[13px] text-[var(--color-bone-muted)]">
+          Confirmando el estado de la caja…
+        </p>
       </div>
     )
   }
@@ -149,19 +241,6 @@ export function CloseCajaWizard() {
     step === 0 ? 'Siguiente: Tarjeta · Stripe →' :
     step === 1 ? 'Revisar y cerrar →' :
     submitting ? 'Cerrando…' : 'Cerrar caja ✓'
-
-  if (successOpen) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 py-12 text-center">
-        <p className="font-[var(--font-pos-display)] text-[36px] font-extrabold leading-tight tracking-[-0.02em] text-[var(--color-success)]">
-          ✓ Caja cerrada
-        </p>
-        <p className="text-[14px] text-[var(--color-bone-muted)]">
-          Resumen guardado · regresando a Hoy
-        </p>
-      </div>
-    )
-  }
 
   return (
     <WizardShell
