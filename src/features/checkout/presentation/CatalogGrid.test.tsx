@@ -246,6 +246,55 @@ describe('CatalogGrid', () => {
     expect(screen.getAllByText('Pomada').length).toBeGreaterThan(0)
   })
 
+  /* ── Modo venta a staff (spec §4.5): sólo productos, y con la vista del hook ── */
+
+  const STAFF_ITEMS = [
+    { id: 's1', kind: 'service' as const, name: 'Corte', priceCents: 28000, imageUrl: null, categoryId: 'cat-1' },
+    { id: 'p1', kind: 'product' as const, name: 'Pomada', priceCents: 25000, imageUrl: null, categoryId: 'cat-1' },
+  ]
+
+  it('modo staff: el producto elegible pasa a precio staff; el servicio conserva el suyo', () => {
+    render(
+      <CatalogGrid
+        items={STAFF_ITEMS}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        staffMode
+        staffViews={new Map([['p1', { eligible: true, unitPriceCents: 12000, message: null }]])}
+        onAdd={() => {}}
+      />,
+    )
+    // Producto: precio staff arriba, público tachado.
+    expect(screen.getAllByText('$120').length).toBeGreaterThan(0)
+    const struck = screen.getAllByRole('deletion')
+    expect(struck.length).toBeGreaterThan(0)
+    for (const s of struck) expect(s).toHaveTextContent('$250')
+    // Servicio: precio normal y sin tachado (§4.3.4, no entra al modo staff).
+    expect(screen.getAllByText('$280').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /corte/i })[0]).toBeEnabled()
+  })
+
+  it('modo staff: el producto no elegible queda deshabilitado y marcado', () => {
+    render(
+      <CatalogGrid
+        items={STAFF_ITEMS}
+        selectedCategoryId="cat-1"
+        searchQuery=""
+        staffMode
+        staffViews={
+          new Map([['p1', { eligible: false, unitPriceCents: null, message: 'Elige la presentación' }]])
+        }
+        onAdd={() => {}}
+      />,
+    )
+    const blocked = screen.getAllByRole('button', { name: /no disponible para staff/i })
+    expect(blocked.length).toBeGreaterThan(0)
+    for (const b of blocked) expect(b).toBeDisabled()
+    // Nunca un $0: sin precio staff la card conserva el público.
+    expect(screen.getAllByText('$250').length).toBeGreaterThan(0)
+    expect(screen.queryByText('$0')).not.toBeInTheDocument()
+  })
+
   it('sin barbero atendiendo el combo con exclusiones sigue visible', () => {
     render(
       <CatalogGrid

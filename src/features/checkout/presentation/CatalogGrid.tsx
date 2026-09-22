@@ -20,6 +20,16 @@ interface PriceOverlayEntry {
   isExcluded: boolean
 }
 
+/**
+ * Cómo se pinta UN producto con el modo venta a staff encendido. Tipo
+ * estructural: `StaffCatalogView` de `useCheckout` encaja tal cual.
+ */
+interface StaffCatalogEntry {
+  eligible: boolean
+  unitPriceCents: number | null
+  message: string | null
+}
+
 interface CatalogGridProps {
   items: CatalogItem[]
   selectedCategoryId: string | null
@@ -45,6 +55,15 @@ interface CatalogGridProps {
   // Trayendo el overlay del nuevo atendiendo: atenuamos los precios para no
   // mostrar los del barbero anterior "como actuales" (patrón previousData).
   pricesUpdating?: boolean
+  // ¿El cobro va en modo venta a staff? (spec §4.5). Apagado = el grid es el
+  // de siempre y ninguna card recibe props staff.
+  staffMode?: boolean
+  // productId → vista staff de ese producto (`ck.staffSale.catalogViews`).
+  // Sólo productos: servicios y combos van a precio normal en el ticket de
+  // staff (§4.3.4), así que nunca tienen entrada. Un producto sin entrada se
+  // pinta normal (handoff T-032c) — `addCatalogItem` y el API siguen siendo
+  // los que deciden si la línea entra.
+  staffViews?: ReadonlyMap<string, StaffCatalogEntry> | null
 }
 
 export function CatalogGrid({
@@ -57,11 +76,21 @@ export function CatalogGrid({
   priceOverlay,
   overlayFresh,
   pricesUpdating,
+  staffMode,
+  staffViews,
 }: CatalogGridProps) {
   const q = searchQuery.trim().toLowerCase()
   // Precio de display: overlay del atendiendo si existe, si no el estático.
   const displayPrice = (item: CatalogItem): number =>
     priceOverlay?.get(item.id)?.priceCents ?? item.priceCents
+  // ¿Esta card va en modo venta a staff? Sólo productos y sólo con vista del
+  // hook: los servicios y combos del ticket de staff se cobran a precio normal
+  // (§4.3.4) y el grid no vuelve a resolver nada — la elegibilidad y el precio
+  // ya vienen resueltos de `lib/staff-sale` vía `useCheckout`.
+  const staffViewFor = (item: CatalogItem): StaffCatalogEntry | null => {
+    if (staffMode !== true || item.kind !== 'product') return null
+    return staffViews?.get(item.id) ?? null
+  }
   // ¿El servicio o combo queda excluido para el atendiendo? Preferimos el overlay
   // cuando es fresco (más actual que el staffOverrides estático); si no, caemos
   // al estático, que ya es reactivo al atendiendo. Productos nunca se excluyen.
@@ -103,34 +132,46 @@ export function CatalogGrid({
     <div className="min-h-0 flex-1 overflow-y-auto">
       {/* Mobile (< sm): list rows. Denser layout for phone-sized screens. */}
       <div className="flex flex-col border-t border-[var(--color-leather-muted)]/40 sm:hidden">
-        {filtered.map((item) => (
-          <CatalogListRow
-            key={item.id}
-            kind={item.kind}
-            name={item.name}
-            priceCents={displayPrice(item)}
-            updating={pricesUpdating}
-            stockQty={item.stockQty}
-            imageUrl={item.imageUrl}
-            onAdd={() => onAdd(item)}
-          />
-        ))}
+        {filtered.map((item) => {
+          const staff = staffViewFor(item)
+          return (
+            <CatalogListRow
+              key={item.id}
+              kind={item.kind}
+              name={item.name}
+              priceCents={displayPrice(item)}
+              updating={pricesUpdating}
+              stockQty={item.stockQty}
+              imageUrl={item.imageUrl}
+              staffMode={staff !== null}
+              staffPriceCents={staff?.unitPriceCents ?? null}
+              staffUnavailableMessage={staff && !staff.eligible ? staff.message : null}
+              onAdd={() => onAdd(item)}
+            />
+          )
+        })}
       </div>
 
       {/* Tablet (sm) 3 cols, desktop (lg) 4 cols. */}
       <div className="hidden grid-cols-3 items-start gap-3 p-5 sm:grid lg:grid-cols-4">
-        {filtered.map((item) => (
-          <CatalogTile
-            key={item.id}
-            kind={item.kind}
-            name={item.name}
-            priceCents={displayPrice(item)}
-            updating={pricesUpdating}
-            stockQty={item.stockQty}
-            imageUrl={item.imageUrl}
-            onAdd={() => onAdd(item)}
-          />
-        ))}
+        {filtered.map((item) => {
+          const staff = staffViewFor(item)
+          return (
+            <CatalogTile
+              key={item.id}
+              kind={item.kind}
+              name={item.name}
+              priceCents={displayPrice(item)}
+              updating={pricesUpdating}
+              stockQty={item.stockQty}
+              imageUrl={item.imageUrl}
+              staffMode={staff !== null}
+              staffPriceCents={staff?.unitPriceCents ?? null}
+              staffUnavailableMessage={staff && !staff.eligible ? staff.message : null}
+              onAdd={() => onAdd(item)}
+            />
+          )
+        })}
       </div>
     </div>
   )

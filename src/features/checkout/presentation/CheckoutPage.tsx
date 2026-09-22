@@ -582,6 +582,12 @@ export function CheckoutPage() {
               priceOverlay={ck.priceOverlay}
               overlayFresh={ck.overlayFresh}
               pricesUpdating={ck.pricesUpdating}
+              // Modo venta a staff (spec §4.5): el grid pinta el precio staff
+              // en los productos elegibles y atenúa los que no lo son. Con el
+              // modo apagado `catalogViews` viene vacío (handoff T-032c) y
+              // ninguna card cambia.
+              staffMode={ck.staffSale.enabled}
+              staffViews={ck.staffSale.catalogViews}
               onAdd={(item) => ck.addCatalogItem(item)}
             />
           </>
