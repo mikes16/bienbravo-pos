@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
+import { resetSaleActivity, setSaleInProgress, setSaleSubmitting } from '@/core/auth/saleActivity'
+import { FreshnessContext } from '@/core/freshness/FreshnessProvider'
 import { useToast } from '@/core/toast/useToast'
 import { cartReducer, initialCart, findUnavailableCreditedBarberId } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
@@ -71,6 +73,11 @@ export function useCheckout() {
   const { locationId } = useLocation()
   const { viewer } = usePosAuth()
   const { addToast } = useToast()
+  // Canal de frescura leído DIRECTO del contexto (puede ser null), no con
+  // `useFreshness()`: ése lanza cuando no hay canal arriba y este hook tiene
+  // que poder montarse en un árbol sin `FreshnessGate` ([D-029] / [D-030]).
+  // Sólo lo usamos para pausar los refrescos mientras el cobro está en vuelo.
+  const freshness = useContext(FreshnessContext)
 
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
   const [categories, setCategories] = useState<Array<{ id: string; name: string; sortOrder: number }>>([])
@@ -142,6 +149,61 @@ export function useCheckout() {
   // local mientras el cajero no cierre la venta.
   const [appliedCoupons, setAppliedCoupons] = useState<AppliedCouponPreview[]>([])
   const [couponError, setCouponError] = useState<string | null>(null)
+
+  /* ── Publicación al bloqueo automático (spec § 3.3) ──────────────────────
+   *
+   * El POS se bloquea solo a los 15 s en reposo y a los 90 s con venta en
+   * curso (`core/auth/useAutoLock`). Quién cuenta como "venta en curso" lo
+   * decide ESTE feature y lo publica en el store de `core/auth/saleActivity`.
+   *
+   * DERIVADO, no estado nuevo: el carrito tiene al menos un concepto y todavía
+   * no llegamos al recibo. Dos precisiones:
+   *
+   *  - "o la hoja de pago está abierta" (spec) ya queda cubierto: la hoja sólo
+   *    se abre desde el CTA de cobrar, que está deshabilitado con el carrito
+   *    vacío (`CheckoutPage`), así que abierta ⟹ hay líneas. No subimos ese
+   *    `useState` hasta aquí sólo para repetir una condición implicada.
+   *  - El RECIBO cuenta como "sin venta en curso" (spec § 3.3.1, decisión del
+   *    dueño: no pedir PIN después de cada venta). Al cobrar, el carrito se
+   *    vacía Y `successSale` deja de ser null; el segundo término deja la
+   *    regla escrita aunque mañana el recibo conserve las líneas en pantalla.
+   *    Efecto buscado: quien cobra y se va deja la tablet bloqueándose con el
+   *    plazo corto.
+   */
+  const saleInProgress = cartState.lines.length > 0 && successSale === null
+
+  // Sincronización hacia un sistema EXTERNO a React (el store vive fuera del
+  // árbol): éste es exactamente el caso de uso legítimo de `useEffect`. Los
+  // setters del store son idempotentes, así que un render de más no notifica
+  // a nadie.
+  useEffect(() => {
+    setSaleInProgress(saleInProgress)
+  }, [saleInProgress])
+
+  // Al desmontar el cobro (salir a otro tab, bloqueo, logout) no queda venta
+  // en curso: sin esto el POS se quedaría con el plazo largo para siempre.
+  useEffect(() => {
+    return () => {
+      resetSaleActivity()
+    }
+  }, [])
+
+  /**
+   * Cobro en vuelo: publica la bandera que desarma el bloqueo automático y, a
+   * la vez, PAUSA el canal de frescura — un refresco a media mutation
+   * repintaría y re-preciaría el carrito justo cuando el operador ya no puede
+   * reaccionar. Se llama pegado a cada `setSubmitting`, incluido el del
+   * `finally`, para que ningún camino de salida (éxito, error o excepción
+   * inesperada) deje la tablet sin bloquearse ni el canal pausado.
+   *
+   * Imperativo y no derivado de `submitting` con un efecto a propósito: el
+   * efecto se agenda para después del render y una mutation rápida podría
+   * resolverse antes, dejando la pausa sin aplicar nunca.
+   */
+  const publishSubmitting = (inFlight: boolean) => {
+    setSaleSubmitting(inFlight)
+    freshness?.setPaused(inFlight)
+  }
 
   // Resolve entry context from query params
   useEffect(() => {
@@ -575,6 +637,7 @@ export function useCheckout() {
       return null
     }
     setSubmitting(true)
+    publishSubmitting(true)
     setError(null)
     try {
       const customerId =
@@ -636,6 +699,7 @@ export function useCheckout() {
       return null
     } finally {
       setSubmitting(false)
+      publishSubmitting(false)
     }
   }
 
@@ -669,6 +733,7 @@ export function useCheckout() {
       return null
     }
     setSubmitting(true)
+    publishSubmitting(true)
     setError(null)
     try {
       const result = await checkout.addItemsToAppointmentSale({
@@ -719,6 +784,7 @@ export function useCheckout() {
       return null
     } finally {
       setSubmitting(false)
+      publishSubmitting(false)
     }
   }
 

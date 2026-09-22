@@ -35,3 +35,4 @@
 - [D-029] 2026-09-22 (T-021) Un provider de core/ que puede montarse sin sesión no usa useLiveRefresh directo (lanza sin canal arriba): registra en un sub-componente montado sólo cuando FreshnessContext existe.
 - [D-030] 2026-09-22 (T-022) Un hook de core/ que puede montarse sin sesión NO usa useLiveRefresh ([D-029] llevado a hooks): lee FreshnessContext directo y, sin canal arriba, no registra nada. Aplica a todo lo que consuma el shell antes del login.
 - [D-031] 2026-09-22 (T-022) Un dato de clase ajustes (posSettings) conserva su último valor bueno si falla la revalidación (no vuelve a defaults): [D-018] es regla de dinero, no de configuración.
+- [D-032] 2026-09-22 (T-023) El 'venta en curso' del POS vive en un store de módulo (core/auth/saleActivity.ts) leído con useSyncExternalStore, NO en un contexto de React: core/ no expone un provider para que un feature le hable, y así publicar no re-renderiza el árbol.
