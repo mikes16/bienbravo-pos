@@ -33,3 +33,5 @@
 - [build] (x1, T-019) El check de drift git diff --exit-code -- src/core/graphql/generated solo mide drift real de codegen si primero haces git add -A de ese path: sin stage compara contra HEAD y marca como drift el cambio legítimo del propio sync.
 - [build] (x1, T-020) Un enum de src/core/graphql/generated/graphql.ts se puede importar como VALOR desde código del bundle inicial: rollup lo tree-shakea y no arrastra los demás enums (verificable con grep del identificador en dist/assets/main-*.js).
 - [build] (x1, T-020) Para medir drift de codegen sin poder usar git add, compara el hash de los archivos generados antes y después de correr codegen.
+- [test] (x1, T-021) Un aviso de tema X también llega a los cargadores de X además del refresco que emita el propio oyente: al contar llamadas, parametriza el conteo por tema en vez de aflojar la aserción.
+- [build] (x1, T-021) Antes de reportar un warning de lint como preexistente, revisa los exports del archivo en HEAD: exports nuevos en un .tsx de componente sí introducen react-refresh/only-export-components.
