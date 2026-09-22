@@ -131,8 +131,12 @@ export function CheckoutPage() {
   // Entrar a "Nueva venta" revisa la versión del catálogo (spec § 3.4): es el
   // momento en que un precio viejo hace daño — el API rechaza el cobro con
   // PRICE_MISMATCH y el cajero se queda sin saber por qué. Es best-effort y no
-  // bloquea el render: si el hash cambió, el gate evicta el catálogo y avisa
-  // al canal para que esta misma pantalla lo vuelva a pedir.
+  // bloquea el render: si el hash cambió, el gate evicta el catálogo y avisa al
+  // canal con `refreshAll()` ([D-028]), que también dispara el tema `catalog`.
+  // `useCheckout` tiene ahí registrada su recarga (T-043), así que el grid y el
+  // overlay de precios se ponen al día EN ESTA visita, no en la siguiente. Lo
+  // que NO se toca son las líneas ya capturadas: re-preciar el carrito exige
+  // confirmación del operador ([D-035]) y sólo pasa si el API rechaza el cobro.
   const checkCatalogVersion = useCatalogVersionCheck()
   useEffect(() => {
     void checkCatalogVersion()

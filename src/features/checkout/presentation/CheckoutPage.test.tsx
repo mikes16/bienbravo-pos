@@ -959,6 +959,118 @@ describe('CheckoutPage — revisión de versión de catálogo al entrar', () => 
   })
 })
 
+/* ── Aviso del canal en el tema `catalog` ──────────────────────────────────
+ *
+ * El gate de § 3.4 evicta el catálogo y avisa al canal, pero hasta aquí ningún
+ * cargador del checkout estaba registrado en `catalog`: la visita que DETECTABA
+ * el cambio seguía pintando el precio viejo y la puesta al día sólo llegaba a
+ * la siguiente entrada. Ahora el aviso (del gate o del admin publicando) recarga
+ * grid y overlay en la misma visita — sin tocar las líneas ya capturadas, que
+ * sólo se re-precian con confirmación explícita del operador ([D-035]).
+ */
+describe('CheckoutPage — aviso del canal en el tema catalog', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('bb-pos-location-id', 'loc1')
+  })
+
+  /** Catálogo cuyo precio del corte puede cambiar entre lecturas (admin publica). */
+  function makeChannelRepos() {
+    const repos = makeRepos()
+    const state = { priceCents: 28000 }
+    repos.checkout.evictCatalogCache = vi.fn()
+    repos.checkout.getServices = vi
+      .fn()
+      .mockImplementation(async () => [{ ...SVC_CORTE, priceCents: state.priceCents }])
+    // Overlay vacío a propósito: la card cae al precio estático del catálogo,
+    // que es justo el número que queremos ver cambiar en el grid.
+    repos.checkout.getServicePricing = vi.fn().mockResolvedValue([])
+    repos.checkout.getComboPricing = vi.fn().mockResolvedValue([])
+    repos.checkout.resolveServicePriceForBarber = vi
+      .fn()
+      .mockImplementation(async () => ({ priceCents: state.priceCents, isExcluded: false }))
+    return { repos, state }
+  }
+
+  /** Veces que se pidió el catálogo. */
+  function catalogReads(repos: ReturnType<typeof makeChannelRepos>['repos']) {
+    return (repos.checkout.getServices as ReturnType<typeof vi.fn>).mock.calls.length
+  }
+
+  /**
+   * Lecturas de catálogo que deja la ENTRADA a la pantalla, todas de la carga
+   * inicial: corre dos veces porque el viewer resuelve después del primer
+   * render y `staffUserId` es dependencia del efecto (`loc1`+null, luego
+   * `loc1`+`staff-1`). Comportamiento previo a T-043, no del canal.
+   */
+  const MOUNT_CATALOG_READS = 2
+
+  it('el cargador NO corre al montar: sólo lee la carga inicial y nadie evicta', async () => {
+    const { repos } = makeChannelRepos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    expect(catalogReads(repos)).toBe(MOUNT_CATALOG_READS)
+    expect((repos.checkout.getServices as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+      ['loc1', null],
+      ['loc1', 'staff-1'],
+    ])
+    // Huella inconfundible del cargador del canal: SIEMPRE tira el catálogo
+    // cacheado antes de pedir. Sin evict, ninguna de esas lecturas fue suya.
+    expect(repos.checkout.evictCatalogCache).not.toHaveBeenCalled()
+  })
+
+  it('un aviso catalog recarga grid y overlay en la MISMA visita, sin re-preciar el carrito', async () => {
+    const user = userEvent.setup()
+    const { repos, state } = makeChannelRepos()
+    const { announce } = renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    // La línea entró con el precio con el que el operador la capturó ($280).
+    expect(await screen.findByRole('button', { name: /cobrar.*280/i })).toBeEnabled()
+    expect(catalogReads(repos)).toBe(MOUNT_CATALOG_READS)
+
+    // El admin sube el corte a $350 y el canal avisa del tema catalog.
+    state.priceCents = 35000
+    await announce('catalog')
+
+    // Se pidió otra vez A LA RED: se tiró el catálogo cacheado (sin eso, las
+    // lecturas cache-first devolverían el precio viejo) y el overlay fue force.
+    expect(repos.checkout.evictCatalogCache).toHaveBeenCalled()
+    expect(catalogReads(repos)).toBe(MOUNT_CATALOG_READS + 1)
+    const pricingCalls = (repos.checkout.getServicePricing as ReturnType<typeof vi.fn>).mock.calls
+    expect(pricingCalls[pricingCalls.length - 1][2]).toEqual({ force: true })
+    expect(repos.checkout.getComboPricing).toHaveBeenCalled()
+
+    // El grid ya muestra el precio nuevo: el operador no vuelve a agregar el
+    // viejo (que el API rechazaría con PRICE_MISMATCH).
+    await waitFor(() => expect(screen.getAllByText('$350').length).toBeGreaterThan(0))
+    // Y la línea ya capturada conserva su precio: un aviso del canal NO re-precia
+    // el carrito ([D-035] — eso exige confirmación explícita tras un rechazo).
+    expect(screen.getByRole('button', { name: /cobrar.*280/i })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /cobrar.*350/i })).not.toBeInTheDocument()
+  })
+
+  it('un aviso de otro tema (sales) no recarga el catálogo', async () => {
+    const { repos } = makeChannelRepos()
+    const { announce } = renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    expect(catalogReads(repos)).toBe(MOUNT_CATALOG_READS)
+
+    await announce('sales')
+
+    expect(catalogReads(repos)).toBe(MOUNT_CATALOG_READS)
+    expect(repos.checkout.evictCatalogCache).not.toHaveBeenCalled()
+  })
+})
+
 /* ── Rechazo del servidor por datos viejos (spec frescura § 3.5, P5) ────────
  *
  * El servidor decide al cobrar. Si rechaza porque el POS traía datos viejos,

@@ -4,7 +4,11 @@ import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { resetSaleActivity, setSaleInProgress, setSaleSubmitting } from '@/core/auth/saleActivity'
-import { FreshnessContext } from '@/core/freshness/FreshnessProvider'
+import {
+  FreshnessContext,
+  type FreshnessContextValue,
+  type FreshnessTopic,
+} from '@/core/freshness/FreshnessProvider'
 import { useToast } from '@/core/toast/useToast'
 import { cartReducer, initialCart, findUnavailableCreditedBarberId, computeTotals } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
@@ -106,6 +110,39 @@ export interface CheckoutRejectionNotice {
 const PRICE_CHANGED_MESSAGE = 'Los precios cambiaron. Revisa el total antes de cobrar.'
 
 /**
+ * Tema del canal de frescura que obliga a volver a pedir el catálogo: el admin
+ * publicó un cambio (`posDataChanged` con `kind: CATALOG`) o el gate de versión
+ * evictó el catálogo y avisó ([D-028], que barre todos los temas). UNA clase de
+ * dato, un cargador ([D-019]): el dinero y las listas no cuelgan de aquí.
+ */
+const CATALOG_TOPICS: readonly FreshnessTopic[] = ['catalog']
+
+/**
+ * Registra la recarga de catálogo en el canal, TOLERANTE a que no haya canal.
+ *
+ * No usa `useLiveRefresh` a propósito ([D-030]): ése lanza sin provider arriba y
+ * `useCheckout` se monta en tests (y en árboles sin `FreshnessGate`) sin canal.
+ * Sin canal simplemente no hay registro.
+ *
+ * NO invoca `load` al montar — la carga inicial del checkout ya existe y tiene
+ * su propia política de fetch; esto sólo conecta la pantalla a los avisos. El
+ * cargador va por ref para que el registro no dependa de su identidad.
+ */
+function useCatalogChannel(
+  register: FreshnessContextValue['register'] | undefined,
+  load: () => Promise<void>,
+): void {
+  const loadRef = useRef(load)
+  useEffect(() => {
+    loadRef.current = load
+  })
+  useEffect(() => {
+    if (!register) return
+    return register(() => loadRef.current(), CATALOG_TOPICS)
+  }, [register])
+}
+
+/**
  * Arma las cards del grid a partir del catálogo + el stock conocido. Vive
  * fuera del hook porque la usan DOS caminos: la carga inicial y el re-precio
  * tras un rechazo del API — y el segundo tiene que pintar exactamente lo mismo
@@ -160,7 +197,8 @@ export function useCheckout() {
   // Canal de frescura leído DIRECTO del contexto (puede ser null), no con
   // `useFreshness()`: ése lanza cuando no hay canal arriba y este hook tiene
   // que poder montarse en un árbol sin `FreshnessGate` ([D-029] / [D-030]).
-  // Sólo lo usamos para pausar los refrescos mientras el cobro está en vuelo.
+  // Dos usos: pausar los refrescos mientras el cobro está en vuelo y registrar
+  // la recarga de catálogo en el tema `catalog` (ver `useCatalogChannel` abajo).
   const freshness = useContext(FreshnessContext)
 
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
@@ -669,24 +707,35 @@ export function useCheckout() {
     )
   }
 
-  /* ── Recuperación de un rechazo del servidor por datos viejos (§ 3.5) ─────
+  /* ── Puesta al día del catálogo ───────────────────────────────────────────
    *
-   * Principio P5: el servidor decide al cobrar y un rechazo por datos viejos
-   * se recupera solo — nunca es un callejón sin salida. En los cuatro casos el
-   * CARRITO SE CONSERVA; lo que cambia es el dato que estaba viejo. El POS no
-   * reintenta el cobro por su cuenta: re-precia/recarga y deja el aviso, y
-   * cobrar vuelve a exigir un toque del operador.
+   * Dos disparadores, UNA sola forma de volver a pedir el catálogo: el aviso
+   * del canal en el tema `catalog` (el admin publicó) y la recuperación de un
+   * rechazo del API por precio viejo. Lo que los separa es el carrito: el
+   * aviso sólo repinta grid y overlay; el rechazo además re-precia las líneas.
    */
 
   /**
-   * Tira el catálogo cacheado, vuelve a pedir precios (force) y RE-PRECIA cada
-   * línea del carrito con el precio del barbero de ESA línea — la misma ruta
-   * única de precio que usa el picker, nunca una cuenta propia. Devuelve el
-   * total nuevo del carrito.
+   * Tira el catálogo cacheado y vuelve a pedir A LA RED servicios, productos,
+   * combos y el overlay de precios del barbero ATENDIENDO, repintando grid y
+   * overlay. NO toca el carrito: re-preciar una línea exige confirmación
+   * explícita del operador ([D-035]) y sólo ocurre por `repriceCartLines`.
+   *
+   * El evict es obligatorio en los dos caminos que la usan: `getServices` /
+   * `getProducts` / `getCombos` son cache-first, así que sin tirar el catálogo
+   * cacheado devolverían exactamente los precios viejos (los que el servidor
+   * acaba de rechazar, o los que el admin acaba de cambiar).
+   *
+   * Devuelve lo que trajo para quien tenga que seguir trabajando con ello.
+   * Rechaza si alguna lectura falla (contrato del canal: un cargador que traga
+   * el error movería la hora de "Actualizado HH:MM" sin datos nuevos).
    */
-  const repriceCartLines = async (locId: string): Promise<number> => {
-    // Sin esto, volver a pedir precios devolvería exactamente los que el
-    // servidor acaba de rechazar (cache-first + cache persistido).
+  const refetchCatalogAndOverlay = async (
+    locId: string,
+  ): Promise<{
+    products: CatalogProduct[]
+    overlay: Map<string, { priceCents: number; isExcluded: boolean }>
+  }> => {
     checkout.evictCatalogCache()
     const [services, products, combos, servicePricing, comboPricing] = await Promise.all([
       checkout.getServices(locId, viewer?.staff?.id ?? null),
@@ -712,6 +761,47 @@ export function useCheckout() {
         categories,
       )
     })
+    return { products, overlay }
+  }
+
+  /**
+   * Lo que corre cuando el canal avisa del tema `catalog` (el admin publicó, o
+   * el gate de versión evictó y avisó, § 3.4): el grid y el overlay de precios
+   * se ponen al día EN ESTA MISMA VISITA, sin esperar a la siguiente entrada.
+   *
+   * Deliberadamente NO re-precia las líneas del carrito: un cambio de precio de
+   * algo ya capturado se confirma con el operador ([D-035] / spec § 3.5), y esa
+   * ruta es `repriceCartLines`, que sólo dispara un rechazo del API. Si el
+   * catálogo nuevo ya no trae un item de una línea, la línea se queda tal cual:
+   * el API la rechazará al cobrar y la recuperación la atenderá con su aviso.
+   *
+   * La pausa durante el cobro no se maneja aquí: el motor del canal no entrega
+   * avisos con `setPaused(true)` ([D-008]).
+   */
+  const loadCatalogFromChannel = (): Promise<void> => {
+    if (!locationId) return Promise.resolve()
+    return refetchCatalogAndOverlay(locationId).then(() => undefined)
+  }
+
+  useCatalogChannel(freshness?.register, loadCatalogFromChannel)
+
+  /* ── Recuperación de un rechazo del servidor por datos viejos (§ 3.5) ─────
+   *
+   * Principio P5: el servidor decide al cobrar y un rechazo por datos viejos
+   * se recupera solo — nunca es un callejón sin salida. En los cuatro casos el
+   * CARRITO SE CONSERVA; lo que cambia es el dato que estaba viejo. El POS no
+   * reintenta el cobro por su cuenta: re-precia/recarga y deja el aviso, y
+   * cobrar vuelve a exigir un toque del operador.
+   */
+
+  /**
+   * Tira el catálogo cacheado, vuelve a pedir precios (force) y RE-PRECIA cada
+   * línea del carrito con el precio del barbero de ESA línea — la misma ruta
+   * única de precio que usa el picker, nunca una cuenta propia. Devuelve el
+   * total nuevo del carrito.
+   */
+  const repriceCartLines = async (locId: string): Promise<number> => {
+    const { products, overlay } = await refetchCatalogAndOverlay(locId)
 
     const productPriceById = new Map(products.map((p) => [p.id, p.priceCents]))
     const lines = cartState.lines
