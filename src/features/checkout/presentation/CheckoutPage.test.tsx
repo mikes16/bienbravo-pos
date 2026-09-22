@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CheckoutPage } from './CheckoutPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
+import { CatalogVersionContext } from '@/core/bootstrap/BootstrapProvider'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
 
 class TestAuthRepo extends InMemoryAuthRepository {
@@ -918,5 +919,41 @@ describe('CheckoutPage — cobrar como {operador}', () => {
     await waitFor(() => {
       expect(repos.checkout.createSale).toHaveBeenCalled()
     })
+  })
+})
+
+/* ── Entrar a "Nueva venta" revisa la versión del catálogo (spec § 3.4): es el
+      momento en que un precio viejo hace daño (el API rechaza el cobro con
+      PRICE_MISMATCH). La revisión la expone el gate por contexto. ── */
+
+describe('CheckoutPage — revisión de versión de catálogo al entrar', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('bb-pos-location-id', 'loc1')
+  })
+
+  it('revisa la versión al montar, una sola vez y sin bloquear el catálogo', async () => {
+    const checkCatalogVersion = vi.fn().mockResolvedValue(undefined)
+    const repos = makeRepos()
+    renderWithProviders(
+      <CatalogVersionContext.Provider value={{ checkCatalogVersion }}>
+        <CheckoutPage />
+      </CatalogVersionContext.Provider>,
+      { initialRoute: '/checkout', repos: { ...repos, auth: new TestAuthRepo() } },
+    )
+
+    // La revisión sale al entrar, sin esperar a que el catálogo termine.
+    expect(checkCatalogVersion).toHaveBeenCalledTimes(1)
+    // Y la pantalla sigue su curso normal (no bloquea el render).
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    expect(checkCatalogVersion).toHaveBeenCalledTimes(1)
+  })
+
+  it('sin el gate arriba la pantalla abre igual (revisión no-op)', async () => {
+    const repos = makeRepos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
   })
 })

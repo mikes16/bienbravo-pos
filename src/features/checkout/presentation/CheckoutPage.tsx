@@ -25,6 +25,7 @@ import { formatMoney } from '@/shared/lib/money'
 import { useToast } from '@/core/toast/useToast'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
+import { useCatalogVersionCheck } from '@/core/bootstrap/BootstrapProvider'
 
 export function CheckoutPage() {
   const navigate = useNavigate()
@@ -107,6 +108,16 @@ export function CheckoutPage() {
       addToast((e as { message?: string })?.message ?? 'No se pudo cancelar el link.', 'error')
     }
   }
+
+  // Entrar a "Nueva venta" revisa la versión del catálogo (spec § 3.4): es el
+  // momento en que un precio viejo hace daño — el API rechaza el cobro con
+  // PRICE_MISMATCH y el cajero se queda sin saber por qué. Es best-effort y no
+  // bloquea el render: si el hash cambió, el gate evicta el catálogo y avisa
+  // al canal para que esta misma pantalla lo vuelva a pedir.
+  const checkCatalogVersion = useCatalogVersionCheck()
+  useEffect(() => {
+    void checkCatalogVersion()
+  }, [checkCatalogVersion])
 
   // Splash for 2s after success, then receipt screen
   useEffect(() => {

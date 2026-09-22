@@ -1284,7 +1284,7 @@
       ],
       "priority": 3,
       "type": "fix",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
