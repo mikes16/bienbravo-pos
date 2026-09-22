@@ -5,6 +5,7 @@ import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
 import { PERSISTED_ROOT_FIELDS, rootFieldName } from './dataClasses'
+import { reportWsConnected, reportWsDisconnected } from './wsStatus'
 
 /**
  * Identificador del build, inyectado por Vite (`define: { __BUILD_ID__ }` en
@@ -300,6 +301,23 @@ export function createPosApolloClient(): ApolloClient {
       shouldRetry: () => true,
       keepAlive: 12_000,
       connectionAckWaitTimeout: 8_000,
+      // Único punto del app donde se sabe si el canal en vivo está arriba.
+      // Lo publicamos en `wsStatus` (emisor de módulo) porque de ahí lo lee
+      // FreshnessProvider: cada vez que el socket pasa de caído a conectado
+      // dispara UNA puesta al día — el pubsub del API es en memoria y no
+      // reenvía lo que ocurrió durante la caída. No es un sondeo: sin
+      // reconexiones no hay consultas.
+      on: {
+        connected: (_socket, _payload, wasRetry) => {
+          reportWsConnected(wasRetry)
+        },
+        closed: () => {
+          reportWsDisconnected()
+        },
+        error: () => {
+          reportWsDisconnected()
+        },
+      },
     }),
   )
 

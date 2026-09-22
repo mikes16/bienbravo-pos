@@ -8,3 +8,6 @@
 - [D-002] 2026-09-22 (T-004) src/test/mocks/repositories.ts desactiva @typescript-eslint/no-unused-vars a nivel archivo para cumplir el lint sobre el baseline de errores pre-existentes que ci.yml documenta; el arreglo de fondo (argsIgnorePattern '^_' en eslint.config.js) queda pendiente como chore.
 - [D-003] 2026-09-22 (T-005) La persistencia del caché del POS es lista de permitidos: un campo raíz de Query sin clasificar en src/core/apollo/dataClasses.ts NO se persiste. Toda query nueva clasifica su campo raíz ahí; nadie define listas paralelas de campos estáticos.
 - [D-004] 2026-09-22 (T-005) barbers y los singulares service/catalogCombo NO se persisten en el caché del dispositivo: PII de staff el primero; precio viejo que el evict por versión de catálogo no alcanza los otros dos.
+- [D-005] 2026-09-22 (T-006) Dinero del servidor en pantallas nuevas se pinta con MoneyValue, nunca con MoneyDisplay directo: MoneyDisplay queda como formateador interno.
+- [D-006] 2026-09-22 (T-006) label es prop obligatoria de MoneyValue (raíz role=group + aria-label): toda cifra de dinero queda anunciada y se consulta en tests con getByRole('group', { name }).
+- [D-007] 2026-09-22 (T-006) aria-busy solo se emite en loading y updating (atributo ausente en el resto, nunca "false"), siguiendo la convención ya usada en CatalogListRow/CatalogTile.

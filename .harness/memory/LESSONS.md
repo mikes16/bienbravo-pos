@@ -9,3 +9,4 @@
 - [build] (x1, T-004) Antes de dar un check de lint por roto, mide el baseline (npm run lint + comentarios de .github/workflows/ci.yml): si los errores son pre-existentes, el arreglo mínimo va en el archivo de tu alcance, no en la config global.
 - [seguridad] (x1, T-005) Todo caché que se escriba en el dispositivo debe filtrarse con lista de permitidos y comprobarse con un test que busque las cifras/PII literales en el payload serializado (not.toContain): la aserción por llaves deja pasar datos anidados.
 - [build] (x1, T-005) Si inyectas un global con define de Vite, confirma que quedó inlineado en dist (grep del identificador en el bundle): el build pasa igual si el define no se aplicó.
+- [test] (x1, T-006) En jsdom no hay layout ni media queries: asertar área táctil con toHaveStyle sobre estilo inline y prefers-reduced-motion vía la variante motion-reduce: emitida en el markup, nunca píxeles medidos.

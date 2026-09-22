@@ -422,7 +422,7 @@
       ],
       "priority": 1,
       "type": "feature",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
