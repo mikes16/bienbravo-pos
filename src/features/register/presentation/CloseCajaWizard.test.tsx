@@ -41,6 +41,14 @@ const OPEN_REGISTERS = [
   { id: 'reg-a', name: 'Caja', isActive: true, locationId: 'loc1', openSession: SESSION },
 ]
 
+/**
+ * Otra lectura de la MISMA caja con montos distintos: lo que devuelve el
+ * servidor cuando otra terminal cobró a media captura del corte.
+ */
+function registersWith(overrides: Partial<typeof SESSION>) {
+  return [{ ...OPEN_REGISTERS[0], openSession: { ...SESSION, ...overrides } }]
+}
+
 function makeRepos() {
   const repos = createMockRepositories()
   repos.register.getRegisters = vi.fn().mockResolvedValue(OPEN_REGISTERS)
@@ -248,6 +256,94 @@ describe('CloseCajaWizard', () => {
     await screen.findByText(/revisa el resumen/i)
     await user.click(screen.getByRole('button', { name: /regresar/i }))
     expect(await screen.findByText(/confirma los totales digitales/i)).toBeInTheDocument()
+  })
+
+  // La caja está VIVA dentro del asistente (useRegister escucha `sales` +
+  // `register`, T-044/T-045). Stripe no tiene input: si el contado se congela
+  // en el primer auto-relleno, un cobro de otra terminal deja una diferencia
+  // fantasma que el cajero no puede corregir.
+  it('Stripe cobrado en otra terminal a media captura: el contado sigue al esperado vivo', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    let current = OPEN_REGISTERS
+    repos.register.getRegisters = vi.fn(async () => current)
+
+    const { announce } = renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    await screen.findByText(/cuenta el efectivo/i)
+    await user.click(screen.getByRole('button', { name: /siguiente/i }))
+    await screen.findByText(/confirma los totales digitales/i)
+    await user.click(screen.getByRole('button', { name: /sí, \$2,540/i }))
+
+    // Otra terminal cobra $240 por Stripe: el esperado sube de $1,260 a $1,500.
+    current = registersWith({ expectedTransferCents: 150000 })
+    await announce('sales')
+
+    // (a) Stripe sigue auto-confirmado con el esperado NUEVO: el paso no se
+    // traba (no hay control que lo reconfirme) y el CTA sigue vivo.
+    expect(screen.getByRole('button', { name: /revisar/i })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: /revisar/i }))
+    await screen.findByText(/revisa el resumen/i)
+    // (b) Cero diferencia fantasma: el faltante es sólo el efectivo sin contar
+    // ($1,840). Con el contado congelado en $1,260 sería $2,080.
+    expect(screen.getByRole('alert')).toHaveTextContent('Faltante de $1,840')
+
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: /cerrar caja/i }))
+
+    // (c) El cierre manda el contado VIGENTE, no el de cuando abrió el paso.
+    await waitFor(() => {
+      expect(repos.register.closeSession).toHaveBeenCalledWith(
+        expect.objectContaining({ countedTransferCents: 150000 }),
+      )
+    })
+  })
+
+  it('la tarjeta ajustada a mano NO se pisa cuando llega una lectura nueva', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    let current = OPEN_REGISTERS
+    repos.register.getRegisters = vi.fn(async () => current)
+
+    const { announce } = renderWithProviders(<CloseCajaWizard />, {
+      initialRoute: '/caja/cerrar',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+
+    await screen.findByText(/cuenta el efectivo/i)
+    await user.click(screen.getByRole('button', { name: /siguiente/i }))
+    await screen.findByText(/confirma los totales digitales/i)
+
+    // El cajero cuenta la terminal física y captura $2,000 (hubo un reverso).
+    await user.click(screen.getByRole('button', { name: /ajustar/i }))
+    const input = screen.getByLabelText(/monto contado de tarjeta/i)
+    await user.clear(input)
+    await user.type(input, '2000')
+    await user.click(screen.getByRole('button', { name: /guardar/i }))
+    expect(screen.getByText(/confirmado: \$2,000/i)).toBeInTheDocument()
+
+    // Llega una lectura nueva que mueve los dos esperados.
+    current = registersWith({ expectedCardCents: 300000, expectedTransferCents: 150000 })
+    await announce('sales')
+
+    // La captura manual manda: ni el esperado nuevo ni el viejo la pisan.
+    expect(screen.getByText(/confirmado: \$2,000/i)).toBeInTheDocument()
+    expect(screen.queryByText(/confirmado: \$3,000/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /revisar/i }))
+    await screen.findByText(/revisa el resumen/i)
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: /cerrar caja/i }))
+
+    await waitFor(() => {
+      expect(repos.register.closeSession).toHaveBeenCalledWith(
+        expect.objectContaining({ countedCardCents: 200000, countedTransferCents: 150000 }),
+      )
+    })
   })
 
   it('SIGUIENTE is disabled on step 1 when neither digital channel is confirmed', async () => {

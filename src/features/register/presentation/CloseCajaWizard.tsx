@@ -12,7 +12,6 @@ import { ReviewCloseStep } from './steps/ReviewCloseStep'
 import { formatMoney } from '@/shared/lib/money'
 import { readableSpanishError } from '@/shared/lib/errors'
 
-const PENDING_DIGITAL: DigitalCounted = { cardCents: null, transferCents: null }
 const SUCCESS_REDIRECT_DELAY_MS = 2000
 const STEPS = ['Contar efectivo', 'Tarjeta', 'Cerrar']
 
@@ -52,15 +51,31 @@ export function CloseCajaWizard() {
 
   const [step, setStep] = useState(0)
   const [counts, setCounts] = useState<CashCounts>(emptyCashCounts())
-  const [digital, setDigital] = useState<DigitalCounted>(PENDING_DIGITAL)
-  // Stripe gets confirmed automatically against the API's expected — the cashier
-  // can't verify it manually anyway. Auto-fill transferCents once the session
-  // arrives so step 1 only blocks on the TARJETA input.
-  useEffect(() => {
-    if (session && digital.transferCents === null) {
-      setDigital((d) => ({ ...d, transferCents: session.expectedTransferCents }))
-    }
-  }, [session, digital.transferCents])
+  /**
+   * Lo ÚNICO que se captura del paso digital: la TARJETA, que el cajero
+   * reconcilia contra la terminal física (confirmar el esperado o "Ajustar").
+   * `null` es "todavía no la confirma" ([D-020]) y es lo único que traba el paso.
+   */
+  const [countedCardCents, setCountedCardCents] = useState<number | null>(null)
+  /**
+   * Stripe se auto-confirma por definición: el cajero no tiene cómo verificarlo
+   * y `ConfirmDigitalStep` ni siquiera pinta su fila. Por eso el contado se
+   * DERIVA en render del esperado VIGENTE en vez de congelarse en estado: la
+   * caja está viva dentro del asistente (`useRegister` escucha los temas
+   * `sales` + `register` del canal de frescura, T-044/T-045), así que un pago
+   * Stripe cobrado en otra terminal a media captura mueve
+   * `expectedTransferCents` — con el auto-relleno de una sola vez el cierre
+   * mandaba un contado viejo y registraba una diferencia fantasma que el
+   * cajero NO puede corregir (no hay input de Stripe).
+   *
+   * Sin sesión es `null` = "no sé" ([D-018]/[D-060]), nunca 0: en ese estado el
+   * wizard ni siquiera pinta pasos (rama del esqueleto, más abajo).
+   */
+  const countedTransferCents = session?.expectedTransferCents ?? null
+  const digital: DigitalCounted = {
+    cardCents: countedCardCents,
+    transferCents: countedTransferCents,
+  }
   const [confirmAck, setConfirmAck] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -282,7 +297,9 @@ export function CloseCajaWizard() {
           expectedCardCents={expected.cardCents}
           expectedTransferCents={expected.transferCents}
           counted={digital}
-          onChange={setDigital}
+          // Del paso digital sólo se guarda la tarjeta: el contado de Stripe es
+          // derivado del esperado vigente y no hay control que lo edite.
+          onChange={(next) => setCountedCardCents(next.cardCents)}
         />
       )}
       {step === 2 && (

@@ -4318,6 +4318,141 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-058",
+      "title": "Corte de caja: el contado de Stripe sigue al esperado vivo, no se congela al primer auto-fill",
+      "description": "Hallazgo Important #1 del Principal (5ª pasada, run 2026-09-22-a). En src/features/register/presentation/CloseCajaWizard.tsx (~59-63) el auto-fill de Stripe (`digital.transferCents`) se hace UNA sola vez (guarda `=== null`), pero T-044/T-045 hicieron viva a `session` dentro del wizard (useRegister registrado en los temas `sales` + `register`): un pago Stripe confirmado en otra terminal a media asistente actualiza `session.expectedTransferCents`, y el cierre manda un `countedTransferCents` congelado. Diferencia fantasma que el cajero NO puede corregir (ConfirmDigitalStep no renderiza input de Stripe, steps/ConfirmDigitalStep.tsx ~121-148) y cierre registrado con un contado que no corresponde a lo real. Cambios: (1) el contado de transferencia/Stripe es auto-confirmado por definición: derívalo en render desde `session.expectedTransferCents` (preferido) o sincronízalo en cada cambio de `session` quitando la guarda `=== null` SOLO para transfer; (2) el contado de TARJETA conserva su comportamiento actual (auto-fill inicial + 'Ajustar' manual); (3) el payload de `closeSession` manda el `countedTransferCents` vigente en el momento de confirmar; (4) respeta [D-018]/[D-060]: con `session` null o esperado no confirmable, el wizard no arranca ni pinta $0 (no cambies esa regla). Tests en src/features/register/presentation/CloseCajaWizard.test.tsx (arnés existente con repositorio in-memory y canal de frescura): (a) a media asistente llega una `session` nueva con `expectedTransferCents` mayor → el paso digital muestra el nuevo esperado como confirmado y el cierre manda ese valor como `countedTransferCents`; (b) el contado de tarjeta ajustado a mano NO se pisa cuando llega la `session` nueva; (c) los escenarios existentes siguen en verde.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Un esperado de Stripe que cambia a media asistente se refleja en el paso digital y en el countedTransferCents del cierre; el contado de tarjeta ajustado a mano no se pisa",
+          "check": "npm test -- src/features/register/presentation/CloseCajaWizard.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El resto del feature de caja sigue en verde",
+          "check": "npm test -- src/features/register",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Eslint limpio en el wizard",
+          "check": "npx eslint src/features/register/presentation/CloseCajaWizard.tsx",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1 (5ª pasada): dónde se congela transferCents y las dos vías de fix (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/register/presentation/CloseCajaWizard.tsx",
+          "reason": "Auto-fill de digital.transferCents con guarda === null y payload de closeSession (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/register/presentation/steps/ConfirmDigitalStep.tsx",
+          "reason": "Paso digital: tarjeta con 'Ajustar', Stripe sin input (sólo lectura, no lo toques) (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/register/presentation/CloseCajaWizard.test.tsx",
+          "reason": "Arnés existente del wizard (repo in-memory, canal de frescura, cierre) a extender (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-018]/[D-060] null = no sé, jamás cifra vieja ni $0; el wizard no arranca sin cifras confirmadas (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/register/presentation/CloseCajaWizard.tsx",
+        "src/features/register/presentation/CloseCajaWizard.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-059",
+      "title": "Modo staff: el cobro de extras de una cita prepagada no manda precios staff",
+      "description": "Hallazgo Important #2 del Principal (5ª pasada, run 2026-09-22-a). En src/features/checkout/application/useCheckout.ts, `submitExtras` (~1656-1735) no tiene la guarda de venta a staff que sí tiene `submit` (~1554-1557). Si `prepayState.isPrepaid` resuelve `true` DESPUÉS de que el operador encendió el modo staff, la StaffSaleBar se desmonta (CheckoutPage la gatea por `!ck.isPrepaid`, ~385) pero `staffSaleEnabled` queda encendido con líneas a precio staff: el cobro de extras manda precios staff SIN `staffSale` → PRICE_MISMATCH, y la recuperación (`repriceCartLines` con `staffSaleEnabledRef` true, [D-073]) vuelve a comitear el precio staff: rechazo en bucle sin interruptor visible para salir. Cambios: (1) cuando `prepayState.isPrepaid` pasa a `true` con el modo encendido, apagar el modo con `disableStaffSale()` (las líneas vuelven a precio público congelado, [D-072]) — es la salida principal porque devuelve la UI a un estado coherente; (2) además, espejo de la guarda de `submit` en `submitExtras`: si `staffSaleEnabled` sigue encendido, setError con el mismo mensaje que usa `submit` y return null (cinturón y tirantes contra la carrera); (3) no toques el payload de extras ni la lógica de prepago más allá de esto. Tests en src/features/checkout/application/useCheckout.staffSale.test.tsx (arnés existente; el mock permite resolver el estado de prepago de la cita): (a) modo encendido con líneas a precio staff → el prepago resuelve true → el modo queda apagado, las líneas a precio público y `submitExtras` cobra sin `staffSale` ni precios staff; (b) forzando `staffSaleEnabled` true al llamar `submitExtras` (carrera) → no se llama al repositorio y queda un error visible; (c) los escenarios existentes (27) siguen en verde.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Con una cita prepagada, el modo staff se apaga y submitExtras nunca manda precios staff; en la carrera, submitExtras se niega con error en vez de llamar al repositorio",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El cobro, la barra y la actividad de venta siguen en verde",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/presentation/StaffSaleBar.test.tsx src/features/checkout/application/useCheckout.saleActivity.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Eslint limpio en el hook",
+          "check": "npx eslint src/features/checkout/application/useCheckout.ts",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #2 (5ª pasada): submitExtras sin guarda staff, la barra gateada por isPrepaid y el bucle de rechazo (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "submit (guarda staff), submitExtras, prepayState, disableStaffSale y repriceCartLines (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/application/useCheckout.staffSale.test.tsx",
+          "reason": "Arnés del modo staff (setStaffSaleQuota, líneas a precio staff, apagado del modo) a extender con prepago (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-072] al soltar el precio staff se comitea el público congelado; [D-073] la recuperación lee el modo por refs (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/application/useCheckout.staffSale.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }
