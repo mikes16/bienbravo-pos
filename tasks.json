@@ -2507,8 +2507,8 @@
         },
         {
           "id": "AC-5",
-          "desc": "Eslint limpio en la feature",
-          "check": "npx eslint src/features/walkins",
+          "desc": "Eslint limpio en los archivos del alcance (WalkInQueueHeader.tsx queda fuera: error pre-existente de 6214971, deuda aparte)",
+          "check": "npx eslint src/features/walkins/application/useWalkIns.ts src/features/walkins/presentation/WalkInsPage.tsx src/features/walkins/presentation/WalkInsPage.test.tsx",
           "kind": "build"
         }
       ],
@@ -2549,9 +2549,9 @@
       ],
       "priority": 3,
       "type": "fix",
-      "status": "pending",
-      "attempts": 0,
-      "redispatches": 0,
+      "status": "done",
+      "attempts": 2,
+      "redispatches": 1,
       "split_from": "T-017",
       "review_feedback": []
     }

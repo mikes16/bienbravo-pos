@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
+import { useLiveRefresh } from '@/core/freshness/useLiveRefresh'
+import type { FreshnessTopic } from '@/core/freshness/FreshnessProvider'
+import { formatTimeInTz } from '@/shared/lib/date'
 import { useWalkIns } from '../application/useWalkIns.ts'
 import type { WalkIn, WalkInStatus } from '../domain/walkins.types.ts'
 import type { BarberResult } from '@/features/checkout/data/checkout.repository.ts'
@@ -12,6 +15,13 @@ import { AddWalkInSheet } from './AddWalkInSheet.tsx'
 import { WalkInQueueHeader } from './WalkInQueueHeader.tsx'
 import { WalkInQueueRow } from './WalkInQueueRow.tsx'
 import { SuggestedNextCard } from './SuggestedNextCard.tsx'
+
+/**
+ * La sala de espera sólo se mueve con avisos de walk-ins ([D-019]: un registro
+ * por CLASE de dato, no uno monolítico por pantalla). Constante de módulo: un
+ * literal nuevo en cada render re-registraría el cargador sin parar.
+ */
+const WALKINS_TOPICS: readonly FreshnessTopic[] = ['walkins']
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
 
@@ -210,10 +220,18 @@ function SkeletonQueueRow() {
 
 export function WalkInsPage() {
   const { viewer } = usePosAuth()
-  const { locationId } = useLocation()
+  const { locationId, locationTimezone } = useLocation()
   const { checkout } = useRepositories()
   const navigate = useNavigate()
   const wi = useWalkIns(locationId)
+
+  // Puesta al día por el canal ÚNICO del POS: esta pantalla no abre conexiones
+  // en vivo propias, no vigila el estado de la ventana y tampoco pregunta cada
+  // N segundos. El canal avisa cuando el servidor dice que la cola cambió (y al
+  // reconectar, al desbloquear o al tocar "Actualizar"); la carga inicial la
+  // hace el hook, porque `useLiveRefresh` no llama al cargador al montar
+  // (handoff T-007).
+  useLiveRefresh(wi.refresh, WALKINS_TOPICS)
 
   const [showAdd, setShowAdd] = useState(false)
   const [dropTarget, setDropTarget] = useState<WalkIn | null>(null)
@@ -353,6 +371,20 @@ export function WalkInsPage() {
     [allBarbers],
   )
 
+  // Falló la red y hay cola en memoria: se conserva —esto es lo VIVO, no
+  // dinero; [D-018] (tirar el dato) es regla de DINERO— pero deja de
+  // presentarse como actual. Se canta la hora del último dato bueno en la tz
+  // de la SUCURSAL, nunca la del device. Sin nada previo que mostrar, manda el
+  // banner de error de siempre.
+  const staleSinceTime =
+    wi.error && wi.list.length > 0 && wi.lastLoadedAt
+      ? formatTimeInTz(wi.lastLoadedAt.toISOString(), locationTimezone)
+      : null
+
+  // El esqueleto es sólo para la primera carga ([D-025]): un refresco del
+  // canal no vacía a filas-esqueleto una cola que ya está en pantalla.
+  const showSkeleton = wi.loading && wi.list.length === 0
+
   if (!canRead) {
     return (
       <div className="flex h-full items-center justify-center px-6">
@@ -396,15 +428,27 @@ export function WalkInsPage() {
         )}
       </div>
 
-      {/* ── Error banner ── */}
-      {wi.error && (
-        <p className="border-b border-[var(--color-bravo)]/30 bg-[var(--color-bravo)]/10 px-6 py-3 text-sm text-[var(--color-bravo)]">
+      {/* ── Datos viejos / error ── */}
+      {staleSinceTime ? (
+        <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-6 py-3">
+          {/* role="status" y no "alert": no interrumpe, pero sí se anuncia —
+              asignar barberos sobre una cola vieja no es un detalle
+              decorativo. */}
+          <p role="status" className="text-sm text-[var(--color-warning)]">
+            Sin conexión · datos de las {staleSinceTime}
+          </p>
+        </div>
+      ) : wi.error ? (
+        <p
+          role="alert"
+          className="border-b border-[var(--color-bravo)]/30 bg-[var(--color-bravo)]/10 px-6 py-3 text-sm text-[var(--color-bravo)]"
+        >
           {wi.error}
         </p>
-      )}
+      ) : null}
 
       {/* ── Body ── */}
-      {wi.loading ? (
+      {showSkeleton ? (
         <div className="flex-1 overflow-y-auto">
           {[1, 2, 3, 4].map((i) => (
             <SkeletonQueueRow key={i} />
@@ -563,7 +607,10 @@ export function WalkInsPage() {
           onClose={() => setShowAdd(false)}
           onCreated={() => {
             setShowAdd(false)
-            wi.refresh()
+            // `refresh` ahora re-lanza (contrato del canal, handoff T-007): el
+            // rechazo se traga aquí — ya está pintado y nadie espera esta
+            // promesa.
+            void wi.refresh().catch(() => {})
           }}
         />
       )}

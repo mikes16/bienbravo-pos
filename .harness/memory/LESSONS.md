@@ -27,3 +27,4 @@
 - [build] (x1, T-016) En una propuesta de split (splits/T-NNN.json) cada entrada de context de las hijas usa exactamente type/path/reason según .harness/schema/tasks.schema.json (nada de kind/why/note): apply-split rechaza el archivo entero si no cumple.
 - [test] (x1, T-016a) Un helper de render compartido que inyecta un contexto debe crear el valor UNA vez por llamada (fuera del Wrapper) y envolver sólo los children: identidad estable evita re-registros en bucle y el provider propio de un test gana por anidamiento.
 - [test] (x1, T-018) Antes de ocultar un texto de UI, grepea el literal con -i en todos los tests del feature: el test que lo exige suele vivir en otro archivo con regex case-insensitive (/^subtotal$/i).
+- [build] (x1, T-017a) Un parámetro de hook que deja de usarse se renombra con prefijo _: silencia noUnusedParameters de tsc y eslint (args: after-used) no lo reporta si hay otro parámetro usado después.
