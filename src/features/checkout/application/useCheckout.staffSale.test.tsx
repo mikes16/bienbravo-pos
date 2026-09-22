@@ -306,7 +306,13 @@ describe('useCheckout · venta a staff', () => {
     act(() => {
       outcome = result.current.addCatalogItem(tile(SPRAY))
     })
-    expect(outcome).toEqual({ added: false, reason: 'NEEDS_VARIANT', message: 'Elige la presentación' })
+    expect(outcome).toEqual({
+      added: false,
+      reason: 'NEEDS_VARIANT',
+      // INTERINO (T-050): sin selector de presentación, el aviso manda a cobrar
+      // fuera del modo staff. Vuelve a "Elige la presentación" con T-033.
+      message: 'Aún no hay selector de presentación — cóbralo fuera del modo staff',
+    })
     expect(result.current.cartState.lines).toHaveLength(0)
 
     act(() => {
@@ -333,7 +339,7 @@ describe('useCheckout · venta a staff', () => {
     await enable(result)
 
     expect(result.current.staffSale.canCharge).toBe(false)
-    expect(result.current.staffSale.blockMessage).toBe('Elige la presentación')
+    expect(result.current.staffSale.blockMessage).toBe('Aún no hay selector de presentación — cóbralo fuera del modo staff')
     // Sin presentación no se inventa un precio staff ([D-042]).
     expect(result.current.cartState.lines[0].unitPriceCents).toBe(18000)
     expect(result.current.staffSale.lines[0].listUnitPriceCents).toBeNull()
@@ -519,7 +525,7 @@ describe('useCheckout · venta a staff', () => {
       reason: 'NEEDS_VARIANT',
       unitPriceCents: null,
       listUnitPriceCents: 18000,
-      message: 'Elige la presentación',
+      message: 'Aún no hay selector de presentación — cóbralo fuera del modo staff',
     })
 
     await enable(result, false)

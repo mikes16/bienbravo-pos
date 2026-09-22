@@ -138,14 +138,14 @@ describe('CartLineRow', () => {
         <CartLineRow
           line={PRODUCT_LINE}
           barbers={BARBERS}
-          staffBlockMessage="Elige la presentación"
+          staffBlockMessage="Aún no hay selector de presentación — cóbralo fuera del modo staff"
           {...NOOP_HANDLERS}
         />,
       )
-      expect(screen.getByText('Elige la presentación')).toBeInTheDocument()
+      expect(screen.getByText('Aún no hay selector de presentación — cóbralo fuera del modo staff')).toBeInTheDocument()
       // También viaja en la etiqueta de la fila (el motivo bloquea el cobro).
       expect(
-        screen.getByRole('button', { name: /elige la presentación/i }),
+        screen.getByRole('button', { name: /no hay selector de presentación/i }),
       ).toBeInTheDocument()
     })
   })

@@ -373,7 +373,13 @@ describe('textos en español', () => {
     const conVariantes = product({
       variants: [variant('v1', 200_00, 120_00), variant('v2', 300_00, 180_00)],
     })
-    expect(staffLineMessage(staffLineView(conVariantes))).toBe('Elige la presentación')
+    // INTERINO (T-050): sin selector de presentación en la UI, el aviso manda
+    // a cobrar fuera del modo staff. Vuelve a "Elige la presentación" con T-033.
+    expect(staffLineMessage(staffLineView(conVariantes))).toBe(
+      'Aún no hay selector de presentación — cóbralo fuera del modo staff',
+    )
+    // El motivo (y con él el bloqueo del cobro) sigue siendo NEEDS_VARIANT.
+    expect(staffLineView(conVariantes).reason).toBe('NEEDS_VARIANT')
     expect(staffLineMessage(staffLineView(product()))).toBeNull()
   })
 

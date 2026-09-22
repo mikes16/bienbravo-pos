@@ -25,7 +25,18 @@ export type StaffLineBlockReason = 'NOT_ELIGIBLE' | 'NEEDS_VARIANT'
  */
 export const STAFF_SALE_MESSAGES = {
   NOT_ELIGIBLE: 'Este producto no está disponible para venta a staff',
-  NEEDS_VARIANT: 'Elige la presentación',
+  // INTERINO (T-050): mientras no exista el selector de presentación
+  // (T-033 / VariantPickerSheet — `setStaffSaleLineVariant` del hook sigue sin
+  // consumidor), este aviso NO puede mandar a elegir una presentación: sería
+  // instruir un toque que la UI no tiene en ninguna de sus tres bocas (fila del
+  // carrito, card del catálogo y toque rechazado del grid). Dice lo único
+  // ejecutable en esta build: apagar el modo staff — que devuelve la línea a su
+  // precio público congelado — o quitarla del ticket.
+  // El motivo `NEEDS_VARIANT` y la regla de negocio NO cambian: la línea sigue
+  // sin precio staff y sigue bloqueando el cobro ([D-042]).
+  // Cuando T-033 aterrice, este texto vuelve a pedir la presentación y se
+  // revierte junto con los tests que lo fijan.
+  NEEDS_VARIANT: 'Aún no hay selector de presentación — cóbralo fuera del modo staff',
 } as const satisfies Record<StaffLineBlockReason, string>
 
 /* ── 1. Vista de una línea de producto en modo staff ── */
