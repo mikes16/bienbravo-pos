@@ -8,6 +8,8 @@ import {
   POS_HOME_WALK_IN_QUEUE_UPDATED,
   POS_HOME_APPOINTMENT_UPDATED,
 } from '@/features/home/data/home.queries'
+import { POS_DATA_CHANGED } from './freshness.queries'
+import { PosDataEventKind } from '@/core/graphql/generated/graphql'
 
 /**
  * Canal ÚNICO de frescura del POS.
@@ -40,16 +42,19 @@ import {
  * Temas del canal. Una pantalla se registra sólo en los suyos (una carga por
  * CLASE de dato, no una por pantalla).
  *
- * `register` (Caja) es un tema SIN fuente de eventos todavía, y eso es
- * deliberado: la suscripción del API que avisará de apertura/cierre/corrección
- * de caja (spec 3.3 c: "eventos que hoy no existen") llega en una tarea
- * posterior del API. Por eso `EVENT_SOURCES` sigue teniendo tres entradas — no
- * hay nada que cablear aquí ni un olvido que arreglar. Mientras tanto el tema
- * sí se dispara por reconexión, por foco/visibilidad y por `refreshAll()`,
- * porque los tres usan `FRESHNESS_TOPICS` completo. El día que la suscripción
- * exista, agregar su entrada a `EVENT_SOURCES` es todo el cambio.
+ * Todos tienen ya fuente de eventos: `sales`, `walkins` y `appointments` por
+ * las tres suscripciones de Hoy, y `register`, `catalog` y `settings` (más
+ * otra vía a `sales`) por el aviso genérico `posDataChanged` (spec 3.3 c).
+ * Además se disparan todos por reconexión, por foco/visibilidad y por
+ * `refreshAll()`, porque los tres usan `FRESHNESS_TOPICS` completo.
  */
-export type FreshnessTopic = 'sales' | 'walkins' | 'appointments' | 'register'
+export type FreshnessTopic =
+  | 'sales'
+  | 'walkins'
+  | 'appointments'
+  | 'register'
+  | 'catalog'
+  | 'settings'
 
 /** Orden estable; se usa como "todos los temas". */
 export const FRESHNESS_TOPICS: readonly FreshnessTopic[] = [
@@ -57,6 +62,8 @@ export const FRESHNESS_TOPICS: readonly FreshnessTopic[] = [
   'walkins',
   'appointments',
   'register',
+  'catalog',
+  'settings',
 ]
 
 /** Mínimo entre dos refrescos del mismo tema. Agrupa ráfagas de eventos. */
@@ -86,22 +93,72 @@ export const FreshnessContext = createContext<FreshnessContextValue | null>(null
 
 interface EventSource {
   readonly query: TypedDocumentNode<unknown, { slug: string }>
-  readonly topic: FreshnessTopic
   readonly label: string
+  /**
+   * Temas que invalida el aviso recibido. Lista vacía = el aviso no aplica
+   * (p. ej. un `kind` que esta versión del POS todavía no conoce): se ignora
+   * sin refrescar nada y sin romper el canal.
+   */
+  readonly topicsOf: (data: unknown) => readonly FreshnessTopic[]
 }
 
 /**
- * Las tres suscripciones que ya existen en el API. Su carga útil es mínima a
- * propósito (tipo + sucursal + id, sin montos ni nombres): son pings de
- * invalidación; el dato viaja después por la consulta HTTP autenticada.
+ * Qué invalida cada `kind` de `posDataChanged`.
  *
- * No hay entrada para `register` porque el API aún no publica ese evento (ver
- * el docblock de `FreshnessTopic`): la lista tiene tres elementos a propósito.
+ * - `REGISTER`: otra iPad abrió o cerró la caja.
+ * - `PAYMENT`: una corrección de forma de pago mueve montos entre canales de
+ *   la caja, así que toca `sales` Y `register`.
+ * - `COMMISSION`: cambia lo que el barbero tiene ganado (`sales`).
+ * - `CATALOG` / `SETTINGS`: precios y ajustes del negocio, cada uno al suyo.
+ *
+ * Tipado con el enum generado: si el API agrega un `kind`, esto no compila
+ * hasta decidir a qué tema va (y mientras tanto, en runtime, se ignora).
+ */
+const POS_DATA_TOPICS: Readonly<Record<PosDataEventKind, readonly FreshnessTopic[]>> = {
+  [PosDataEventKind.Register]: ['register'],
+  [PosDataEventKind.Payment]: ['sales', 'register'],
+  [PosDataEventKind.Commission]: ['sales'],
+  [PosDataEventKind.Catalog]: ['catalog'],
+  [PosDataEventKind.Settings]: ['settings'],
+}
+
+const NO_TOPICS: readonly FreshnessTopic[] = []
+
+/** Fuente de temas fijos: el evento siempre invalida los mismos. */
+function always(topics: readonly FreshnessTopic[]): (data: unknown) => readonly FreshnessTopic[] {
+  return () => topics
+}
+
+/** Fuente de temas por `kind`, leyendo el payload de forma defensiva. */
+function posDataTopics(data: unknown): readonly FreshnessTopic[] {
+  const event = (data as { posDataChanged?: { kind?: unknown } } | null | undefined)?.posDataChanged
+  const kind = event?.kind
+  if (typeof kind !== 'string' || !Object.hasOwn(POS_DATA_TOPICS, kind)) return NO_TOPICS
+  return POS_DATA_TOPICS[kind as PosDataEventKind]
+}
+
+/**
+ * Las suscripciones del canal. Su carga útil es mínima a propósito (tipo +
+ * sucursal + id/hora, sin montos ni nombres): son pings de invalidación; el
+ * dato viaja después por la consulta HTTP autenticada.
+ *
+ * `posDataChanged` es el aviso genérico por sucursal (spec 3.3 c) y cubre lo
+ * que las otras tres no ven: caja, catálogo, ajustes, correcciones de pago y
+ * ediciones de comisión.
  */
 const EVENT_SOURCES: readonly EventSource[] = [
-  { query: POS_HOME_SALE_EVENT, topic: 'sales', label: 'saleEvent' },
-  { query: POS_HOME_WALK_IN_QUEUE_UPDATED, topic: 'walkins', label: 'walkInQueueUpdated' },
-  { query: POS_HOME_APPOINTMENT_UPDATED, topic: 'appointments', label: 'appointmentUpdated' },
+  { query: POS_HOME_SALE_EVENT, label: 'saleEvent', topicsOf: always(['sales']) },
+  {
+    query: POS_HOME_WALK_IN_QUEUE_UPDATED,
+    label: 'walkInQueueUpdated',
+    topicsOf: always(['walkins']),
+  },
+  {
+    query: POS_HOME_APPOINTMENT_UPDATED,
+    label: 'appointmentUpdated',
+    topicsOf: always(['appointments']),
+  },
+  { query: POS_DATA_CHANGED, label: 'posDataChanged', topicsOf: posDataTopics },
 ]
 
 interface RegisteredLoader {
@@ -130,6 +187,8 @@ export function createFreshnessEngine(onRefreshed: (at: Date) => void): Freshnes
     walkins: 0,
     appointments: 0,
     register: 0,
+    catalog: 0,
+    settings: 0,
   }
   /** Temas que pidieron refresco dentro de la ventana o estando en pausa. */
   const pending = new Set<FreshnessTopic>()
@@ -246,7 +305,7 @@ export function FreshnessProvider({ children }: { children: ReactNode }) {
   // UN canal por sucursal para toda la app. Se reabre sólo si cambia el slug.
   useEffect(() => {
     if (!locationSlug) return
-    const subscriptions = EVENT_SOURCES.map(({ query, topic, label }) =>
+    const subscriptions = EVENT_SOURCES.map(({ query, topicsOf, label }) =>
       client
         .subscribe({
           query,
@@ -256,8 +315,10 @@ export function FreshnessProvider({ children }: { children: ReactNode }) {
           fetchPolicy: 'no-cache',
         })
         .subscribe({
-          next: () => {
-            engine.trigger([topic])
+          next: (result) => {
+            const topics = topicsOf(result.data)
+            if (topics.length === 0) return
+            engine.trigger(topics)
           },
           error: (err: unknown) => {
             // graphql-ws reintenta solo (retryAttempts: Infinity); aquí sólo

@@ -23,6 +23,7 @@ type Documents = {
     "\n  mutation PosLogout { logout }\n": typeof types.PosLogoutDocument,
     "\n  query PosBarberStatuses($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      hasClockedIn\n      isOccupied\n    }\n  }\n": typeof types.PosBarberStatusesDocument,
     "\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n": typeof types.PosCatalogVersionDocument,
+    "\n  subscription PosDataChanged($slug: String!) {\n    posDataChanged(slug: $slug) {\n      kind\n      locationSlug\n      occurredAt\n    }\n  }\n": typeof types.PosDataChangedDocument,
     "\n  query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {\n    appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {\n      id status salePaymentStatus startAt endAt totalCents\n      # staffNote: nota interna escrita por admin/recepción para el barbero que\n      # atiende. reputationTag/reputationNote: marca del cliente (VIP/señalado)\n      # + nota persistente \"solo staff\". El POS solo LEE — no edita ninguna.\n      staffNote\n      customer { id fullName phone reputationTag reputationNote }\n      staffUser { id fullName }\n      items { label serviceId qty unitPriceCents }\n      locationId locationName\n    }\n  }\n": typeof types.PosAppointmentsDocument,
     "mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }": typeof types.CheckInDocument,
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": typeof types.StartServiceDocument,
@@ -91,6 +92,7 @@ const documents: Documents = {
     "\n  mutation PosLogout { logout }\n": types.PosLogoutDocument,
     "\n  query PosBarberStatuses($locationId: ID!) {\n    posAvailableBarbers(locationId: $locationId) {\n      id\n      hasClockedIn\n      isOccupied\n    }\n  }\n": types.PosBarberStatusesDocument,
     "\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n": types.PosCatalogVersionDocument,
+    "\n  subscription PosDataChanged($slug: String!) {\n    posDataChanged(slug: $slug) {\n      kind\n      locationSlug\n      occurredAt\n    }\n  }\n": types.PosDataChangedDocument,
     "\n  query PosAppointments($dateFrom: String!, $dateTo: String!, $locationId: ID, $status: AppointmentStatus) {\n    appointments(dateFrom: $dateFrom, dateTo: $dateTo, locationId: $locationId, status: $status) {\n      id status salePaymentStatus startAt endAt totalCents\n      # staffNote: nota interna escrita por admin/recepción para el barbero que\n      # atiende. reputationTag/reputationNote: marca del cliente (VIP/señalado)\n      # + nota persistente \"solo staff\". El POS solo LEE — no edita ninguna.\n      staffNote\n      customer { id fullName phone reputationTag reputationNote }\n      staffUser { id fullName }\n      items { label serviceId qty unitPriceCents }\n      locationId locationName\n    }\n  }\n": types.PosAppointmentsDocument,
     "mutation CheckIn($id: ID!) { checkIn(appointmentId: $id) { id status } }": types.CheckInDocument,
     "mutation StartService($id: ID!) { startService(appointmentId: $id) { id status } }": types.StartServiceDocument,
@@ -200,6 +202,10 @@ export function graphql(source: "\n  query PosBarberStatuses($locationId: ID!) {
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n"): (typeof documents)["\n  query PosCatalogVersion($locationId: ID!) {\n    catalogVersion(locationId: $locationId)\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  subscription PosDataChanged($slug: String!) {\n    posDataChanged(slug: $slug) {\n      kind\n      locationSlug\n      occurredAt\n    }\n  }\n"): (typeof documents)["\n  subscription PosDataChanged($slug: String!) {\n    posDataChanged(slug: $slug) {\n      kind\n      locationSlug\n      occurredAt\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

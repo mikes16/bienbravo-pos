@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { render, act } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { ApolloClient, ApolloLink, InMemoryCache, Observable } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
 import {
@@ -71,6 +71,16 @@ function emitWalkIn(): void {
   })
 }
 
+/**
+ * Aviso genérico por sucursal (`posDataChanged`). `kind` va como string a
+ * propósito: así podemos emitir también uno que el POS no conoce.
+ */
+function emitPosData(kind: string): void {
+  emit('PosDataChanged', {
+    posDataChanged: { __typename: 'PosDataEvent', kind, locationSlug: 'centro', occurredAt: AT },
+  })
+}
+
 const ctxRef: { current: FreshnessContextValue | null } = { current: null }
 
 function Capture() {
@@ -89,6 +99,31 @@ function Probe({ load, topics }: { load: () => void; topics: readonly FreshnessT
 function ctx(): FreshnessContextValue {
   if (!ctxRef.current) throw new Error('contexto no capturado')
   return ctxRef.current
+}
+
+type TopicLoaders = Record<FreshnessTopic, Mock>
+
+/**
+ * Un cargador por TEMA, para poder afirmar "este evento llegó exactamente a
+ * estos temas" sin enumerar espías a mano en cada caso.
+ */
+function topicProbes(): { loaders: TopicLoaders; node: ReactNode } {
+  const loaders = Object.fromEntries(
+    FRESHNESS_TOPICS.map((topic) => [topic, vi.fn()]),
+  ) as TopicLoaders
+  const node = (
+    <>
+      {FRESHNESS_TOPICS.map((topic) => (
+        <Probe key={topic} load={loaders[topic]} topics={[topic]} />
+      ))}
+    </>
+  )
+  return { loaders, node }
+}
+
+/** Temas cuyo cargador corrió al menos una vez, en el orden del canal. */
+function calledTopics(loaders: TopicLoaders): FreshnessTopic[] {
+  return FRESHNESS_TOPICS.filter((topic) => loaders[topic].mock.calls.length > 0)
 }
 
 function tree(children: ReactNode, client: ApolloClient) {
@@ -324,14 +359,21 @@ describe('FreshnessProvider', () => {
   })
 
   // --- Tema `register` (Caja) -------------------------------------------
-  // Caja todavía NO tiene suscripción en el API (ver el docblock de
-  // FreshnessTopic): se comporta como los demás por reconexión, foco y
-  // refreshAll, y no lo arrastra ningún evento existente.
+  // Caja se entera por `posDataChanged` (kinds REGISTER y PAYMENT) y, como
+  // todos, por reconexión, foco y refreshAll. Lo que NO la toca es un evento
+  // de venta del canal de Hoy.
 
   it("'register' es parte de todos los temas, en orden estable", () => {
     // Si mañana se agrega un tema, este caso es el recordatorio de mantener
     // el orden y de actualizar `lastRunAt` del motor.
-    expect(FRESHNESS_TOPICS).toEqual(['sales', 'walkins', 'appointments', 'register'])
+    expect(FRESHNESS_TOPICS).toEqual([
+      'sales',
+      'walkins',
+      'appointments',
+      'register',
+      'catalog',
+      'settings',
+    ])
   })
 
   it("refreshAll() refresca 'register'; un evento de venta NO lo toca", async () => {
@@ -420,5 +462,132 @@ describe('FreshnessProvider', () => {
     })
     expect(sales).toHaveBeenCalledTimes(2)
     expect(register).toHaveBeenCalledTimes(1)
+  })
+
+  // --- Aviso genérico `posDataChanged` -----------------------------------
+  // Un solo evento por sucursal que cubre lo que las tres suscripciones de
+  // Hoy no ven: caja, catálogo, ajustes, corrección de pago y comisión.
+
+  it('REGISTER refresca sólo los cargadores de la caja', async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+
+    await act(async () => {
+      emitPosData('REGISTER')
+    })
+
+    // Otra iPad abrió o cerró la caja: nadie más se entera.
+    expect(calledTopics(loaders)).toEqual(['register'])
+  })
+
+  it("PAYMENT refresca 'sales' y 'register': la corrección mueve montos entre canales", async () => {
+    const { loaders, node } = topicProbes()
+    const both = vi.fn()
+    await renderFreshness(
+      <>
+        {node}
+        <Probe load={both} topics={['sales', 'register']} />
+      </>,
+    )
+
+    await act(async () => {
+      emitPosData('PAYMENT')
+    })
+
+    expect(calledTopics(loaders)).toEqual(['sales', 'register'])
+    // Un cargador en los dos temas del mismo evento corre UNA vez.
+    expect(both).toHaveBeenCalledTimes(1)
+  })
+
+  it("COMMISSION refresca 'sales': cambia lo que el barbero tiene ganado", async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+
+    await act(async () => {
+      emitPosData('COMMISSION')
+    })
+
+    expect(calledTopics(loaders)).toEqual(['sales'])
+  })
+
+  it('CATALOG y SETTINGS llegan cada uno a su tema', async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+
+    await act(async () => {
+      emitPosData('CATALOG')
+    })
+    expect(calledTopics(loaders)).toEqual(['catalog'])
+
+    await act(async () => {
+      emitPosData('SETTINGS')
+    })
+    expect(calledTopics(loaders)).toEqual(['catalog', 'settings'])
+    expect(loaders.catalog).toHaveBeenCalledTimes(1)
+  })
+
+  it('un kind desconocido se ignora sin romper el canal', async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+
+    // Un API más nuevo publica un tipo que esta versión del POS no conoce.
+    await act(async () => {
+      emitPosData('TIPO_QUE_NO_EXISTE_TODAVIA')
+    })
+    expect(calledTopics(loaders)).toEqual([])
+    expect(ctx().lastUpdatedAt).toBeNull()
+
+    // Y el canal sigue vivo para el siguiente aviso que sí se entiende.
+    await act(async () => {
+      emitPosData('REGISTER')
+    })
+    expect(calledTopics(loaders)).toEqual(['register'])
+  })
+
+  it('el aviso genérico respeta la ráfaga de 5 s y la pausa del cobro', async () => {
+    const register = vi.fn()
+    await renderFreshness(<Probe load={register} topics={['register']} />)
+
+    // Ráfaga: 6 avisos de caja se agrupan en 1 refresco + 1 al cerrar la ventana.
+    await act(async () => {
+      for (let i = 0; i < 6; i += 1) emitPosData('REGISTER')
+    })
+    expect(register).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_REFRESH_GAP_MS)
+    })
+    expect(register).toHaveBeenCalledTimes(2)
+
+    // Cobro en vuelo: el aviso queda pendiente y corre al reanudar.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_REFRESH_GAP_MS)
+      ctx().setPaused(true)
+    })
+    await act(async () => {
+      emitPosData('REGISTER')
+    })
+    expect(register).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      ctx().setPaused(false)
+    })
+    expect(register).toHaveBeenCalledTimes(3)
+  })
+
+  it('la puesta al día al reconectar también emite los temas nuevos', async () => {
+    const { loaders, node } = topicProbes()
+    await renderFreshness(node)
+
+    await act(async () => {
+      reportWsConnected()
+    })
+    expect(calledTopics(loaders)).toEqual([])
+
+    await act(async () => {
+      reportWsDisconnected()
+      reportWsConnected(true)
+    })
+    expect(calledTopics(loaders)).toEqual([...FRESHNESS_TOPICS])
   })
 })

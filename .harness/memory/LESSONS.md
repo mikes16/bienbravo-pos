@@ -30,3 +30,4 @@
 - [build] (x1, T-017a) Un parámetro de hook que deja de usarse se renombra con prefijo _: silencia noUnusedParameters de tsc y eslint (args: after-used) no lo reporta si hay otro parámetro usado después.
 - [build] (x1, T-017b) Cuando un check de lint abarca un directorio con deuda pre-existente, acótalo a los archivos de files[] al redactar el AC: si no, la tarea queda rehén de un archivo que su ejecutor no puede tocar.
 - [build] (x1, T-017b) NEEDS_SPLIT no existe para una hija de split: applySplit frena el segundo nivel y la deja blocked revirtiendo el árbol. Si a una hija le falta un archivo fuera de files[], la salida es FAILED con el bloqueo descrito y la tarea de desbloqueo lista para import.
+- [build] (x1, T-019) El check de drift git diff --exit-code -- src/core/graphql/generated solo mide drift real de codegen si primero haces git add -A de ese path: sin stage compara contra HEAD y marca como drift el cambio legítimo del propio sync.
