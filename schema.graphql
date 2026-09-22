@@ -758,15 +758,19 @@ type DashboardLocationRow {
   availableMinutes: Int!
   cancelLt2hCount: Int!
   chairReservableMinutes: Int!
+  couponDiscountCents: Int
+  discountsTotalCents: Int
   locationId: ID!
   locationName: String!
   noShowCount: Int!
   occupancyMinutes: Int!
+  paidSalesCount: Int!
   pendingTotalCents: Int
   refundsTotalCents: Int
   revenuePosCents: Int
   revenuePrepayCents: Int
   revenueTotalCents: Int
+  staffDiscountCents: Int
   ticketPromedioCents: Int
   tipsCents: Int
 }
@@ -782,8 +786,13 @@ type DashboardTotals {
   cardCents: Int
   cashCents: Int
   commissionTotalCents: Int
+  couponDiscountCents: Int
+  discountsTotalCents: Int
   noShowCount: Int!
+  paidSalesCount: Int!
   revenueTotalCents: Int
+  staffDiscountCents: Int
+  ticketPromedioCents: Int
   transferCents: Int
 }
 
@@ -1333,10 +1342,14 @@ type PayoutRunEntryStaff {
 }
 
 type PayrollPreviewRow {
-  commissionCents: Int!
+  commissionCents: Int! @deprecated(reason: "Usa totalCommissionCents (mismo valor, mismo nombre que StaffCommissionRow).")
   fullName: String!
+  productCommissionCents: Int!
   revenueCents: Int!
+  serviceCommissionCents: Int!
   staffUserId: ID!
+  tipsCents: Int!
+  totalCommissionCents: Int!
 }
 
 type PendingWorkloadAppointment {
@@ -1802,6 +1815,7 @@ type RegisterSessionAdjustment {
 
 enum RegisterSessionAdjustmentKind {
   PAYMENT_CORRECTION
+  REFUND
   SALE_VOID
 }
 

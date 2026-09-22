@@ -823,15 +823,19 @@ export type DashboardLocationRow = {
   availableMinutes: Scalars['Int']['output'];
   cancelLt2hCount: Scalars['Int']['output'];
   chairReservableMinutes: Scalars['Int']['output'];
+  couponDiscountCents?: Maybe<Scalars['Int']['output']>;
+  discountsTotalCents?: Maybe<Scalars['Int']['output']>;
   locationId: Scalars['ID']['output'];
   locationName: Scalars['String']['output'];
   noShowCount: Scalars['Int']['output'];
   occupancyMinutes: Scalars['Int']['output'];
+  paidSalesCount: Scalars['Int']['output'];
   pendingTotalCents?: Maybe<Scalars['Int']['output']>;
   refundsTotalCents?: Maybe<Scalars['Int']['output']>;
   revenuePosCents?: Maybe<Scalars['Int']['output']>;
   revenuePrepayCents?: Maybe<Scalars['Int']['output']>;
   revenueTotalCents?: Maybe<Scalars['Int']['output']>;
+  staffDiscountCents?: Maybe<Scalars['Int']['output']>;
   ticketPromedioCents?: Maybe<Scalars['Int']['output']>;
   tipsCents?: Maybe<Scalars['Int']['output']>;
 };
@@ -849,8 +853,13 @@ export type DashboardTotals = {
   cardCents?: Maybe<Scalars['Int']['output']>;
   cashCents?: Maybe<Scalars['Int']['output']>;
   commissionTotalCents?: Maybe<Scalars['Int']['output']>;
+  couponDiscountCents?: Maybe<Scalars['Int']['output']>;
+  discountsTotalCents?: Maybe<Scalars['Int']['output']>;
   noShowCount: Scalars['Int']['output'];
+  paidSalesCount: Scalars['Int']['output'];
   revenueTotalCents?: Maybe<Scalars['Int']['output']>;
+  staffDiscountCents?: Maybe<Scalars['Int']['output']>;
+  ticketPromedioCents?: Maybe<Scalars['Int']['output']>;
   transferCents?: Maybe<Scalars['Int']['output']>;
 };
 
@@ -2289,10 +2298,15 @@ export type PayoutRunEntryStaff = {
 
 export type PayrollPreviewRow = {
   __typename?: 'PayrollPreviewRow';
+  /** @deprecated Usa totalCommissionCents (mismo valor, mismo nombre que StaffCommissionRow). */
   commissionCents: Scalars['Int']['output'];
   fullName: Scalars['String']['output'];
+  productCommissionCents: Scalars['Int']['output'];
   revenueCents: Scalars['Int']['output'];
+  serviceCommissionCents: Scalars['Int']['output'];
   staffUserId: Scalars['ID']['output'];
+  tipsCents: Scalars['Int']['output'];
+  totalCommissionCents: Scalars['Int']['output'];
 };
 
 export type PendingWorkloadAppointment = {
@@ -3531,6 +3545,7 @@ export type RegisterSessionAdjustment = {
 
 export enum RegisterSessionAdjustmentKind {
   PaymentCorrection = 'PAYMENT_CORRECTION',
+  Refund = 'REFUND',
   SaleVoid = 'SALE_VOID'
 }
 
