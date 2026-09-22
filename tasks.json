@@ -2099,7 +2099,7 @@
       ],
       "priority": 2,
       "type": "chore",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
       "redispatches": 0,
       "split_from": "T-002",

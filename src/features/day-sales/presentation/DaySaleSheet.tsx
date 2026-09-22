@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/shared/lib/cn'
 import { formatDateTimeInTz } from '@/shared/lib/date'
 import { useLocation } from '@/core/location/useLocation'
@@ -23,36 +23,32 @@ const EXIT_MS = 240
 export function DaySaleSheet({ sale, onClose, onReprint }: DaySaleSheetProps) {
   const { locationTimezone } = useLocation()
   const open = sale !== null
-  const [mounted, setMounted] = useState(open)
-  const [closing, setClosing] = useState(false)
   // Conserva la última venta durante la animación de salida (derived state:
   // setState durante render es el patrón de React para esto, no un ref).
   const [shown, setShown] = useState<DaySale | null>(sale)
   if (sale && sale !== shown) setShown(sale)
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // `closing` se ajusta durante el render cuando `open` cambia (mismo patrón
+  // de derived state que `shown`), no dentro de un efecto: entra en `true`
+  // al cerrar y vuelve a `false` de inmediato si se reabre a media salida.
+  const [prevOpen, setPrevOpen] = useState(open)
+  const [closing, setClosing] = useState(false)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    setClosing(!open)
+  }
+  // Montado mientras está abierto o mientras corre la animación de salida;
+  // no hay un solo dato ajeno a render+prop, así que no necesita su propio
+  // estado.
+  const mounted = open || closing
 
+  // El único sistema externo real es el timer de la animación de salida: el
+  // efecto solo lo programa/cancela. El setState que apaga `closing` vive en
+  // el callback del timer, no en el cuerpo síncrono del efecto.
   useEffect(() => {
-    if (open) {
-      if (closeTimer.current) {
-        clearTimeout(closeTimer.current)
-        closeTimer.current = null
-      }
-      setClosing(false)
-      setMounted(true)
-    } else if (mounted) {
-      setClosing(true)
-      closeTimer.current = setTimeout(() => {
-        setMounted(false)
-        setClosing(false)
-      }, EXIT_MS)
-    }
-    return () => {
-      if (closeTimer.current) {
-        clearTimeout(closeTimer.current)
-        closeTimer.current = null
-      }
-    }
-  }, [open, mounted])
+    if (!closing) return
+    const timer = setTimeout(() => setClosing(false), EXIT_MS)
+    return () => clearTimeout(timer)
+  }, [closing])
 
   useEffect(() => {
     if (!open) return

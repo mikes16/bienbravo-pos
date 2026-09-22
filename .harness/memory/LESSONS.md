@@ -13,3 +13,4 @@
 - [build] (x1, T-007) Un check ! grep -q '<token>' <archivo> también lee los comentarios: describe la prohibición en el docblock sin escribir el token prohibido.
 - [test] (x1, T-008) El orden visual 'X debajo de Y' se asierta en jsdom con compareDocumentPosition entre nodos hallados por texto, no por clases ni estructura del DOM (jsdom no tiene layout).
 - [test] (x1, T-008) En esta máquina no existe el timeout de coreutils (exit 127): acota los checks con el parámetro timeout de Bash, no con el binario.
+- [build] (x1, T-002a) react-hooks/set-state-in-effect es inter-procedural: si sigue avisando tras cambiar solo los args, el setState vive dentro del useCallback invocado; inlinea el fetch en el efecto de mount con .then/.catch/.finally y bandera cancelled.
