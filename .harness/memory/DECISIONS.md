@@ -24,3 +24,4 @@
 - [D-018] 2026-09-22 (T-013) Una pantalla de dinero tira su lista al fallar el refresco (estado a null + aviso con Reintentar): nunca se deja lo anterior en pantalla acompañado de un banner.
 - [D-019] 2026-09-22 (T-014) Una pantalla registra una carga POR CLASE de dato en el canal de frescura, no una sola por pantalla: el tema sales sólo recarga dinero y walkins/appointments sólo la lista. Nadie vuelve a colgar un refetch monolítico del canal.
 - [D-020] 2026-09-22 (T-014) 'No sé' se propaga al view-model como null (monto y conteos derivados de él) más un status; los componentes nunca rellenan con 0 ni deciden lógica de dinero.
+- [D-021] 2026-09-22 (T-015) Una fila de lista muestra UNA sola cifra de dinero con MoneyValue (la que decide la fila: 'Tu parte' o el total); los montos secundarios (total de la venta, monto de la propina) no se duplican en la fila: viven en la hoja de detalle.

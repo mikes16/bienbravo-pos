@@ -993,7 +993,7 @@
       ],
       "priority": 2,
       "type": "fix",
-      "status": "pending",
+      "status": "split",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
@@ -1866,7 +1866,7 @@
       ],
       "depends_on": [
         "T-030",
-        "T-016",
+        "T-016d",
         "T-005"
       ],
       "priority": 4,
@@ -2153,6 +2153,248 @@
       "attempts": 0,
       "redispatches": 0,
       "split_from": "T-002",
+      "review_feedback": []
+    },
+    {
+      "id": "T-016a",
+      "title": "Canal de frescura: tema 'register' y stub de frescura en renderWithProviders",
+      "description": "Prepara el canal para que Caja (y despues Hoy) puedan registrarse, sin tocar ninguna pantalla. (a) src/core/freshness/FreshnessProvider.tsx: amplia `FreshnessTopic` a 'sales' | 'walkins' | 'appointments' | 'register', agrega 'register' a FRESHNESS_TOPICS (orden estable, al final) y a `lastRunAt` del motor (el typecheck solo obliga en este ultimo). NO agregues fuente de eventos: EVENT_SOURCES se queda con las tres suscripciones actuales porque la suscripcion posDataChanged que emitira 'register' llega en una tarea posterior del API; documenta eso en el docblock del tipo para que nadie crea que falta cablear algo. Mientras tanto 'register' se dispara por reconexion, foco/visibilidad y refreshAll(), que ya usan FRESHNESS_TOPICS completo. (b) src/core/freshness/FreshnessProvider.test.tsx: agrega casos para el tema nuevo — un cargador registrado solo en ['register'] corre con refreshAll() y NO corre cuando llega un evento de venta; un cargador registrado en ['sales','register'] corre UNA sola vez por refreshAll (dedupe ya existente); la ventana de 5 s de 'register' es independiente de la de 'sales'. Revisa si algun caso existente aserta sobre el largo de FRESHNESS_TOPICS y ajustalo. (c) src/test/helpers/renderWithProviders.tsx: monta por default un `FreshnessContext.Provider` STUB (valor creado UNA sola vez por render, identidad estable — si cambia en cada render los register() se re-ejecutan en bucle) con connection 'connected', lastUpdatedAt null, refreshAll/setPaused no-op y un `register` real que guarda los cargadores en un Set; devuelve junto al RenderResult un helper `announce(topic)` que corre dentro de `act` los cargadores registrados en ese tema con Promise.allSettled. NO montes el FreshnessProvider real (abriria 3 suscripciones contra MockedProvider). Los tests que ya traen su propio provider (DaySalesPage.test.tsx, MyDayPage.test.tsx) siguen ganando por anidamiento: no los toques.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El tema 'register' existe y se comporta como los demas (refreshAll lo dispara, evento de venta no, ventana propia de 5 s)",
+          "check": "npm test -- src/core/freshness",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El stub por default de renderWithProviders no rompe las pantallas ya migradas al canal",
+          "check": "npm test -- src/features/day-sales src/features/my-day",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint limpios en los archivos tocados",
+          "check": "npm run typecheck && npx eslint src/core/freshness src/test/helpers",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-007.md",
+          "reason": "Contrato del canal y la nota explicita de como ampliar el tema 'register'"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Seccion 3.3: temas del canal y eventos que aun no existen en el API"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/day-sales/presentation/DaySalesPage.test.tsx",
+          "reason": "Stub de FreshnessContext + announce() ya escrito a mano: es el que se promueve al helper"
+        }
+      ],
+      "files": [
+        "src/core/freshness/FreshnessProvider.tsx",
+        "src/core/freshness/FreshnessProvider.test.tsx",
+        "src/test/helpers/renderWithProviders.tsx"
+      ],
+      "depends_on": [
+        "T-006",
+        "T-007",
+        "T-013"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-016",
+      "review_feedback": []
+    },
+    {
+      "id": "T-016b",
+      "title": "Caja: el estado y los montos siempre de la red, conectados al canal",
+      "description": "Depende de la subtarea 1 (necesita el tema 'register' y el stub del helper de tests). (a) src/features/register/data/register.repository.ts: `getRegisters(locationId)` pierde el parametro `opts` (en la interfaz RegisterRepository y en ApolloRegisterRepository) y usa SIEMPRE fetchPolicy 'network-only'; getCajaStatus ya lo hace. Reescribe los comentarios que explican la politica vieja SIN escribir el token prohibido (el check de AC-2 tambien lee comentarios). Conserva las evicciones de 'registers' y 'posCajaStatusHome' tras openSession/closeSession. (b) src/test/mocks/repositories.ts: InMemoryRegisterRepository.getRegisters pierde el `_opts`. (c) src/features/register/application/useRegister.ts: `load()` sin opts, devuelve su promesa y RE-LANZA el error tras pintar el fallo (el canal solo mueve 'Actualizado HH:MM' si todos resolvieron); el estado pasa a `registers: Register[] | null` — null es 'no se' y un fallo TIRA lo anterior ([D-018]), nunca se deja la cifra vieja en pantalla; registra la carga con `useLiveRefresh(load, ['sales','register'])` (una venta de otra iPad mueve el esperado; abrir/cerrar caja en otra iPad cambia el estado); expone `status: 'loading' | 'fresh' | 'updating' | 'offline' | 'error'` derivado (sin espejo del dato) usando ademas `useFreshness().connection` para 'offline'; 'updating' solo cuando ya hay dato del servidor y se pidio uno nuevo. Mantiene openSession/closeSession re-sincronizando y re-lanzando. El mount sigue con fetch inline + bandera `cancelled` (T-002a) para no disparar react-hooks/set-state-in-effect. (d) src/features/register/application/useRegister.test.tsx: siempre red (sin force en ninguna llamada), un aviso de 'sales' y uno de 'register' recargan, el fallo deja registers en null + status 'error', closeSession sigue re-lanzando y re-sincronizando. (e) src/features/register/presentation/CajaPage.tsx: adapta al hook nuevo — borra los listeners propios de focus/visibilitychange (ya los cubre el canal, [D-019] y precedente de T-013) y las llamadas `refresh({ force: true })`; `registers === null` se trata como 'aun no se' (esqueleto existente), no como lista vacia. NO cambies aun como CajaOpenView pinta el dinero (eso es la subtarea 3).",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Caja siempre pide a la red, se refresca por 'sales' y 'register', y un fallo deja 'no se' en vez de cifras viejas",
+          "check": "npm test -- src/features/register",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El repositorio de caja no conserva politica de cache en codigo ni en comentarios",
+          "check": "! grep -q 'cache-first' src/features/register/data/register.repository.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Los demas consumidores del repositorio (checkout, shell) siguen verdes",
+          "check": "npm test -- src/features/checkout src/app",
+          "kind": "test"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Typecheck y eslint limpios",
+          "check": "npm run typecheck && npx eslint src/features/register src/test/mocks",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Secciones 3.1 y 3.3: 'registers' y 'posCajaStatusHome' son DINERO/SENSIBLE — siempre de la red"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/day-sales/data/day-sales.repository.ts",
+          "reason": "Repositorio de dinero ya migrado: sin opts force, network-only fijo"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-017] nada de opts force 'por si acaso'; [D-018] un fallo tira el dato; [D-019] registro por clase de dato"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-013.md",
+          "reason": "Esqueleto de estados de una pantalla de dinero y trampas de sus tests"
+        }
+      ],
+      "files": [
+        "src/features/register/data/register.repository.ts",
+        "src/features/register/application/useRegister.ts",
+        "src/features/register/application/useRegister.test.tsx",
+        "src/features/register/presentation/CajaPage.tsx",
+        "src/test/mocks/repositories.ts"
+      ],
+      "depends_on": [
+        "T-016a"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-016",
+      "review_feedback": []
+    },
+    {
+      "id": "T-016c",
+      "title": "Caja abierta: los montos esperados con MoneyValue (esqueleto, nunca $0)",
+      "description": "Depende de la subtarea 2 (consume el `status` del hook). (a) src/features/register/presentation/CajaOpenView.tsx: las tres cifras (Efectivo esperado / Tarjeta / Stripe) dejan de pintarse con formatMoney directo y pasan a `MoneyValue` de @/shared/pos-ui con el status que recibe por prop y `label` obligatoria igual al rotulo que ya muestran ([D-005], [D-006]); elige el `size` que no rompa las tarjetas de 22 px (S es 36 px, M es 56 px — mide antes de elegir). La primera carga muestra esqueletos, jamas '$0'; un '$0' real del servidor si se pinta. La firma pasa a aceptar `session: RegisterSession | null` + `status: MoneyValueStatus`: con session null la vista muestra esqueletos en las tres tarjetas y no inventa fondo ni hora de apertura (la linea 'Desde ... fondo ...' se reduce a su propio esqueleto). No cambies la logica del ledger 'Ventas de hoy' ni el CTA de cerrar caja. (b) src/features/register/presentation/CajaPage.tsx: pasa `status` (y la sesion posiblemente null) a CajaOpenView; el early-return de esqueleto de pagina se mantiene solo para el caso sin dato alguno. (c) src/features/register/presentation/CajaOpenView.test.tsx: asertar por nombre accesible `getByRole('group', { name: 'Efectivo esperado' })` + toHaveTextContent (con MoneyValue el simbolo y el numero son spans distintos, getByText('$1,840') ya no encuentra nada); casos: cargando sin digitos ni '$', error sin cifra previa, 0 real del servidor pintado como $0, y los casos ya existentes de 'Desde' con fecha corta que deben seguir verdes.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Las tres cifras de caja se pintan con MoneyValue: esqueleto en la primera carga, nunca $0 falso, sin cifra previa en error",
+          "check": "npm test -- src/features/register/presentation",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Ninguna cifra de dinero de la vista de caja abierta se pinta con formatMoney directo",
+          "check": "! grep -qF 'formatMoney(session.' src/features/register/presentation/CajaOpenView.tsx",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint limpios",
+          "check": "npm run typecheck && npx eslint src/features/register",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-006.md",
+          "reason": "Contrato de MoneyValue: props, estados y como se consulta en tests"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Seccion 3.1b: los cinco estados de una cifra de dinero"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/day-sales/presentation/DaySalesPage.tsx",
+          "reason": "Pantalla de dinero ya migrada a MoneyValue con status derivado"
+        }
+      ],
+      "files": [
+        "src/features/register/presentation/CajaOpenView.tsx",
+        "src/features/register/presentation/CajaOpenView.test.tsx",
+        "src/features/register/presentation/CajaPage.tsx"
+      ],
+      "depends_on": [
+        "T-016b"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-016",
+      "review_feedback": []
+    },
+    {
+      "id": "T-016d",
+      "title": "Corte de caja: no se cierra con cifras que no se pudieron confirmar",
+      "description": "Depende de la subtarea 2. El asistente de corte es el momento mas caro del dia: cerrar contra un esperado viejo descuadra la caja de la sucursal. src/features/register/presentation/CloseCajaWizard.tsx usa su propia instancia de useRegister, cuyo mount ya va a la red tras la subtarea 2; falta que el wizard ESPERE ese resultado y bloquee si falla. Cambios: mientras el status sea 'loading' (o no haya sesion todavia y no haya error) muestra un esqueleto/indicador, no los pasos ni el CTA; si la carga falla, en lugar del wizard muestra un aviso `role=\"alert\"` con el texto exacto 'No se pudo confirmar el estado de la caja. Revisa la conexion.' mas un boton Reintentar (vuelve a llamar la carga del hook, tragando el rechazo para no dejar promesas sueltas) y un boton para volver a /caja; en ese estado NO se puede avanzar ningun paso ni enviar el cierre. El `if (!session) return null` actual deja pantalla en blanco sin explicacion: eso es lo que se reemplaza. NO cambies la logica del corte (pasos, conteo, diferencias, confirmAck, closeSession y su manejo de error), ni el auto-relleno de transferCents, ni el redirect a /caja cuando la sesion desaparece porque se cerro remotamente, ni la regla de caja de un dia anterior (StaleCajaBlocker). Actualiza src/features/register/presentation/CloseCajaWizard.test.tsx: (1) con la carga en fallo aparece el aviso y NO existe el CTA del paso 1; (2) tras Reintentar con la carga ya exitosa el wizard arranca normal; (3) los casos existentes (3 pasos, cierre exitoso, error del servidor re-lanzado) siguen verdes — recuerda que ahora el wizard espera la carga antes de pintar el paso 1.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Si no se puede confirmar el estado de la caja, el corte no arranca y se explica por que; con la carga OK el wizard funciona igual que antes",
+          "check": "npm test -- src/features/register/presentation/CloseCajaWizard.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El resto de la feature de caja sigue verde (no se toco la logica del corte)",
+          "check": "npm test -- src/features/register",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint limpios",
+          "check": "npm run typecheck && npx eslint src/features/register",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-05-04-pos-caja-design.md",
+          "reason": "Diseno del corte: que no se debe cambiar"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Seccion 3.5: recuperacion cuando el dato no se puede confirmar"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/register/application/useRegister.ts",
+          "reason": "Status y carga del hook que el wizard debe esperar"
+        }
+      ],
+      "files": [
+        "src/features/register/presentation/CloseCajaWizard.tsx",
+        "src/features/register/presentation/CloseCajaWizard.test.tsx"
+      ],
+      "depends_on": [
+        "T-016c"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-016",
       "review_feedback": []
     }
   ]
