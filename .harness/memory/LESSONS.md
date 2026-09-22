@@ -7,3 +7,5 @@
 - [build] (x1, T-003) Un check de grep puede pasar desde antes del cambio: contrástalo con git show HEAD:<archivo> para confirmar que el criterio depende del diff.
 - [build] (x1, T-004) Si cambias una query graphql(), corre npm run codegen y commitea src/core/graphql/generated/: sin eso typecheck y el check de drift de CI fallan.
 - [build] (x1, T-004) Antes de dar un check de lint por roto, mide el baseline (npm run lint + comentarios de .github/workflows/ci.yml): si los errores son pre-existentes, el arreglo mínimo va en el archivo de tu alcance, no en la config global.
+- [seguridad] (x1, T-005) Todo caché que se escriba en el dispositivo debe filtrarse con lista de permitidos y comprobarse con un test que busque las cifras/PII literales en el payload serializado (not.toContain): la aserción por llaves deja pasar datos anidados.
+- [build] (x1, T-005) Si inyectas un global con define de Vite, confirma que quedó inlineado en dist (grep del identificador en el bundle): el build pasa igual si el define no se aplicó.

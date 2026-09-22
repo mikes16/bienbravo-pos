@@ -24,3 +24,8 @@ export { DenominationCounter } from './DenominationCounter'
 
 // Foundation v2 components — sub-project #6 (Skeleton)
 export { SkeletonRow, SkeletonCard, SkeletonText, SkeletonCircle } from './Skeleton'
+
+// Frescura del dinero (spec 2026-09-18 § 3.1b) — única forma de pintar una cifra
+// de dinero que viene del servidor: esqueleto/guion mientras no sea la cifra vigente.
+export { MoneyValue } from './MoneyValue'
+export type { MoneyValueStatus } from './MoneyValue'
