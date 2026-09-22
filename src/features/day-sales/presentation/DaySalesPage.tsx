@@ -1,111 +1,97 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useApolloClient } from '@apollo/client/react'
 import { cn } from '@/shared/lib/cn'
 import { formatMoney } from '@/shared/lib/money'
 import { localDayInTz, formatTimeInTz, formatShortDateInTz } from '@/shared/lib/date'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
-import { POS_HOME_SALE_EVENT } from '@/features/home/data/home.queries'
+import { useLiveRefresh } from '@/core/freshness/useLiveRefresh'
+import { MoneyValue, TouchButton, type MoneyValueStatus } from '@/shared/pos-ui'
 import { DAY_SALE_STATUS_LABEL, type DaySale } from '../domain/day-sales.types'
 import { barbersInSales, filterByBarber, totalsOf } from '../lib/day-sales.filters'
 import { DaySaleSheet } from './DaySaleSheet'
 import { useReprintTicket } from './useReprintTicket'
 import { ReprintTicketHost } from './ReprintTicketHost'
 
+const LOAD_ERROR_MESSAGE =
+  'No se pudieron cargar las ventas del día. Refresca o avisa al admin si persiste.'
+
 /**
  * Tab "Ventas del día": todas las ventas de la sucursal hoy (de cualquier
  * barbero), con filtro por barbero y reimpresión de ticket. Visible solo con
  * `pos.sales.day.read` (PosShell); el API exige el mismo permiso.
  *
- * Carga el día completo una vez y filtra en cliente: el chip cambia al
- * instante y no hay un round-trip por barbero. Refresca en silencio con la
- * subscription `saleEvent` de la sucursal y al volver a la pestaña.
+ * Carga el día completo y filtra en cliente: el chip cambia al instante y no
+ * hay un round-trip por barbero. El dato SIEMPRE viene de la red (clase
+ * DINERO/SENSIBLE) y la pantalla no vigila por su cuenta ni el socket ni el
+ * foco de la ventana: se registra en el canal de frescura (tema `sales`) y
+ * ahí se entera de las ventas de otras terminales. Esa es la causa de R8 —
+ * una terminal siempre en primer plano nunca volvía a preguntar.
  */
 export function DaySalesPage() {
-  const apollo = useApolloClient()
-  const { locationId, locationSlug, locationTimezone } = useLocation()
+  const { locationId, locationTimezone } = useLocation()
   const { daySales } = useRepositories()
   const [sales, setSales] = useState<DaySale[] | null>(null)
-  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [barberId, setBarberId] = useState<string | null>(null)
   const [openSale, setOpenSale] = useState<DaySale | null>(null)
   const { printTarget, requestPrint } = useReprintTicket()
 
   const today = localDayInTz(new Date(), locationTimezone)
 
-  // Refetch silencioso compartido por subscription/focus/visibilitychange:
-  // nunca muestra spinner (esos disparan cuando la pantalla ya cargó una vez)
-  // y limpia el error previo dentro de su propio callback — nunca se invoca
-  // directo desde el cuerpo síncrono de un efecto (ver mount abajo).
-  const load = useCallback(
-    (opts: { force: boolean }) => {
-      if (!locationId) return
-      setLoadError(null)
-      daySales
-        .getDaySales(locationId, localDayInTz(new Date(), locationTimezone), { force: opts.force })
-        .then((rows) => setSales(rows))
-        .catch(() => {
-          // Nunca "0 ventas" en silencio: si falló la red, se dice.
-          setLoadError('No se pudieron cargar las ventas del día. Refresca o avisa al admin si persiste.')
-        })
-        .finally(() => setLoading(false))
-    },
-    [daySales, locationId, locationTimezone],
-  )
+  // Recarga por aviso del servidor o por "Reintentar". Devuelve la promesa y
+  // la deja fallar: el canal de frescura sólo mueve la hora del último dato
+  // si TODAS las pantallas resolvieron. Nunca se invoca desde el cuerpo
+  // síncrono de un efecto (ver el mount, abajo).
+  const load = useCallback((): Promise<void> => {
+    if (!locationId) return Promise.resolve()
+    setLoadError(null)
+    setRefreshing(true)
+    return daySales
+      .getDaySales(locationId, localDayInTz(new Date(), locationTimezone))
+      .then((rows) => {
+        setSales(rows)
+      })
+      .catch((err: unknown) => {
+        // Nunca "0 ventas" en silencio, y nunca la lista anterior como si
+        // fuera la de ahora: lo viejo se tira y se avisa.
+        setSales(null)
+        setLoadError(LOAD_ERROR_MESSAGE)
+        throw err
+      })
+      .finally(() => {
+        setRefreshing(false)
+      })
+  }, [daySales, locationId, locationTimezone])
+
+  useLiveRefresh(load, ['sales'])
 
   // Carga inicial: el efecto solo lanza el fetch, cero setState síncrono en
   // su cuerpo (mismo patrón que LocationProvider). El estado inicial ya es
-  // loading=true / loadError=null, así que no hace falta repetirlo aquí;
-  // todo lo que escribe estado vive en los callbacks de la promesa, con
+  // "no sé" (sales=null, loadError=null), así que no hace falta repetirlo
+  // aquí; todo lo que escribe estado vive en los callbacks de la promesa, con
   // `cancelled` en el cleanup para no pintar sobre un componente desmontado.
   useEffect(() => {
     if (!locationId) return
     let cancelled = false
     daySales
-      .getDaySales(locationId, localDayInTz(new Date(), locationTimezone), { force: false })
+      .getDaySales(locationId, localDayInTz(new Date(), locationTimezone))
       .then((rows) => {
         if (cancelled) return
         setSales(rows)
       })
       .catch(() => {
         if (cancelled) return
-        setLoadError('No se pudieron cargar las ventas del día. Refresca o avisa al admin si persiste.')
-      })
-      .finally(() => {
-        if (cancelled) return
-        setLoading(false)
+        setLoadError(LOAD_ERROR_MESSAGE)
       })
     return () => {
       cancelled = true
     }
   }, [daySales, locationId, locationTimezone])
 
-  useEffect(() => {
-    if (!locationSlug) return
-    const obs = apollo.subscribe({ query: POS_HOME_SALE_EVENT, variables: { slug: locationSlug } })
-    const sub = obs.subscribe({
-      next: () => load({ force: true }),
-      error: (err) => {
-        if (import.meta.env.DEV) {
-          console.warn('[DaySalesPage] sale subscription error', err)
-        }
-      },
-    })
-    return () => sub.unsubscribe()
-  }, [apollo, locationSlug, load])
-
-  useEffect(() => {
-    const onFocus = () => load({ force: true })
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') load({ force: true })
-    }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
+  const retry = useCallback(() => {
+    // El fallo ya se pinta en el aviso; acá sólo se evita la promesa suelta.
+    void load().catch(() => {})
   }, [load])
 
   const barbers = useMemo(() => barbersInSales(sales ?? []), [sales])
@@ -113,6 +99,16 @@ export function DaySalesPage() {
   const effectiveBarberId = barberId && barbers.some((b) => b.id === barberId) ? barberId : null
   const visible = useMemo(() => filterByBarber(sales ?? [], effectiveBarberId), [sales, effectiveBarberId])
   const totals = useMemo(() => totalsOf(visible), [visible])
+
+  // "No sé" y "cero real" son cosas distintas (spec § 3.1b): mientras no haya
+  // respuesta del servidor la cifra es esqueleto, nunca $0 ni el total previo.
+  const moneyStatus: MoneyValueStatus = loadError
+    ? 'offline'
+    : sales === null
+      ? 'loading'
+      : refreshing
+        ? 'updating'
+        : 'fresh'
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto px-6 py-5 pb-10">
@@ -125,28 +121,23 @@ export function DaySalesPage() {
             {formatShortDateInTz(`${today}T12:00:00.000Z`, 'UTC')}
           </p>
         </div>
-        <div className="text-right">
-          {loading ? (
-            <div className="h-8 w-28 animate-pulse bg-[var(--color-leather-muted)]/20" />
-          ) : (
-            <>
-              <p className="font-[var(--font-pos-display)] text-[28px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
-                {formatMoney(totals.paidTotalCents)}
-              </p>
-              <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-                {totals.paidCount} {totals.paidCount === 1 ? 'venta cobrada' : 'ventas cobradas'}
-                {totals.voidedCount > 0 ? ` · ${totals.voidedCount} anulada${totals.voidedCount === 1 ? '' : 's'}` : ''}
-              </p>
-            </>
+        <div className="flex flex-col items-end text-right">
+          <MoneyValue
+            status={moneyStatus}
+            // `null` mientras no hay respuesta: MoneyValue pinta esqueleto.
+            cents={sales === null ? null : totals.paidTotalCents}
+            label="Total cobrado del día"
+            size="S"
+            className="items-end"
+          />
+          {sales !== null && (
+            <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+              {totals.paidCount} {totals.paidCount === 1 ? 'venta cobrada' : 'ventas cobradas'}
+              {totals.voidedCount > 0 ? ` · ${totals.voidedCount} anulada${totals.voidedCount === 1 ? '' : 's'}` : ''}
+            </p>
           )}
         </div>
       </div>
-
-      {loadError && (
-        <div role="alert" className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/10 px-4 py-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--color-bravo)]">{loadError}</p>
-        </div>
-      )}
 
       {/* Filtro por barbero: chips. Solo aparecen quienes participaron hoy. */}
       {barbers.length > 0 && (
@@ -167,15 +158,27 @@ export function DaySalesPage() {
         <div className="mb-3 flex items-center gap-3">
           <span aria-hidden className="font-mono text-[12px] text-[var(--color-leather)]">//</span>
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
-            {loading ? 'Tickets' : `Tickets · ${visible.length}`}
+            {sales === null ? 'Tickets' : `Tickets · ${visible.length}`}
           </p>
           <span aria-hidden className="h-px flex-1 bg-[var(--color-leather-muted)]/30" />
         </div>
 
-        {loading ? (
+        {loadError ? (
+          // La lista vieja no se queda haciéndose pasar por la de ahora.
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-3 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/10 px-4 py-3"
+          >
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--color-bravo)]">{loadError}</p>
+            <TouchButton variant="secondary" size="min" onClick={retry}>
+              Reintentar
+            </TouchButton>
+          </div>
+        ) : sales === null ? (
+          // Filas esqueleto, nunca una lista vacía que parezca "no hubo ventas".
           <ul className="flex flex-col gap-px border border-[var(--color-leather-muted)]/40">
             {[1, 2, 3].map((i) => (
-              <li key={i} className="h-16 animate-pulse bg-[var(--color-cuero-viejo)]/30" />
+              <li key={i} className="h-16 animate-pulse bg-[var(--color-cuero-viejo)]/30 motion-reduce:animate-none" />
             ))}
           </ul>
         ) : visible.length === 0 ? (

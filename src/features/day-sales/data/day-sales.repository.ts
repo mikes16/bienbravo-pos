@@ -28,11 +28,15 @@ export const POS_DAY_SALES = graphql(`
 
 export interface DaySalesRepository {
   /**
-   * `date` en YYYY-MM-DD local de la sucursal. `force` salta el cache
-   * (refetch por evento/focus); el mount usa cache-first para pintar
-   * instantáneo desde el cache persistido.
+   * `date` en YYYY-MM-DD local de la sucursal.
+   *
+   * SIEMPRE va a la red (`network-only`). Regla del dueño (18 sep 2026):
+   * el dinero nunca se muestra desde la memoria guardada — con varias iPads
+   * cobrando a la vez, un total guardado está mal en cuanto otra cobra (R8).
+   * Por eso no hay parámetro para elegir la política: no existe una lectura
+   * legítima de ventas que se sirva sin preguntarle al servidor.
    */
-  getDaySales(locationId: string, date: string, opts?: { force?: boolean }): Promise<DaySale[]>
+  getDaySales(locationId: string, date: string): Promise<DaySale[]>
 }
 
 const ITEM_TYPE_FALLBACK: Record<string, string> = {
@@ -95,11 +99,13 @@ export class ApolloDaySalesRepository implements DaySalesRepository {
     this.#client = client
   }
 
-  async getDaySales(locationId: string, date: string, opts?: { force?: boolean }): Promise<DaySale[]> {
+  async getDaySales(locationId: string, date: string): Promise<DaySale[]> {
     const { data } = await this.#client.query({
       query: POS_DAY_SALES,
       variables: { locationId, date },
-      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
+      // `posDaySales` es clase DINERO/SENSIBLE (core/apollo/dataClasses.ts):
+      // ni se guarda en el dispositivo ni se sirve de lo ya leído.
+      fetchPolicy: 'network-only',
     })
     return (data?.posDaySales ?? []).map(mapDaySale)
   }
