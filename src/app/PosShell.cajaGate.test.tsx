@@ -1,6 +1,15 @@
 import { screen, act } from '@testing-library/react'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Routes, Route } from 'react-router-dom'
+
+// El shell monta el aviso de bloqueo, y con el hook real este archivo armaría
+// temporizadores y pediría `posSettings` sin mock en cada prueba del gate.
+// Sin cuenta atrás (null) la franja no se pinta: el gate se prueba solo.
+vi.mock('@/core/auth/useAutoLock.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/core/auth/useAutoLock.ts')>()),
+  useAutoLock: () => ({ secondsRemaining: null }),
+}))
+
 import { PosShell } from './PosShell'
 import { FreshnessContext, type FreshnessContextValue } from '@/core/freshness/FreshnessProvider'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'

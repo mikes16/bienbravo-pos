@@ -3,6 +3,17 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Routes, Route, Navigate } from 'react-router-dom'
+
+// La cuenta atrás del bloqueo se controla desde el test: `useAutoLock` real
+// armaría temporizadores y pediría `posSettings` a Apollo en CADA prueba del
+// shell. Con `secondsRemaining: null` (el default) la franja no se pinta, así
+// que las suites de tabs y frescura ven el shell de siempre.
+const autoLock = vi.hoisted(() => ({ secondsRemaining: null as number | null }))
+vi.mock('@/core/auth/useAutoLock.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/core/auth/useAutoLock.ts')>()),
+  useAutoLock: () => ({ secondsRemaining: autoLock.secondsRemaining }),
+}))
+
 import { PosShell } from './PosShell'
 import { RefreshOnUnlock } from './Providers'
 import { FreshnessContext, type FreshnessContextValue } from '@/core/freshness/FreshnessProvider'
@@ -85,6 +96,7 @@ describe('PosShell tab gating', () => {
   beforeEach(() => {
     window.localStorage.clear()
     window.localStorage.setItem('bb-pos-location-id', 'loc-1')
+    autoLock.secondsRemaining = null
   })
 
   it('renders only the tabs the viewer has permission for', async () => {
@@ -121,6 +133,7 @@ describe('PosShell frescura', () => {
   beforeEach(() => {
     window.localStorage.clear()
     window.localStorage.setItem('bb-pos-location-id', 'loc-1')
+    autoLock.secondsRemaining = null
   })
 
   it('con sesión y sucursal, la barra trae el control "Actualizar datos"', async () => {
@@ -160,5 +173,46 @@ describe('PosShell frescura', () => {
     expect(await screen.findByText('PAGE HOY')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Re-render/ }))
     expect(refreshAll).not.toHaveBeenCalled()
+  })
+})
+
+describe('PosShell aviso de bloqueo', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.localStorage.setItem('bb-pos-location-id', 'loc-1')
+    autoLock.secondsRemaining = null
+  })
+
+  it('en los últimos segundos la franja aparece ENTRE el contenido y los tabs', async () => {
+    autoLock.secondsRemaining = 4
+    renderShell(['pos.tab.today'])
+
+    expect(await screen.findByText('PAGE HOY')).toBeInTheDocument()
+    // `getByRole` falla si hubiera dos: el aviso se monta una sola vez.
+    const strip = screen.getByRole('button', { name: 'Seguir usando el POS' })
+    expect(screen.getByText('Se bloquea en 4… toca para seguir')).toBeInTheDocument()
+
+    // Orden del documento: la franja va después de la página y antes de los
+    // tabs (jsdom no calcula layout, así que "encima de la barra" se mide así).
+    const page = screen.getByText('PAGE HOY')
+    const nav = screen.getByRole('navigation')
+    expect(page.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(strip.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('mientras sobra tiempo el shell no muestra nada', async () => {
+    renderShell(['pos.tab.today'])
+
+    expect(await screen.findByText('PAGE HOY')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Seguir usando el POS' })).not.toBeInTheDocument()
+  })
+
+  it('con el POS bloqueado no hay franja (el shell ni se monta)', async () => {
+    autoLock.secondsRemaining = 3
+    window.localStorage.setItem('bb-pos-locked', 'true')
+    renderShell(['pos.tab.today'])
+
+    expect(await screen.findByText('PAGE LOCK')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Seguir usando el POS' })).not.toBeInTheDocument()
   })
 })

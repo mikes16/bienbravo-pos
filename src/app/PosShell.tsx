@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Navigate, Outlet, useLocation as useRouterLocation } from 'react-router-dom'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useOperatorStatus } from '@/core/auth/useOperatorStatus.ts'
+import { AutoLockWarning } from '@/core/auth/AutoLockWarning.tsx'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { visibleTabs, firstAllowedRoute, isRouteAllowed, activeTabFor } from '@/core/permissions/posTabs.ts'
 import { BottomTabNav, type BottomTabNavTab } from '@/shared/pos-ui'
@@ -139,6 +140,12 @@ export function PosShell() {
         trailing={<RefreshControl timezone={locationTimezone} />}
       />
       <main className="flex-1 overflow-hidden">{main}</main>
+      {/* Aviso de los últimos segundos antes del bloqueo automático. Va aquí,
+          entre el contenido y los tabs, porque ocupa su propia fila del shell:
+          así no tapa el CTA de cobro (pegado al fondo del carrito) ni los
+          tabs. Montaje ÚNICO en toda la app — dos franjas serían dos cuentas
+          atrás en pantalla. Se pinta sola sólo en la ventana de aviso. */}
+      <AutoLockWarning />
       {showTabs && <BottomTabNav tabs={tabs} activeTo={activeTo} />}
       <ToastViewport />
     </div>
