@@ -3769,6 +3769,155 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-049",
+      "title": "El cobro anuncia por qué no se pudo agregar un item del catálogo",
+      "description": "Hallazgo Important del Principal (run 2026-09-22-a). En src/features/checkout/presentation/CheckoutPage.tsx (~591) el resultado de `addCatalogItem` (AddCatalogItemResult: { added, reason, message }) se descarta: en modo venta a staff con `allowServicesInTicket === false`, tocar un servicio o combo del grid es un no-op SILENCIOSO — la card no se atenúa (`staffViews` sólo cubre productos), la línea no entra y el mensaje `STAFF_SALE_MESSAGE.noServices` (useCheckout.ts ~1795) no llega a ninguna parte; la barra sólo lo muestra cuando el servicio YA está en el carrito. El operador toca y 'no pasa nada'. Cambios: (1) En CheckoutPage consume el retorno de addCatalogItem: cuando `added === false`, anuncia `result.message` de forma visible y accesible — usa el toast de src/core/toast/ si existe un helper reutilizable (revísalo) o un aviso `role=\"alert\"` junto a la StaffSaleBar; vale para CUALQUIER reason (noServices, NOT_ELIGIBLE, NEEDS_VARIANT, tope…), no sólo servicios. No re-implementes la regla: el mensaje viene del hook. (2) No cambies addCatalogItem ni useCheckout. (3) Test en CheckoutPage.test.tsx: en modo staff con allowServicesInTicket false, tocar un servicio muestra el mensaje del hook y el carrito sigue vacío; fuera del modo staff agregar un servicio no muestra nada. Textos es-MX, tokens existentes.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Un item rechazado por addCatalogItem muestra su mensaje; el flujo normal no cambia",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El resto del feature de cobro sigue en verde",
+          "check": "npm test -- src/features/checkout",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/presentation/CheckoutPage.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1: el retorno descartado y dónde vive el mensaje (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CheckoutPage.tsx",
+          "reason": "Handler del tap en el catálogo que descarta AddCatalogItemResult (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "AddCatalogItemResult y STAFF_SALE_MESSAGE: el mensaje ya existe, sólo hay que mostrarlo (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/presentation/StaffSaleBar.tsx",
+          "reason": "Cómo se pintan hoy los avisos del modo staff (error / blockMessage) (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CheckoutPage.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 1,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": [
+        {
+          "attempt": 1,
+          "criteria": {
+            "pass": [
+              "AC-2",
+              "AC-3"
+            ],
+            "fail": [
+              "AC-1"
+            ],
+            "no_evaluable": []
+          },
+          "reasons": [
+            {
+              "ac": "AC-1",
+              "issue": "Handoffs con overlap T-021, T-032b y T-039 no se tocaron; los otros cinco sí (git diff .harness/handoffs)",
+              "fix": "Anexar nota 'Actualizado por T-049' en handoffs/T-021.md, T-032b.md y T-039.md"
+            },
+            {
+              "ac": "AC-1",
+              "issue": "T-032b afirma 'la política de servicios se avisa en la barra'; ya no es la única vía tras el toast",
+              "fix": "handoffs/T-032b.md: corregir esa advertencia como se hizo en handoffs/T-032a.md"
+            },
+            {
+              "ac": "AC-1",
+              "issue": "El código y los tests están bien: los 4 checks re-ejecutados pasan y el diff cumple lo pedido",
+              "fix": "No tocar CheckoutPage.tsx ni CheckoutPage.test.tsx; solo los tres handoffs"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T-050",
+      "title": "NEEDS_VARIANT: texto ejecutable mientras no exista el selector de presentación",
+      "description": "Hallazgo Important del Principal (run 2026-09-22-a). Con el modo staff encendido, una línea de producto con variantes muestra 'Elige la presentación' (STAFF_SALE_MESSAGES.NEEDS_VARIANT en src/features/checkout/lib/staff-sale.ts) pero NO existe ningún control para hacerlo: el selector de presentación (VariantPickerSheet) era T-033, que quedó blocked; `setStaffSaleLineVariant` no tiene consumidor. La UI instruye una acción imposible. Caso real: el producto entra al carrito en modo normal y luego se enciende el modo staff. Fix INTERINO (se revierte cuando T-033 aterrice; déjalo dicho en un comentario junto al texto y en el handoff): (1) cambia el texto de NEEDS_VARIANT a uno ejecutable con lo que hoy existe, p. ej. 'Presentación no disponible aún: quita la línea o cóbrala fuera del modo staff'; conserva el código de motivo NEEDS_VARIANT y la lógica (la línea sigue bloqueando el cobro, [D-042]). (2) El badge del tile para NEEDS_VARIANT sigue diciendo 'No disponible para staff' (es cierto en esta build); no lo toques. (3) Actualiza los tests que aserten el texto viejo (staff-sale.test.ts y, si lo citan, useCheckout.staffSale.test.tsx / CartLineRow.test.tsx — estos dos entran por tolerancia de tests). No cambies ninguna regla de elegibilidad ni de precio.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El texto de NEEDS_VARIANT ya no instruye una acción inexistente y las reglas puras siguen en verde",
+          "check": "! grep -q 'Elige la presentaci' src/features/checkout/lib/staff-sale.ts && npm test -- src/features/checkout/lib/staff-sale.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Hook y carrito siguen en verde con el texto nuevo",
+          "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx src/features/checkout/presentation/CartLineRow.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/lib",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-22-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #2: por qué el mensaje actual engaña y el fix interino propuesto (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/lib/staff-sale.ts",
+          "reason": "STAFF_SALE_MESSAGES.NEEDS_VARIANT y staffLineMessage: el único lugar del texto (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/lib/staff-sale.test.ts",
+          "reason": "Tests de las reglas puras que citan el texto (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-042] nunca un precio staff no cobrable: la línea sigue bloqueando el cobro (AC-2)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/lib/staff-sale.ts",
+        "src/features/checkout/lib/staff-sale.test.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }

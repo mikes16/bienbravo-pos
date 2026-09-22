@@ -1323,4 +1323,68 @@ describe('CheckoutPage — rechazo del servidor por datos viejos', () => {
     expect(screen.queryByRole('button', { name: /agregar cupón/i })).not.toBeInTheDocument()
     expect(screen.getByText(/no admite cupones/i)).toBeInTheDocument()
   })
+
+  /* ── Un toque que no deja línea tiene que decir por qué ──────────────────
+   *
+   * Con la política que NO admite servicios en el ticket de staff, tocar un
+   * servicio del grid era un no-op MUDO: la card no se atenúa (el grid sólo
+   * atenúa productos), la línea no entra y el mensaje que ya calcula el hook
+   * no llegaba a ninguna parte — la barra sólo lo pinta cuando el servicio YA
+   * está en el carrito, que es justo el caso que no puede ocurrir.
+   */
+  it('venta a staff sin servicios en el ticket: tocar un servicio anuncia el motivo y el carrito sigue vacío', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    repos.checkout.getStaffSaleQuota = vi.fn().mockResolvedValue({
+      enabled: true,
+      // La política del tenant: servicios y combos NO van en el mismo ticket.
+      allowServicesInTicket: false,
+      unitsUsed: 0,
+      unitsLimit: null,
+      unitsRemaining: null,
+      listAmountCentsUsed: 0,
+      listAmountCentsLimit: null,
+      listAmountCentsRemaining: null,
+      perProductLimit: null,
+      unitsByProduct: [],
+    })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    const toggle = await screen.findByRole('switch', { name: /venta a staff/i })
+    await user.click(toggle)
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'))
+    // Con el carrito vacío la barra no tiene nada que bloquear todavía: el
+    // único camino al mensaje es el toque en el grid.
+    expect(screen.queryByText(/no admite servicios ni combos/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getAllByText('Corte')[0])
+
+    // El texto es el del hook (el POS no reimplementa la regla) y se anuncia
+    // en la región viva del toast, no en un rincón mudo de la pantalla.
+    const aviso = await screen.findByText(/no admite servicios ni combos/i)
+    expect(screen.getByRole('status')).toContainElement(aviso)
+    // Y la línea NO entró: ni fila en el carrito ni CTA cobrable.
+    expect(screen.queryByRole('button', { name: /toca para modificar/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled()
+  })
+
+  it('fuera del modo venta a staff, agregar un servicio no anuncia nada', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+
+    // El flujo normal no cambia: la línea entra y el CTA queda cobrable…
+    expect(await screen.findByRole('button', { name: /cobrar.*280/i })).toBeEnabled()
+    // …sin ningún aviso — `addCatalogItem` sólo rechaza en modo staff.
+    expect(screen.queryByText(/no admite servicios ni combos/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
 })

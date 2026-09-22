@@ -83,6 +83,22 @@ export function CheckoutPage() {
     setPaymentSheetOpen(true)
   }
 
+  // Tocar una card del catálogo puede NO dejar línea: en modo venta a staff
+  // `addCatalogItem` rechaza el servicio o combo que la política no admite en
+  // este ticket (§4.3.4) y el producto sin precio staff o sin presentación
+  // elegida ([D-042]). El grid sólo atenúa productos (`staffViews`), así que
+  // sin este aviso el toque a un servicio es un no-op MUDO: el operador toca y
+  // "no pasa nada". La regla y el texto son del hook — aquí sólo se anuncian,
+  // para cualquier motivo, presente y futuro. Va por toast (`core/toast`, el
+  // mismo canal que usa el hook cuando una línea no entra por barbero
+  // excluido) y no junto a la StaffSaleBar porque en móvil el carrito es una
+  // hoja cerrada mientras se toca el grid: ahí el aviso quedaría fuera de
+  // pantalla justo cuando hace falta.
+  const handleAddCatalogItem = (item: Parameters<typeof ck.addCatalogItem>[0]) => {
+    const result = ck.addCatalogItem(item)
+    if (!result.added) addToast(result.message, 'error')
+  }
+
   // Prepago: dos branches especiales del checkout.
   //
   // `closeAppointmentSale` va por el repositorio (no `useMutation` directo)
@@ -588,7 +604,10 @@ export function CheckoutPage() {
               // ninguna card cambia.
               staffMode={ck.staffSale.enabled}
               staffViews={ck.staffSale.catalogViews}
-              onAdd={(item) => ck.addCatalogItem(item)}
+              // No es `ck.addCatalogItem` directo: el resultado se consume para
+              // anunciar por qué un toque no dejó línea (ver
+              // `handleAddCatalogItem`).
+              onAdd={handleAddCatalogItem}
             />
           </>
         )}
