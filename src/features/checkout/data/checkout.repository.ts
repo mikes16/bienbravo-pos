@@ -1,9 +1,16 @@
 import { type ApolloClient, gql } from '@apollo/client'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { graphql } from '@/core/graphql/generated'
 import { PaymentProvider } from '@/core/graphql/generated/graphql'
 import type { PosSaleDetailQuery } from '@/core/graphql/generated/graphql'
+import { STATIC_ROOT_FIELDS } from '@/core/apollo/dataClasses'
 import { toCustomerNameTakenException } from '@/shared/lib/customer-errors'
 import type { CustomerReputationTag } from '@/shared/lib/reputation'
+import {
+  CheckoutRejectedError,
+  checkoutRejectionCodeFrom,
+  toCheckoutRejection,
+} from '../domain/checkout.types.ts'
 import type {
   CatalogCategory,
   CatalogService,
@@ -14,6 +21,24 @@ import type {
   AddItemsToAppointmentSaleInput,
   SaleResult,
 } from '../domain/checkout.types.ts'
+
+/**
+ * Traduce el fallo de una mutation de cobro al error tipado del dominio: lee
+ * `extensions.code` del primer GraphQLError y lo clasifica
+ * (`checkoutRejectionCodeFrom`). Un fallo que no es de GraphQL (red caída,
+ * timeout) no trae código y cae en `UNKNOWN` conservando su mensaje.
+ *
+ * Mismo patrón que `toCustomerNameTakenException` (shared/lib/customer-errors):
+ * el parsing de `CombinedGraphQLErrors` vive en la capa de datos, no en la UI.
+ */
+function toSaleRejection(err: unknown): CheckoutRejectedError {
+  if (!CombinedGraphQLErrors.is(err)) return toCheckoutRejection(err)
+  const first = err.errors[0]
+  const message = first?.message ?? err.message
+  const rawCode = first?.extensions?.code
+  const code = typeof rawCode === 'string' ? rawCode : null
+  return new CheckoutRejectedError(checkoutRejectionCodeFrom(code, message), message)
+}
 
 /* ── GraphQL Documents ── */
 
@@ -709,7 +734,7 @@ export interface CheckoutRepository {
    * consultado es instantáneo (el server cachea pricing ~60s). Solo display; la
    * autoridad del precio de la línea sigue siendo el API al cobrar.
    */
-  getServicePricing(locationId: string, staffUserId: string | null): Promise<ServicePricingOverlay[]>
+  getServicePricing(locationId: string, staffUserId: string | null, opts?: { force?: boolean }): Promise<ServicePricingOverlay[]>
   /**
    * Overlay ligero de precios de COMBO por barbero para el grid — hermana de
    * `getServicePricing`. Devuelve, por combo, el precio resuelto para
@@ -719,7 +744,19 @@ export interface CheckoutRepository {
    * cache-first: volver a un barbero ya consultado es instantáneo. Solo display;
    * la autoridad del precio de la línea sigue siendo el API al cobrar.
    */
-  getComboPricing(locationId: string, staffUserId: string | null): Promise<ComboPricingOverlay[]>
+  getComboPricing(locationId: string, staffUserId: string | null, opts?: { force?: boolean }): Promise<ComboPricingOverlay[]>
+  /**
+   * Tira del cache el catálogo (clase ESTÁTICO de `core/apollo/dataClasses` —
+   * la MISMA lista que evicta el control de versión del `BootstrapProvider`,
+   * [D-003]) más los dos campos de precio por línea (`service`,
+   * `catalogCombo`), que no están en esa lista porque no se persisten pero sí
+   * se sirven cache-first dentro de la sesión.
+   *
+   * Lo usa la recuperación de un rechazo del API por datos viejos
+   * (PRICE_MISMATCH / BARBER_EXCLUDED): sin esto, volver a pedir precios
+   * devolvería exactamente los mismos que el servidor acaba de rechazar.
+   */
+  evictCatalogCache(): void
   /**
    * Stock es dato LIVE y correctness-critical (riesgo de sobreventa si se
    * muestra stale). `opts.force` fuerza `network-only`; el checkout lo usa
@@ -923,6 +960,19 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     this.#client = client
   }
 
+  /**
+   * Corre una mutation de COBRO traduciendo su fallo a `CheckoutRejectedError`
+   * (ver `toSaleRejection`). Toma un thunk en vez de las opciones sueltas para
+   * no perder la inferencia de tipos de `client.mutate<TData>`.
+   */
+  async #runSaleMutation<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run()
+    } catch (err) {
+      throw toSaleRejection(err)
+    }
+  }
+
   async getCategories(): Promise<CatalogCategory[]> {
     const { data } = await this.#client.query<{ catalogCategories: CatalogCategory[] }>({
       query: CATEGORIES_QUERY,
@@ -995,7 +1045,21 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
     }
   }
 
-  async getServicePricing(locationId: string, staffUserId: string | null): Promise<ServicePricingOverlay[]> {
+  /**
+   * Evicta el catálogo cacheado. Ver el contrato en `CheckoutRepository`: la
+   * lista de campos es `STATIC_ROOT_FIELDS` ([D-003], nada de copias locales)
+   * más `service`/`catalogCombo`, los singulares que alimentan la ruta única
+   * de precio de línea.
+   */
+  evictCatalogCache(): void {
+    const cache = this.#client.cache
+    for (const fieldName of [...STATIC_ROOT_FIELDS, 'service', 'catalogCombo']) {
+      cache.evict({ id: 'ROOT_QUERY', fieldName })
+    }
+    cache.gc()
+  }
+
+  async getServicePricing(locationId: string, staffUserId: string | null, opts?: { force?: boolean }): Promise<ServicePricingOverlay[]> {
     const { data } = await this.#client.query<{
       services: Array<{ id: string; pricingFor: { priceCents: number; isExcluded: boolean } | null }>
     }>({
@@ -1004,7 +1068,10 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       // cache-first: el par (locationId, staffUserId) cachea; regresar a un
       // barbero ya consultado es instantáneo. El server cachea pricing ~60s,
       // alineado. La autoridad del precio vive en el API al cobrar.
-      fetchPolicy: 'cache-first',
+      // opts.force → network-only: lo pide la recuperación de un rechazo por
+      // precio viejo, donde ese par ya está cacheado y cache-first devolvería
+      // el precio que el servidor acaba de rechazar.
+      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     // pricingFor es non-null en el schema, pero filtramos por defensa: si
     // faltara, no metemos overlay para ese servicio y la card cae al precio
@@ -1014,15 +1081,16 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
       .map((s) => ({ id: s.id, priceCents: s.pricingFor!.priceCents, isExcluded: s.pricingFor!.isExcluded }))
   }
 
-  async getComboPricing(locationId: string, staffUserId: string | null): Promise<ComboPricingOverlay[]> {
+  async getComboPricing(locationId: string, staffUserId: string | null, opts?: { force?: boolean }): Promise<ComboPricingOverlay[]> {
     const { data } = await this.#client.query<{
       catalogCombos: Array<{ id: string; pricingFor: { priceCents: number; isExcluded: boolean } | null }>
     }>({
       query: COMBOS_PRICING_QUERY,
       variables: { locationId, staffUserId: staffUserId ?? null },
       // Mismo criterio que getServicePricing: cache-first por (locationId,
-      // staffUserId); autoridad del precio en el API al cobrar.
-      fetchPolicy: 'cache-first',
+      // staffUserId) y network-only cuando el caller fuerza (recuperación de
+      // un rechazo por precio viejo). Autoridad del precio en el API al cobrar.
+      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
     })
     return (data?.catalogCombos ?? [])
       .filter((c) => c.pricingFor != null)
@@ -1122,9 +1190,11 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   }
 
   async createSale(input: CreateSaleInput): Promise<SaleResult> {
-    const { data } = await this.#client.mutate<{
-      createPOSSale: SaleResult
-    }>({
+    // El servidor decide al cobrar (spec § 3.5): cualquier rechazo sale de
+    // aquí como `CheckoutRejectedError` con su código de dominio, para que la
+    // capa de aplicación pueda recuperarse en vez de pintar un texto suelto.
+    const { data } = await this.#runSaleMutation(() =>
+      this.#client.mutate<{ createPOSSale: SaleResult }>({
       mutation: CREATE_POS_SALE,
       variables: {
         input: {
@@ -1146,7 +1216,8 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
           appliedCouponCodes: input.appliedCouponCodes ?? [],
         },
       },
-    })
+      }),
+    )
     // Una venta cambia datos que se leen cache-first en otras pantallas; los
     // evictamos para que la próxima lectura traiga lo fresco. No rompe el
     // instant-load: solo invalida cuando de verdad hubo una venta.
@@ -1191,22 +1262,26 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
   }
 
   async addItemsToAppointmentSale(input: AddItemsToAppointmentSaleInput): Promise<SaleResult> {
-    const { data } = await this.#client.mutate<{ addItemsToAppointmentSale: SaleResult }>({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mutation: ADD_ITEMS_TO_APPOINTMENT_SALE_MUTATION as any,
-      variables: {
-        input: {
-          saleId: input.saleId,
-          items: input.items,
-          payments: input.payments.map((p) => ({
-            provider: p.provider,
-            amountCents: p.amountCents,
-          })),
-          tipCents: input.tipCents,
-          registerSessionId: input.registerSessionId,
+    // Mismo contrato de rechazo que `createSale`: el cobro de extras pasa por
+    // las mismas validaciones del API (precio, exclusión, caja, stock).
+    const { data } = await this.#runSaleMutation(() =>
+      this.#client.mutate<{ addItemsToAppointmentSale: SaleResult }>({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mutation: ADD_ITEMS_TO_APPOINTMENT_SALE_MUTATION as any,
+        variables: {
+          input: {
+            saleId: input.saleId,
+            items: input.items,
+            payments: input.payments.map((p) => ({
+              provider: p.provider,
+              amountCents: p.amountCents,
+            })),
+            tipCents: input.tipCents,
+            registerSessionId: input.registerSessionId,
+          },
         },
-      },
-    })
+      }),
+    )
     // Mismo evict que createSale: cobrar extras cierra la venta prepagada,
     // descuenta inventario de los productos extra y suma el delta a la caja —
     // todo server-side. Sin evictar, Hoy/Mi Día/Caja y el stock se quedan en el

@@ -167,3 +167,91 @@ export interface SaleResult {
   totalCents: number
   paidTotalCents: number
 }
+
+/* ── Rechazos del API al cobrar (spec frescura § 3.5, principio P5) ── */
+
+/**
+ * Por qué el servidor rechazó un cobro. El API decide al cobrar y un rechazo
+ * por datos viejos tiene que poder recuperarse solo — para eso el POS
+ * necesita distinguirlos, no un texto suelto:
+ *
+ *  - `PRICE_MISMATCH`: el precio de una línea ya no es el que resuelve el
+ *    motor de precios (el admin publicó otro mientras el carrito estaba armado).
+ *  - `BARBER_EXCLUDED`: el barbero acreditado en una línea ya no realiza ese
+ *    servicio/combo (override con `isExcluded`). Se recupera igual que el
+ *    anterior: el catálogo del POS está viejo y hay que re-preciar.
+ *  - `REGISTER_SESSION_STALE`: la caja abierta es de un día anterior; el API
+ *    no acepta cobros hasta que se haga el corte.
+ *  - `STOCK`: no alcanza el inventario de la sucursal para los productos del
+ *    carrito.
+ *  - `UNKNOWN`: cualquier otra cosa (red, permisos, bug). Se muestra tal cual.
+ */
+export type CheckoutRejectionCode =
+  | 'PRICE_MISMATCH'
+  | 'BARBER_EXCLUDED'
+  | 'REGISTER_SESSION_STALE'
+  | 'STOCK'
+  | 'UNKNOWN'
+
+/**
+ * Error tipado del dominio: lo que el repositorio lanza cuando la mutation de
+ * cobro falla. `message` es el texto del API (ya viene en español y accionable)
+ * y se muestra tal cual al operador.
+ */
+export class CheckoutRejectedError extends Error {
+  readonly code: CheckoutRejectionCode
+  constructor(code: CheckoutRejectionCode, message: string) {
+    super(message)
+    this.name = 'CheckoutRejectedError'
+    this.code = code
+  }
+}
+
+/**
+ * Faltante de stock: el API NO manda código propio para este caso — lo lanza
+ * como `Error` plano desde `assertStockAvailable` (pos.resolver.ts), así que el
+ * filtro de excepciones lo normaliza a `INTERNAL_SERVER_ERROR` y lo único
+ * estable es el encabezado del mensaje ("Stock insuficiente en esta
+ * sucursal: …"). Se reconoce por ese patrón Y por un código explícito, para
+ * que el día que el API lo tipe (`INSUFFICIENT_STOCK`) esto siga funcionando
+ * sin tocar el POS. Ojo: con `NODE_ENV=production` el filtro reemplaza el
+ * mensaje por uno genérico, así que ahí el caso cae en `UNKNOWN` hasta que el
+ * API mande el código.
+ */
+const STOCK_MESSAGE_PATTERN = /stock insuficiente/i
+
+/**
+ * Traduce el `extensions.code` de un GraphQLError (o su mensaje, cuando el API
+ * no manda código) al código de dominio. Función pura: quien lee el error de
+ * Apollo es el repositorio.
+ */
+export function checkoutRejectionCodeFrom(
+  code: string | null | undefined,
+  message: string,
+): CheckoutRejectionCode {
+  switch (code) {
+    case 'PRICE_MISMATCH':
+      return 'PRICE_MISMATCH'
+    case 'BARBER_EXCLUDED':
+      return 'BARBER_EXCLUDED'
+    case 'REGISTER_SESSION_STALE':
+      return 'REGISTER_SESSION_STALE'
+    case 'INSUFFICIENT_STOCK':
+      return 'STOCK'
+    default:
+      return STOCK_MESSAGE_PATTERN.test(message) ? 'STOCK' : 'UNKNOWN'
+  }
+}
+
+/**
+ * Normaliza cualquier cosa lanzada por un repositorio de cobro a
+ * `CheckoutRejectedError`. Lo usa la capa de aplicación: el repositorio de
+ * Apollo ya lanza el error tipado, pero un repositorio de test (o un fallo
+ * antes de la mutation) puede lanzar un `Error` pelón y el cobro no puede
+ * quedarse sin clasificar.
+ */
+export function toCheckoutRejection(err: unknown): CheckoutRejectedError {
+  if (err instanceof CheckoutRejectedError) return err
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : ''
+  return new CheckoutRejectedError(checkoutRejectionCodeFrom(null, message), message)
+}

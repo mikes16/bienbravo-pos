@@ -6,10 +6,17 @@ import { usePosAuth } from '@/core/auth/usePosAuth'
 import { resetSaleActivity, setSaleInProgress, setSaleSubmitting } from '@/core/auth/saleActivity'
 import { FreshnessContext } from '@/core/freshness/FreshnessProvider'
 import { useToast } from '@/core/toast/useToast'
-import { cartReducer, initialCart, findUnavailableCreditedBarberId } from '../lib/cart'
+import { cartReducer, initialCart, findUnavailableCreditedBarberId, computeTotals } from '../lib/cart'
 import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon-compute'
 import { sortCatalogItems, onlyCategorized } from '../lib/sort-catalog'
-import type { CheckoutPayment } from '../domain/checkout.types'
+import { toCheckoutRejection } from '../domain/checkout.types'
+import type {
+  CheckoutPayment,
+  CheckoutRejectionCode,
+  CatalogService,
+  CatalogProduct,
+  CatalogCombo,
+} from '../domain/checkout.types'
 import type { AppointmentPrepayState, AppliedCouponPreview, DraftSaleItemArg } from '../data/checkout.repository'
 import type { CustomerReputationTag } from '@/shared/lib/reputation'
 
@@ -65,6 +72,82 @@ export interface SaleResult {
     totalCents: number
     staffUser: { id: string; fullName: string } | null
   }>
+}
+
+/** Faltante de un producto del carrito contra el stock que acaba de responder el API. */
+export interface CheckoutStockShortage {
+  productId: string
+  name: string
+  availableQty: number
+  requestedQty: number
+}
+
+/**
+ * Aviso de "el servidor rechazó el cobro por datos viejos, ya me puse al día"
+ * (spec § 3.5). Vive separado de `error` a propósito: `error` es el texto
+ * suelto de un fallo que el operador no puede resolver, y esto es un estado
+ * accionable — el carrito YA se corrigió y falta que el operador confirme.
+ * Mientras existe, la hoja de pago no se muestra: cobrar exige otro toque.
+ */
+export interface CheckoutRejectionNotice {
+  code: Exclude<CheckoutRejectionCode, 'UNKNOWN'>
+  /** Qué tiene que hacer el operador. */
+  message: string
+  /** Texto del API (nombra el servicio/barbero/caja). Null si no aporta nada. */
+  detail: string | null
+  /** Re-precio: total del carrito antes y después. Null en los demás casos. */
+  previousTotalCents: number | null
+  newTotalCents: number | null
+  /** Faltantes de stock por producto. Vacío en los demás casos. */
+  shortages: CheckoutStockShortage[]
+}
+
+const PRICE_CHANGED_MESSAGE = 'Los precios cambiaron. Revisa el total antes de cobrar.'
+
+/**
+ * Arma las cards del grid a partir del catálogo + el stock conocido. Vive
+ * fuera del hook porque la usan DOS caminos: la carga inicial y el re-precio
+ * tras un rechazo del API — y el segundo tiene que pintar exactamente lo mismo
+ * que el primero, no una versión parecida.
+ */
+function buildCatalogItems(
+  services: CatalogService[],
+  products: CatalogProduct[],
+  combos: CatalogCombo[],
+  stockByProductId: Map<string, number | undefined>,
+): CatalogItem[] {
+  return [
+    ...services.map((s) => ({
+      id: s.id,
+      kind: 'service' as const,
+      name: s.name,
+      priceCents: s.priceCents,
+      imageUrl: s.imageUrl,
+      categoryId: s.categoryId,
+      sortOrder: s.sortOrder,
+      excludedStaffIds: s.excludedStaffIds ?? [],
+    })),
+    ...products.map((p) => ({
+      id: p.id,
+      kind: 'product' as const,
+      name: p.name,
+      priceCents: p.priceCents,
+      stockQty: stockByProductId.get(p.id),
+      imageUrl: p.imageUrl,
+      categoryId: p.categoryId,
+      sortOrder: p.sortOrder,
+    })),
+    ...combos.map((c) => ({
+      id: c.id,
+      kind: 'combo' as const,
+      name: c.name,
+      priceCents: c.priceCents,
+      imageUrl: c.imageUrl,
+      categoryId: c.categoryId,
+      sortOrder: c.sortOrder,
+      excludedStaffIds: c.excludedStaffIds ?? [],
+    })),
+  ]
 }
 
 export function useCheckout() {
@@ -123,6 +206,10 @@ export function useCheckout() {
   const [registerSessionId, setRegisterSessionId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Rechazo del API del que el POS YA se recuperó y que espera confirmación
+  // explícita del operador (spec § 3.5). Distinto de `error`: aquí el carrito
+  // cambió y hay que volver a tocar Cobrar.
+  const [rejectionNotice, setRejectionNotice] = useState<CheckoutRejectionNotice | null>(null)
   const [successSale, setSuccessSale] = useState<SaleResult | null>(null)
 
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
@@ -237,39 +324,10 @@ export function useCheckout() {
     ])
       .then(([services, products, combos, cats, brbs, stock, registers]) => {
         if (cancelled) return
-        const stockByProductId = new Map(stock.map((s) => [s.productId, s.quantity]))
-        const items: CatalogItem[] = [
-          ...services.map((s) => ({
-            id: s.id,
-            kind: 'service' as const,
-            name: s.name,
-            priceCents: s.priceCents,
-            imageUrl: s.imageUrl,
-            categoryId: s.categoryId,
-            sortOrder: s.sortOrder,
-            excludedStaffIds: s.excludedStaffIds ?? [],
-          })),
-          ...products.map((p) => ({
-            id: p.id,
-            kind: 'product' as const,
-            name: p.name,
-            priceCents: p.priceCents,
-            stockQty: stockByProductId.get(p.id),
-            imageUrl: p.imageUrl,
-            categoryId: p.categoryId,
-            sortOrder: p.sortOrder,
-          })),
-          ...combos.map((c) => ({
-            id: c.id,
-            kind: 'combo' as const,
-            name: c.name,
-            priceCents: c.priceCents,
-            imageUrl: c.imageUrl,
-            categoryId: c.categoryId,
-            sortOrder: c.sortOrder,
-            excludedStaffIds: c.excludedStaffIds ?? [],
-          })),
-        ]
+        const stockByProductId = new Map<string, number | undefined>(
+          stock.map((s) => [s.productId, s.quantity]),
+        )
+        const items = buildCatalogItems(services, products, combos, stockByProductId)
         setCatalogItems(sortCatalogItems(onlyCategorized(items), cats))
         setCategories(cats)
         setBarbers(brbs)
@@ -610,6 +668,214 @@ export function useCheckout() {
     )
   }
 
+  /* ── Recuperación de un rechazo del servidor por datos viejos (§ 3.5) ─────
+   *
+   * Principio P5: el servidor decide al cobrar y un rechazo por datos viejos
+   * se recupera solo — nunca es un callejón sin salida. En los cuatro casos el
+   * CARRITO SE CONSERVA; lo que cambia es el dato que estaba viejo. El POS no
+   * reintenta el cobro por su cuenta: re-precia/recarga y deja el aviso, y
+   * cobrar vuelve a exigir un toque del operador.
+   */
+
+  /**
+   * Tira el catálogo cacheado, vuelve a pedir precios (force) y RE-PRECIA cada
+   * línea del carrito con el precio del barbero de ESA línea — la misma ruta
+   * única de precio que usa el picker, nunca una cuenta propia. Devuelve el
+   * total nuevo del carrito.
+   */
+  const repriceCartLines = async (locId: string): Promise<number> => {
+    // Sin esto, volver a pedir precios devolvería exactamente los que el
+    // servidor acaba de rechazar (cache-first + cache persistido).
+    checkout.evictCatalogCache()
+    const [services, products, combos, servicePricing, comboPricing] = await Promise.all([
+      checkout.getServices(locId, viewer?.staff?.id ?? null),
+      checkout.getProducts(locId),
+      checkout.getCombos(),
+      checkout.getServicePricing(locId, attendingBarberId, { force: true }),
+      checkout.getComboPricing(locId, attendingBarberId, { force: true }),
+    ])
+    const overlay = new Map<string, { priceCents: number; isExcluded: boolean }>()
+    for (const r of servicePricing) overlay.set(r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded })
+    for (const r of comboPricing) overlay.set(r.id, { priceCents: r.priceCents, isExcluded: r.isExcluded })
+    setPriceOverlay(overlay)
+    setOverlayBarberId(attendingBarberId)
+    // El grid también tiene que mostrar el precio nuevo: si no, el operador
+    // vuelve a agregar el viejo y el API lo rechaza otra vez. El stock que ya
+    // conocemos se conserva (este camino no lo re-consulta).
+    setCatalogItems((prev) => {
+      const stockByProductId = new Map<string, number | undefined>(
+        prev.filter((i) => i.kind === 'product').map((i) => [i.id, i.stockQty]),
+      )
+      return sortCatalogItems(
+        onlyCategorized(buildCatalogItems(services, products, combos, stockByProductId)),
+        categories,
+      )
+    })
+
+    const productPriceById = new Map(products.map((p) => [p.id, p.priceCents]))
+    const lines = cartState.lines
+    const repriced = await Promise.all(
+      lines.map(async (line) => {
+        if (line.kind === 'product') {
+          return { priceCents: productPriceById.get(line.itemId) ?? line.unitPriceCents, clearBarber: false }
+        }
+        const lineBarberId = line.staffUserId || cartState.defaultBarberId || null
+        // El overlay ya trae el precio de ESTE barbero cuando es el atendiendo;
+        // para los demás se resuelve línea por línea (barbero > sucursal > base).
+        const fromOverlay = lineBarberId === attendingBarberId ? overlay.get(line.itemId) : undefined
+        if (fromOverlay && !fromOverlay.isExcluded) {
+          return { priceCents: fromOverlay.priceCents, clearBarber: false }
+        }
+        try {
+          const resolved =
+            line.kind === 'combo'
+              ? await checkout.resolveComboPriceForBarber(line.itemId, locId, lineBarberId)
+              : await checkout.resolveServicePriceForBarber(line.itemId, locId, lineBarberId)
+          if (!resolved.isExcluded) return { priceCents: resolved.priceCents, clearBarber: false }
+          // Ese barbero ya no ofrece el item (el override vale $0 y NUNCA se
+          // comitea): la línea se queda sin barbero, a precio de sucursal, y
+          // el operador elige otro en el picker. Mismo criterio que
+          // `resolveAndCommitLinePrice` y que el prefill de walk-in.
+          const atLocation =
+            line.kind === 'combo'
+              ? await checkout.resolveComboPriceForBarber(line.itemId, locId, null)
+              : await checkout.resolveServicePriceForBarber(line.itemId, locId, null)
+          return { priceCents: atLocation.priceCents, clearBarber: true }
+        } catch {
+          // Una resolución que truena no puede borrar el carrito: la línea
+          // conserva su precio y el API volverá a rechazarla si sigue mal.
+          return { priceCents: line.unitPriceCents, clearBarber: false }
+        }
+      }),
+    )
+    lines.forEach((line, idx) => {
+      const { priceCents, clearBarber } = repriced[idx]
+      if (priceCents === line.unitPriceCents && !clearBarber) return
+      if (line.staffUserId && !clearBarber) {
+        dispatch({ type: 'setLineBarberAndPrice', lineId: line.id, staffUserId: line.staffUserId, unitPriceCents: priceCents })
+        return
+      }
+      // El reducer del carrito no tiene una acción de "solo precio": la única
+      // que toca `unitPriceCents` lleva barbero. Para una línea SIN barbero
+      // (o que acaba de perderlo) se comitea el precio y se limpia el barbero
+      // en el mismo tick — React agrupa ambos dispatch, así que el estado
+      // intermedio no llega a renderizarse. Cuando `lib/cart` gane un
+      // `setLinePrice`, este par se colapsa en un solo dispatch.
+      dispatch({ type: 'setLineBarberAndPrice', lineId: line.id, staffUserId: line.staffUserId ?? '', unitPriceCents: priceCents })
+      dispatch({ type: 'clearLineBarber', lineId: line.id })
+    })
+    return lines.reduce((sum, line, idx) => sum + repriced[idx].priceCents * line.qty, 0)
+  }
+
+  /**
+   * Vuelve a leer las existencias (siempre de la red) y marca qué productos
+   * del carrito no alcanzan. Agrega por producto igual que el API: el mismo
+   * producto puede venir en varias líneas.
+   */
+  const reloadStockAndFindShortages = async (locId: string): Promise<CheckoutStockShortage[]> => {
+    const levels = await checkout.getStockLevels(locId, { force: true })
+    const availableByProductId = new Map(levels.map((l) => [l.productId, l.quantity]))
+    setCatalogItems((prev) =>
+      prev.map((i) => (i.kind === 'product' ? { ...i, stockQty: availableByProductId.get(i.id) } : i)),
+    )
+    const requestedByProductId = new Map<string, { name: string; qty: number }>()
+    for (const line of cartState.lines) {
+      if (line.kind !== 'product') continue
+      const prev = requestedByProductId.get(line.itemId)
+      requestedByProductId.set(line.itemId, { name: line.name, qty: (prev?.qty ?? 0) + line.qty })
+    }
+    const shortages: CheckoutStockShortage[] = []
+    for (const [productId, requested] of requestedByProductId) {
+      const availableQty = availableByProductId.get(productId) ?? 0
+      if (availableQty < requested.qty) {
+        shortages.push({ productId, name: requested.name, availableQty, requestedQty: requested.qty })
+      }
+    }
+    return shortages
+  }
+
+  /**
+   * Caja de un día anterior: vuelve a leer la caja de la sucursal (por si otra
+   * tablet ya hizo el corte) y avisa al canal de frescura, que refresca el
+   * tema `register` junto con los demás ([D-028]: el canal todavía no expone
+   * disparo por tema). El bloqueo de "corte pendiente" del shell
+   * (`useCajaGate`) no escucha el canal todavía, así que mientras tanto el
+   * aviso del cobro es el que dice qué hacer.
+   */
+  const refreshRegisterSession = async (locId: string): Promise<void> => {
+    try {
+      const registers = await register.getRegisters(locId)
+      setRegisterSessionId(registers.find((r) => r.openSession)?.openSession?.id ?? null)
+    } catch {
+      /* best-effort: el aviso ya dice que hay que hacer el corte */
+    }
+    freshness?.refreshAll()
+  }
+
+  /**
+   * Punto único de entrada: clasifica el rechazo y ejecuta su recuperación.
+   * `UNKNOWN` conserva el comportamiento de siempre (mensaje del servidor en
+   * el banner) porque no hay nada que poner al día.
+   */
+  const recoverFromRejection = async (err: unknown, fallbackMessage: string): Promise<void> => {
+    const rejection = toCheckoutRejection(err)
+    const detail = rejection.message || fallbackMessage
+    if (rejection.code === 'UNKNOWN' || !locationId) {
+      setError(detail)
+      return
+    }
+    setError(null)
+    try {
+      switch (rejection.code) {
+        case 'PRICE_MISMATCH':
+        case 'BARBER_EXCLUDED': {
+          const previousTotalCents = computeTotals(cartState.lines).subtotalCents
+          const newTotalCents = await repriceCartLines(locationId)
+          setRejectionNotice({
+            code: rejection.code,
+            message: PRICE_CHANGED_MESSAGE,
+            detail,
+            previousTotalCents,
+            newTotalCents,
+            shortages: [],
+          })
+          break
+        }
+        case 'STOCK': {
+          const shortages = await reloadStockAndFindShortages(locationId)
+          setRejectionNotice({
+            code: 'STOCK',
+            message: detail,
+            detail: null,
+            previousTotalCents: null,
+            newTotalCents: null,
+            shortages,
+          })
+          break
+        }
+        case 'REGISTER_SESSION_STALE': {
+          await refreshRegisterSession(locationId)
+          setRejectionNotice({
+            code: 'REGISTER_SESSION_STALE',
+            message: detail,
+            detail: null,
+            previousTotalCents: null,
+            newTotalCents: null,
+            shortages: [],
+          })
+          break
+        }
+      }
+    } catch {
+      // La puesta al día falló (red). El carrito sigue intacto y el operador
+      // ve el rechazo tal cual: peor que recuperarse es quedarse sin salida.
+      setError(detail)
+    }
+  }
+
+  /** Lo llama el CTA de cobro: confirmar explícitamente lo que cambió. */
+  const dismissRejectionNotice = () => setRejectionNotice(null)
+
   const submit = async (payment: {
     payments: CheckoutPayment[]
     tipCents: number
@@ -693,9 +959,12 @@ export function useCheckout() {
       // sabe nada de cupones, así que el clear de cart no los toca solo.
       setAppliedCoupons([])
       setCouponError(null)
+      setRejectionNotice(null)
       return reconstructed
     } catch (e) {
-      setError((e as { message?: string }).message ?? 'No se pudo cobrar.')
+      // El servidor rechazó: clasificamos, nos ponemos al día y dejamos el
+      // aviso. El carrito NO se toca y no se reintenta solo.
+      await recoverFromRejection(e, 'No se pudo cobrar.')
       return null
     } finally {
       setSubmitting(false)
@@ -778,9 +1047,12 @@ export function useCheckout() {
       dispatch({ type: 'clear' })
       setAppliedCoupons([])
       setCouponError(null)
+      setRejectionNotice(null)
       return reconstructed
     } catch (e) {
-      setError((e as { message?: string }).message ?? 'No se pudo cobrar los extras.')
+      // Mismo contrato que `submit`: el cobro de extras pasa por las mismas
+      // validaciones del API y se recupera igual.
+      await recoverFromRejection(e, 'No se pudo cobrar los extras.')
       return null
     } finally {
       setSubmitting(false)
@@ -970,6 +1242,11 @@ export function useCheckout() {
     submitExtras,
     submitting,
     error,
+    // Rechazo del API ya recuperado (precios re-preciados, stock recargado,
+    // caja releída) esperando confirmación explícita. Mientras no sea null, el
+    // cobro exige otro toque en Cobrar — `dismissRejectionNotice` es ese toque.
+    rejectionNotice,
+    dismissRejectionNotice,
     successSale,
     setSuccessSale,
     registerSessionId,

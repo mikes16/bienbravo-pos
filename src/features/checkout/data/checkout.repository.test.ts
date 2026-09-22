@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { ApolloClient, ApolloLink, InMemoryCache, Observable } from '@apollo/client'
+import { ApolloClient, ApolloLink, InMemoryCache, Observable, gql } from '@apollo/client'
 import { ApolloCheckoutRepository } from './checkout.repository'
+import { CheckoutRejectedError } from '../domain/checkout.types'
 
 /**
  * Regresión del "OCUPADO pegado": hasClockedIn/isOccupied son datos VIVOS —
@@ -239,5 +240,149 @@ describe('ApolloCheckoutRepository.getSaleDetail', () => {
     expect(detail?.tipCents).toBe(2000)
     expect(detail?.totalCents).toBe(30000)
     expect(detail?.items.map((i) => i.name)).toEqual(['Corte Especializado'])
+  })
+})
+
+/* ── Rechazos del API al cobrar (spec frescura § 3.5) ───────────────────────
+ *
+ * El servidor decide al cobrar. Si rechaza por datos viejos, el POS tiene que
+ * saber POR QUÉ para recuperarse (re-preciar, recargar stock, mandar a hacer
+ * el corte) en vez de pintar un texto suelto. Estos casos fijan la traducción
+ * `extensions.code` → error tipado del dominio; la recuperación se prueba en
+ * CheckoutPage.test.tsx.
+ */
+function makeClientRejectingWith(message: string, code?: string) {
+  const link = new ApolloLink(
+    () =>
+      new Observable((observer) => {
+        observer.next({
+          data: null,
+          errors: [code ? { message, extensions: { code } } : { message }],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any)
+        observer.complete()
+      }),
+  )
+  return new ApolloClient({ link, cache: new InMemoryCache() })
+}
+
+const SALE_INPUT = {
+  locationId: 'loc-1',
+  registerSessionId: 'sess-1',
+  customerId: 'cust-1',
+  staffUserId: 'b1',
+  items: [{ serviceId: 'svc-corte', productId: null, catalogComboId: null, qty: 1, unitPriceCents: 28000, staffUserId: 'b1' }],
+  tipCents: 0,
+  payments: [{ provider: 'CASH' as const, amountCents: 28000 }],
+}
+
+async function rejectionOf(client: ApolloClient): Promise<CheckoutRejectedError> {
+  const repo = new ApolloCheckoutRepository(client)
+  try {
+    await repo.createSale(SALE_INPUT)
+  } catch (err) {
+    if (err instanceof CheckoutRejectedError) return err
+    throw err
+  }
+  throw new Error('createSale no rechazó')
+}
+
+describe('ApolloCheckoutRepository.createSale — rechazos tipados', () => {
+  it('PRICE_MISMATCH: el precio de la línea cambió', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith('El precio de "Corte" cambió — recarga el catálogo e intenta de nuevo.', 'PRICE_MISMATCH'),
+    )
+    expect(rejection.code).toBe('PRICE_MISMATCH')
+    // El mensaje del API viaja intacto: ya viene en español y accionable.
+    expect(rejection.message).toMatch(/el precio de "corte" cambió/i)
+  })
+
+  it('BARBER_EXCLUDED: el barbero acreditado ya no ofrece el servicio', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith('"Antonio" no ofrece "Corte" — elige otro barbero.', 'BARBER_EXCLUDED'),
+    )
+    expect(rejection.code).toBe('BARBER_EXCLUDED')
+    expect(rejection.message).toMatch(/no ofrece "corte"/i)
+  })
+
+  it('REGISTER_SESSION_STALE: la caja abierta es de un día anterior', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith(
+        'La caja sigue abierta desde un día anterior. Haz el corte de caja y abre la de hoy antes de cobrar.',
+        'REGISTER_SESSION_STALE',
+      ),
+    )
+    expect(rejection.code).toBe('REGISTER_SESSION_STALE')
+  })
+
+  it('STOCK: se reconoce por el patrón del mensaje (el API lo lanza sin código propio)', async () => {
+    const rejection = await rejectionOf(
+      makeClientRejectingWith(
+        'Stock insuficiente en esta sucursal:\nShampoo: 1 disponible(s), 3 solicitado(s)\nAjusta inventario antes de cobrar.',
+        'INTERNAL_SERVER_ERROR',
+      ),
+    )
+    expect(rejection.code).toBe('STOCK')
+  })
+
+  it('STOCK: también por código, para el día que el API lo tipe', async () => {
+    const rejection = await rejectionOf(makeClientRejectingWith('No alcanza el inventario.', 'INSUFFICIENT_STOCK'))
+    expect(rejection.code).toBe('STOCK')
+  })
+
+  it('UNKNOWN: cualquier otro código conserva su mensaje', async () => {
+    const rejection = await rejectionOf(makeClientRejectingWith('No tienes permiso para cobrar.', 'FORBIDDEN'))
+    expect(rejection.code).toBe('UNKNOWN')
+    expect(rejection.message).toBe('No tienes permiso para cobrar.')
+  })
+
+  it('UNKNOWN: un fallo de red (sin GraphQLError) también sale tipado', async () => {
+    const link = new ApolloLink(
+      () =>
+        new Observable((observer) => {
+          observer.error(new Error('Failed to fetch'))
+        }),
+    )
+    const rejection = await rejectionOf(new ApolloClient({ link, cache: new InMemoryCache() }))
+    expect(rejection.code).toBe('UNKNOWN')
+    expect(rejection.message).toMatch(/failed to fetch/i)
+  })
+})
+
+describe('ApolloCheckoutRepository.addItemsToAppointmentSale — rechazos tipados', () => {
+  it('traduce el código igual que createSale (mismas validaciones del API)', async () => {
+    const repo = new ApolloCheckoutRepository(
+      makeClientRejectingWith('El precio de "Barba" cambió — recarga el catálogo e intenta de nuevo.', 'PRICE_MISMATCH'),
+    )
+    await expect(
+      repo.addItemsToAppointmentSale({
+        saleId: 'sale-1',
+        items: [{ serviceId: 'svc-barba', productId: null, catalogComboId: null, qty: 1, unitPriceCents: 15000, staffUserId: 'b1' }],
+        payments: [{ provider: 'CASH', amountCents: 15000 }],
+        tipCents: 0,
+        registerSessionId: 'sess-1',
+      }),
+    ).rejects.toMatchObject({ name: 'CheckoutRejectedError', code: 'PRICE_MISMATCH' })
+  })
+})
+
+describe('ApolloCheckoutRepository.evictCatalogCache', () => {
+  it('tira catálogo y precios por línea del cache, y deja lo demás intacto', async () => {
+    const cache = new InMemoryCache()
+    cache.writeQuery({
+      query: gql`query Seed($locationId: ID!) { services(locationId: $locationId) { id } posDaySales { id } }`,
+      variables: { locationId: 'loc-1' },
+      data: {
+        services: [{ __typename: 'Service', id: 'svc-corte' }],
+        posDaySales: [{ __typename: 'Sale', id: 'sale-1' }],
+      },
+    })
+    const repo = new ApolloCheckoutRepository(new ApolloClient({ link: ApolloLink.empty(), cache }))
+    repo.evictCatalogCache()
+    const root = cache.extract()['ROOT_QUERY'] as Record<string, unknown>
+    expect(Object.keys(root).some((k) => k.startsWith('services'))).toBe(false)
+    // Lo que no es catálogo no se toca: evictar de más borraría dinero que
+    // otra pantalla acaba de traer de la red.
+    expect(Object.keys(root).some((k) => k.startsWith('posDaySales'))).toBe(true)
   })
 })

@@ -27,6 +27,17 @@ import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useCatalogVersionCheck } from '@/core/bootstrap/BootstrapProvider'
 
+/**
+ * Encabezado del aviso por rechazo del servidor. Constante de módulo (no
+ * export) para no disparar react-refresh/only-export-components.
+ */
+const REJECTION_TITLE: Record<'PRICE_MISMATCH' | 'BARBER_EXCLUDED' | 'STOCK' | 'REGISTER_SESSION_STALE', string> = {
+  PRICE_MISMATCH: 'Precios actualizados',
+  BARBER_EXCLUDED: 'Precios actualizados',
+  STOCK: 'Existencias insuficientes',
+  REGISTER_SESSION_STALE: 'Caja de un día anterior',
+}
+
 export function CheckoutPage() {
   const navigate = useNavigate()
   const ck = useCheckout()
@@ -62,6 +73,14 @@ export function CheckoutPage() {
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false)
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
   const [splashShown, setSplashShown] = useState(false)
+  // Tocar Cobrar ES la confirmación de lo que el servidor corrigió (§ 3.5):
+  // descarta el aviso y abre la hoja de pago en el mismo toque. Mientras el
+  // aviso existe la hoja no se renderiza (ver el `open` del PaymentSheet), así
+  // que un rechazo recuperado siempre obliga a un toque explícito más.
+  const openPaymentSheet = () => {
+    ck.dismissRejectionNotice()
+    setPaymentSheetOpen(true)
+  }
 
   // Prepago: dos branches especiales del checkout.
   //
@@ -370,6 +389,44 @@ export function CheckoutPage() {
           <p className="text-[13px] text-[var(--color-bravo)]">{ck.error}</p>
         </div>
       )}
+      {/* El servidor rechazó el cobro por datos viejos y el POS ya se puso al
+          día (spec § 3.5): mismo patrón de alerta que la nota de la cita, en
+          ámbar porque no es un fallo — es algo que el operador tiene que
+          revisar antes de volver a cobrar. La hoja de pago se cierra sola
+          mientras esto está en pantalla: cobrar exige otro toque en Cobrar. */}
+      {ck.rejectionNotice && (
+        <div
+          role="alert"
+          className="mx-4 mt-3 border border-[var(--color-warning)]/60 bg-[var(--color-warning)]/[0.08] px-4 py-3"
+        >
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--color-warning)]">
+            {REJECTION_TITLE[ck.rejectionNotice.code]}
+          </p>
+          <p className="mt-1 text-[13px] leading-snug text-[var(--color-bone)]">
+            {ck.rejectionNotice.message}
+          </p>
+          {ck.rejectionNotice.previousTotalCents !== null &&
+            ck.rejectionNotice.newTotalCents !== null && (
+              <p className="mt-1.5 font-mono text-[12px] tabular-nums text-[var(--color-bone)]">
+                Total anterior {formatMoney(ck.rejectionNotice.previousTotalCents)} · Total nuevo{' '}
+                {formatMoney(ck.rejectionNotice.newTotalCents)}
+              </p>
+            )}
+          {ck.rejectionNotice.shortages.map((s) => (
+            <p key={s.productId} className="mt-1 text-[12px] leading-snug text-[var(--color-bone)]">
+              {s.name}: {s.availableQty} disponible(s), {s.requestedQty} solicitado(s)
+            </p>
+          ))}
+          {ck.rejectionNotice.detail && (
+            <p className="mt-1.5 text-[12px] leading-snug text-[var(--color-bone-muted)]">
+              {ck.rejectionNotice.detail}
+            </p>
+          )}
+          <p className="mt-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
+            Toca Cobrar para continuar
+          </p>
+        </div>
+      )}
       {canCreateSale && canCloseSale ? (
         ck.isPrepaid ? (
           hasExtras ? (
@@ -381,7 +438,7 @@ export function CheckoutPage() {
               totalCents={totalAfterDiscountCents}
               staffName={operatorName}
               disabled={ck.submitting}
-              onTap={() => setPaymentSheetOpen(true)}
+              onTap={openPaymentSheet}
             />
           ) : (
             // Sin extras: finalizar la cita en $0 → closeAppointmentSale directo
@@ -400,7 +457,7 @@ export function CheckoutPage() {
             totalCents={totalAfterDiscountCents}
             staffName={operatorName}
             disabled={ck.cartState.lines.length === 0 || ck.submitting}
-            onTap={() => setPaymentSheetOpen(true)}
+            onTap={openPaymentSheet}
           />
         )
       ) : (
@@ -573,7 +630,10 @@ export function CheckoutPage() {
         onClose={() => setCustomerSheetOpen(false)}
       />
       <PaymentSheet
-        open={paymentSheetOpen}
+        // Derivado, sin efecto: con un aviso de rechazo en pantalla la hoja no
+        // se muestra aunque siguiera "abierta" — el operador tiene que ver el
+        // total corregido en el carrito y volver a tocar Cobrar.
+        open={paymentSheetOpen && ck.rejectionNotice === null}
         totalCents={totalAfterDiscountCents}
         staffName={operatorName}
         submitting={ck.submitting}

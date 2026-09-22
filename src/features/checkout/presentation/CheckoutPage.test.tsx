@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CheckoutPage } from './CheckoutPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { CatalogVersionContext } from '@/core/bootstrap/BootstrapProvider'
+import { CheckoutRejectedError } from '../domain/checkout.types'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
 
 class TestAuthRepo extends InMemoryAuthRepository {
@@ -955,5 +956,189 @@ describe('CheckoutPage — revisión de versión de catálogo al entrar', () => 
       repos: { ...repos, auth: new TestAuthRepo() },
     })
     await screen.findAllByText('Corte', {}, { timeout: 3000 })
+  })
+})
+
+/* ── Rechazo del servidor por datos viejos (spec frescura § 3.5, P5) ────────
+ *
+ * El servidor decide al cobrar. Si rechaza porque el POS traía datos viejos,
+ * el POS se pone al día solo (re-precia / recarga existencias / relee la caja),
+ * CONSERVA el carrito y pide confirmación explícita: nunca reintenta el cobro
+ * por su cuenta ni deja al operador en un callejón sin salida.
+ */
+describe('CheckoutPage — rechazo del servidor por datos viejos', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('bb-pos-location-id', 'loc1')
+  })
+
+  // El admin sube el precio del corte justo entre "agregar al carrito" y
+  // "confirmar pago": el API rechaza con PRICE_MISMATCH y a partir de ahí todo
+  // lo que responde el repo ya trae el precio nuevo.
+  function makeRepricingRepos() {
+    const repos = makeRepos()
+    const state = { priceCents: 28000, attempts: 0 }
+    repos.checkout.evictCatalogCache = vi.fn()
+    repos.checkout.getServicePricing = vi.fn().mockResolvedValue([])
+    repos.checkout.getComboPricing = vi.fn().mockResolvedValue([])
+    repos.checkout.getServices = vi.fn().mockImplementation(async () => [{ ...SVC_CORTE, priceCents: state.priceCents }])
+    repos.checkout.resolveServicePriceForBarber = vi
+      .fn()
+      .mockImplementation(async () => ({ priceCents: state.priceCents, isExcluded: false }))
+    repos.checkout.createSale = vi.fn().mockImplementation(async (input: { items: Array<{ unitPriceCents: number }> }) => {
+      state.attempts += 1
+      if (state.attempts === 1) {
+        state.priceCents = 35000
+        throw new CheckoutRejectedError(
+          'PRICE_MISMATCH',
+          'El precio de "Corte" cambió — recarga el catálogo e intenta de nuevo.',
+        )
+      }
+      const totalCents = input.items[0].unitPriceCents
+      return { id: 'sale-1', status: 'PAID', paymentStatus: 'PAID', totalCents, paidTotalCents: totalCents }
+    })
+    return repos
+  }
+
+  async function addCorteAndConfirm(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    await user.click(await screen.findByRole('button', { name: /cobrar/i }))
+    await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
+    await user.click(screen.getByRole('button', { name: /confirmar/i }))
+  }
+
+  it('PRICE_MISMATCH: re-precia el carrito, muestra ambos totales y NO vuelve a cobrar solo', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepricingRepos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await addCorteAndConfirm(user)
+
+    // Aviso con el texto de la spec + el antes y el después.
+    expect(await screen.findByText(/los precios cambiaron/i)).toBeInTheDocument()
+    expect(screen.getByText(/total anterior \$280 · total nuevo \$350/i)).toBeInTheDocument()
+    // Se tiró el catálogo cacheado antes de volver a pedir precios: sin eso el
+    // POS re-preciaría con el mismo precio que el servidor acaba de rechazar.
+    expect(repos.checkout.evictCatalogCache).toHaveBeenCalled()
+    expect(repos.checkout.getServicePricing).toHaveBeenCalledWith('loc1', null, { force: true })
+    // El carrito se conserva, ya con el precio nuevo…
+    expect(await screen.findByRole('button', { name: /cobrar.*350/i })).toBeEnabled()
+    // …y NO se reintentó el cobro solo.
+    expect(repos.checkout.createSale).toHaveBeenCalledTimes(1)
+  })
+
+  it('PRICE_MISMATCH: la hoja de pago se cierra y cobrar exige otro toque en Cobrar', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepricingRepos()
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await addCorteAndConfirm(user)
+    await screen.findByText(/los precios cambiaron/i)
+    // La hoja de pago desapareció: no se puede confirmar sin volver a mirar.
+    expect(screen.queryByRole('dialog', { name: /pago/i })).not.toBeInTheDocument()
+
+    // Toque explícito en Cobrar → el aviso se va y la hoja vuelve.
+    await user.click(await screen.findByRole('button', { name: /cobrar.*350/i }))
+    const dialog = await screen.findByRole('dialog', { name: /pago/i })
+    expect(screen.queryByText(/los precios cambiaron/i)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /confirmar/i }))
+
+    // La venta se manda con el precio NUEVO (re-preciado), no con el rechazado.
+    await waitFor(() => expect(repos.checkout.createSale).toHaveBeenCalledTimes(2))
+    const secondCall = (repos.checkout.createSale as ReturnType<typeof vi.fn>).mock.calls[1][0]
+    expect(secondCall.items[0].unitPriceCents).toBe(35000)
+  })
+
+  it('STOCK: recarga existencias de la red y marca el faltante, conservando el carrito', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    // Otra tablet vendió el último shampoo entre "agregar" y "confirmar".
+    const stock = { qty: 10 }
+    repos.checkout.getStockLevels = vi
+      .fn()
+      .mockImplementation(async () => [{ productId: 'prod-shampoo', quantity: stock.qty }])
+    repos.checkout.createSale = vi.fn().mockImplementation(async () => {
+      stock.qty = 0
+      throw new CheckoutRejectedError(
+        'STOCK',
+        'Stock insuficiente en esta sucursal:\nShampoo: 0 disponible(s), 1 solicitado(s)\nAjusta inventario antes de cobrar.',
+      )
+    })
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await user.click(await screen.findByRole('button', { name: 'Productos' }, { timeout: 3000 }))
+    await user.click((await screen.findAllByText('Shampoo'))[0])
+    await user.click(screen.getByRole('button', { name: /cobrar/i }))
+    await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
+    const stockReadsBefore = (repos.checkout.getStockLevels as ReturnType<typeof vi.fn>).mock.calls.length
+    await user.click(screen.getByRole('button', { name: /confirmar/i }))
+
+    // El faltante se calcula contra el stock que ACABA de responder el API,
+    // no contra el texto del mensaje.
+    expect(await screen.findByText('Shampoo: 0 disponible(s), 1 solicitado(s)')).toBeInTheDocument()
+    expect(repos.checkout.getStockLevels).toHaveBeenCalledTimes(stockReadsBefore + 1)
+    expect(repos.checkout.getStockLevels).toHaveBeenLastCalledWith('loc1', { force: true })
+    // Carrito intacto (el producto sigue ahí, a su precio) y sin hoja abierta.
+    expect(await screen.findByRole('button', { name: /cobrar.*250/i })).toBeEnabled()
+    expect(screen.queryByRole('dialog', { name: /pago/i })).not.toBeInTheDocument()
+  })
+
+  it('REGISTER_SESSION_STALE: relee la caja de la sucursal y avisa del corte pendiente', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    repos.checkout.createSale = vi
+      .fn()
+      .mockRejectedValue(
+        new CheckoutRejectedError(
+          'REGISTER_SESSION_STALE',
+          'La caja sigue abierta desde un día anterior. Haz el corte de caja y abre la de hoy antes de cobrar.',
+        ),
+      )
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await screen.findAllByText('Corte', {}, { timeout: 3000 })
+    await user.click(screen.getAllByText('Corte')[0])
+    await user.click(await screen.findByRole('button', { name: /cobrar/i }))
+    await user.click(await screen.findByRole('button', { name: /efectivo/i }))
+    await payInCash(user, 1)
+    const registerReadsBefore = (repos.register.getRegisters as ReturnType<typeof vi.fn>).mock.calls.length
+    await user.click(screen.getByRole('button', { name: /confirmar/i }))
+
+    expect(await screen.findByText(/caja de un día anterior/i)).toBeInTheDocument()
+    expect(screen.getByText(/haz el corte de caja/i)).toBeInTheDocument()
+    // Se releyó la caja al recuperarse: si otra tablet ya hizo el corte, el
+    // checkout se entera sin recargar la pantalla.
+    await waitFor(() =>
+      expect(repos.register.getRegisters).toHaveBeenCalledTimes(registerReadsBefore + 1),
+    )
+    expect(await screen.findByRole('button', { name: /cobrar.*280/i })).toBeEnabled()
+  })
+
+  it('UNKNOWN: el rechazo se muestra tal cual, sin tocar el carrito ni cerrar la hoja', async () => {
+    const user = userEvent.setup()
+    const repos = makeRepos()
+    repos.checkout.evictCatalogCache = vi.fn()
+    repos.checkout.createSale = vi.fn().mockRejectedValue(new Error('Tu rol no puede cobrar.'))
+    renderWithProviders(<CheckoutPage />, {
+      initialRoute: '/checkout',
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    await addCorteAndConfirm(user)
+
+    await waitFor(() => expect(screen.getAllByText(/tu rol no puede cobrar/i).length).toBeGreaterThan(0))
+    // Nada que poner al día: no se evicta catálogo y la hoja sigue abierta
+    // para reintentar (comportamiento de siempre).
+    expect(repos.checkout.evictCatalogCache).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: /pago/i })).toBeInTheDocument()
   })
 })

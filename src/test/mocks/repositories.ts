@@ -203,6 +203,12 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
     return []
   }
 
+  // No-op: no hay cache de Apollo detrás de este repo. La evicción real vive
+  // en ApolloCheckoutRepository (probada contra el cache ahí). Los tests que
+  // verifican que el cobro tira el catálogo tras un rechazo lo sobre-escriben
+  // con vi.fn.
+  evictCatalogCache(): void {}
+
   async resolveServicePriceForBarber(_serviceId: string, _locationId: string, _staffUserId: string | null): Promise<{ priceCents: number; isExcluded: boolean }> {
     return { priceCents: 0, isExcluded: false }
   }
