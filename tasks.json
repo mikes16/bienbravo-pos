@@ -3918,6 +3918,66 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-051",
+      "title": "Curar la memoria del harness",
+      "description": "Curar .harness/memory/ sin perder información. Diagnóstico: DECISIONS.md volvió a 64/80 líneas (tope blando = 0.8 × 80) y el CLI re-encola una curación cada vez que lo alcanza; T-048 ya consolidó 11 decisiones en 5 (D-059..D-063) y el mecanismo funcionó. Meta de ESTA curación: dejar DECISIONS.md en 56 líneas o MENOS (70 % del tope) para dar margen de ~8 decisiones antes de la próxima curación, sin perder ninguna. Cómo: (1) Consolida en UNA entrada nueva cada grupo de decisiones que expresan la misma regla o son variantes de la misma. Candidatos a verificar leyendo el archivo: D-011/D-012 (el cobro nombra al operador de la SESIÓN, alcance de D-010); D-035/D-046 (rechazo recuperado va en rejectionNotice; switch exhaustivo, nada se traga); D-041/D-054 (listUnitPriceCents como única marca de línea staff; mapa en el hook); D-013/D-060 (pantalla de dinero tira su lista al fallar / fallo tira el dato sólo en dinero); D-005/D-006/D-007 (MoneyValue: única cara del dinero, label obligatoria, aria-busy); D-023/D-053 (stub del canal en renderWithProviders / hook con contexto opcional); D-049/D-061 (status vive en el hook / un cargador por clase); D-050/D-052 (re-sync en catch re-lanza el error original; splash de cierre confirmado gana). Registra cada consolidada con `node .harness/scripts/harness.mjs add-decision --task=T-051 --substitutes=D-NNN \"<texto>\"` (una sustitución por llamada; las demás entradas del grupo se marcan SUSTITUIDA con el formato exacto de SUBSTITUTED_RE en .harness/scripts/lib/memory.mjs). (2) Mueve las entradas SUSTITUIDA ÍNTEGRAS (texto original) a .harness/memory/archive/DECISIONS-2026-09-22.md (ya existe: anexa) y deja en DECISIONS.md el puntero único al archivo (los docblocks del código citan [D-NNN]: el id debe seguir resoluble vía archive). (3) LESSONS.md y PROJECT.md: sólo fusiona duplicadas reales y refresca Estructura si cambió; no promuevas nada que no llegue a (x3). Nada se borra. Al terminar: lint-memory OK y DECISIONS.md ≤ 56 líneas; si de verdad no alcanza sin perder semántica, llega lo más bajo posible por debajo de 64 y explica en el reporte qué grupos no admiten consolidación.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "PROJECT.md, DECISIONS.md y LESSONS.md dentro de topes y con formato de entradas válido",
+          "check": "node .harness/scripts/harness.mjs lint-memory",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "DECISIONS.md queda con margen bajo el tope blando para que el CLI no re-encole curaciones en cada tarea",
+          "check": "test \"$(wc -l < .harness/memory/DECISIONS.md)\" -le 56",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "Archivo a curar: consolidar grupos solapados y archivar las SUSTITUIDA íntegras (AC-2)"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/memory/archive/DECISIONS-2026-09-22.md",
+          "reason": "Archivo de archivo existente: anexar aquí las sustituidas con su texto original (AC-2)"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/memory/LESSONS.md",
+          "reason": "Sólo fusionar duplicadas reales; está dentro del tope blando (AC-1)"
+        },
+        {
+          "type": "doc",
+          "path": ".harness/memory/PROJECT.md",
+          "reason": "Refrescar Estructura sólo si cambió; recibe convenciones sólo con (x3)+ (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/scripts/lib/memory.mjs",
+          "reason": "DECISION_RE / SUBSTITUTED_RE: el formato exacto que valida lint-memory; MEMORY_SOFT_RATIO (AC-1, AC-2)"
+        }
+      ],
+      "files": [
+        ".harness/memory/PROJECT.md",
+        ".harness/memory/DECISIONS.md",
+        ".harness/memory/LESSONS.md",
+        ".harness/memory/archive/DECISIONS-2026-09-22.md"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "curation",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }
