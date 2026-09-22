@@ -129,6 +129,17 @@ export class InMemoryAuthRepository implements AuthRepository {
     // explícitamente entre casos).
   }
 
+  /**
+   * Idem: sin cache de Apollo real no hay campos raíz que evictar. Los tests
+   * que verifican que bloquear o cerrar sesión borra el dinero y los datos de
+   * clientes de la memoria subclasean este método y cuentan las llamadas
+   * (ver PosAuthProvider.test.tsx); el borrado real se prueba contra un
+   * InMemoryCache de verdad sobre ApolloAuthRepository.
+   */
+  evictSensitiveCache(): void {
+    // no-op
+  }
+
   async pinLogin(_email: string, _pin4: string): Promise<PosViewer> {
     this.#viewer = MOCK_VIEWER
     return MOCK_VIEWER

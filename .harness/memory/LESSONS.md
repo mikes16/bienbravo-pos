@@ -18,3 +18,4 @@
 - [build] (x1, T-002c) Un script npm con target fijo (eslint .) no se puede acotar con -- <ruta>: npm anexa los args y lintea el repo entero; usa npm run lint:path -- <ruta> (script gemelo sin target) para medir un feature.
 - [build] (x1, T-009) Exportar un helper que no es componente desde un .tsx de componente dispara react-refresh/only-export-components: ponlo en su propio módulo o duplícalo local.
 - [test] (x1, T-010) userEvent con timers falsos en este repo: vi.useFakeTimers({ shouldAdvanceTime: true }) + userEvent.setup({ delay: null }); con timers falsos puros el await de userEvent/act nunca resuelve y el test muere por timeout.
+- [test] (x1, T-011) Para probar una transición de contexto que ocurre con la pantalla desmontada (bloqueado → desbloqueado), monta el observador y un arnés que dispare la acción como HERMANOS de las rutas dentro del helper de render, en vez de buscar el efecto dentro del componente de la pantalla.

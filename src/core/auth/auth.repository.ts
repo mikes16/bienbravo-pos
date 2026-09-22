@@ -1,6 +1,7 @@
 import { type ApolloClient } from '@apollo/client'
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { graphql } from '@/core/graphql/generated'
+import { SENSITIVE_ROOT_FIELDS } from '@/core/apollo/dataClasses.ts'
 import {
   type PosViewer,
   type PosStaffUser,
@@ -126,6 +127,7 @@ export interface AuthRepository {
   getCachedViewer(): PosViewer | null
   revalidateViewer(): Promise<PosViewer | null>
   evictViewerCache(): void
+  evictSensitiveCache(): void
   pinLogin(email: string, pin4: string): Promise<PosViewer>
   logout(): Promise<void>
   getBarbers(locationId: string): Promise<PosStaffUser[]>
@@ -261,6 +263,31 @@ export class ApolloAuthRepository implements AuthRepository {
    */
   evictViewerCache(): void {
     this.#client.cache.evict({ fieldName: 'viewer' })
+    this.#client.cache.gc()
+  }
+
+  /**
+   * Borrado de memoria al bloquear la sesión (candado o auto-bloqueo) y al
+   * cerrar sesión. El iPad es compartido: el siguiente barbero no puede
+   * heredar en pantalla ni en el caché las cifras del anterior (comisiones,
+   * ventas del día, caja) ni los clientes que el anterior buscó.
+   *
+   * La lista de campos NO se escribe aquí: sale de la clasificación única de
+   * `@/core/apollo/dataClasses` (clase DINERO/SENSIBLE). Una query nueva se
+   * clasifica allá y esta evicción la cubre sola; duplicar la lista aquí sería
+   * garantizar que una de las dos se quede corta.
+   *
+   * Catálogo (ESTÁTICO) y `viewer` (SESIÓN) quedan intactos a propósito: el
+   * desbloqueo con PIN sigue siendo instantáneo. El `gc()` final barre las
+   * entidades normalizadas que solo colgaban de los campos evictados (ventas,
+   * fichas de cliente), que es donde vive el dinero y la PII de verdad.
+   */
+  evictSensitiveCache(): void {
+    for (const fieldName of SENSITIVE_ROOT_FIELDS) {
+      // Sin `args`: Apollo borra todas las variantes de la llave del store
+      // (`campo({"locationId":"loc-1"})`, filtros por barbero, etc.).
+      this.#client.cache.evict({ id: 'ROOT_QUERY', fieldName })
+    }
     this.#client.cache.gc()
   }
 

@@ -103,6 +103,9 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
       // datos no es leak — son datos compartidos entre sesiones del mismo
       // device.
       auth.evictViewerCache()
+      // Y lo sensible sale de memoria igual que al bloquear: cerrar sesión es
+      // el caso fuerte del iPad compartido (ver evictSensitiveCache).
+      auth.evictSensitiveCache()
     }
   }, [auth, setIsLocked])
 
@@ -111,7 +114,13 @@ export function PosAuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY_LAST_BARBER)
     }
-  }, [setIsLocked])
+    // Candado manual y auto-bloqueo entran por aquí: el dinero y los datos de
+    // clientes del barbero que se va salen del caché en memoria, para que el
+    // siguiente no los herede ni en pantalla ni al abrir otra vista. Catálogo
+    // y viewer se conservan, así que desbloquear con PIN sigue siendo
+    // instantáneo. La lista de campos vive en core/apollo/dataClasses.
+    auth.evictSensitiveCache()
+  }, [auth, setIsLocked])
   const unlock = useCallback(() => setIsLocked(false), [setIsLocked])
 
   return (
