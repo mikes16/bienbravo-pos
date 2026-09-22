@@ -14,3 +14,5 @@
 - [D-008] 2026-09-22 (T-007) Los eventos de subscription se piden con fetchPolicy 'no-cache': son pings de invalidación, no datos; no deben entrar al cache ni a lo que se evalúa para persistir [D-003].
 - [D-009] 2026-09-22 (T-007) La primera conexión del socket NO dispara refresco; sólo las reconexiones, una vez y para todos los temas. Al reanudar tras pausa lo pendiente corre sin esperar la ventana de 5 s.
 - [D-010] 2026-09-22 (T-008) La identidad del operador se canta en un solo lugar: la barra superior. Ninguna pantalla del POS vuelve a saludar ni a repetir el nombre del viewer (HoyGate es la excepción: es gate, no vista).
+- [D-011] 2026-09-22 (T-009) Alcance de [D-010]: prohíbe saludos e identidad decorativa repetida, no la atribución operativa. El CTA de cobro y la confirmación de pago sí declaran al operador ('Cobrar … como {PrimerNombre}'); fuera del momento del cobro sigue valiendo D-010 tal cual.
+- [D-012] 2026-09-22 (T-009) El nombre del operador en el cobro es el de la SESIÓN (viewer.staff.fullName), nunca el del barbero atribuido a las líneas: quien cambie esto rompe el escenario que motivó R9.

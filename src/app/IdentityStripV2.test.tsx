@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
+import { FreshnessContext, type FreshnessContextValue } from '@/core/freshness/FreshnessProvider'
+import { RefreshControl } from '@/core/freshness/RefreshControl'
 import { IdentityStripV2 } from './IdentityStripV2'
 
 const baseProps = {
@@ -112,5 +114,54 @@ describe('IdentityStripV2', () => {
     render(<IdentityStripV2 {...baseProps} brand="CUSTOM" />)
     expect(screen.getByText('CUSTOM')).toBeInTheDocument()
     expect(screen.queryByText('BIENBRAVO')).not.toBeInTheDocument()
+  })
+
+  // Slot `trailing`: la barra hospeda el control de frescura sin conocer su
+  // contexto (sigue siendo presentacional y no se re-renderiza por refrescos).
+  describe('slot de frescura (trailing)', () => {
+    const freshness: FreshnessContextValue = {
+      connection: 'connected',
+      lastUpdatedAt: new Date('2026-09-19T23:36:00Z'), // 17:36 en America/Monterrey
+      refreshAll: vi.fn(),
+      setPaused: vi.fn(),
+      register: vi.fn(() => () => {}),
+    }
+
+    function renderWithRefresh() {
+      return render(
+        <FreshnessContext.Provider value={freshness}>
+          <IdentityStripV2
+            {...baseProps}
+            trailing={<RefreshControl timezone={baseProps.timezone} />}
+          />
+        </FreshnessContext.Provider>,
+      )
+    }
+
+    it('renders the refresh control and its last-data time inside the strip', () => {
+      renderWithRefresh()
+      expect(screen.getByRole('button', { name: 'Actualizar datos' })).toBeInTheDocument()
+      expect(screen.getByText('ACTUALIZADO 17:36')).toBeInTheDocument()
+    })
+
+    it('places the refresh control to the left of the clock (document order)', () => {
+      renderWithRefresh()
+      const refresh = screen.getByRole('button', { name: 'Actualizar datos' })
+      const clock = screen.getByText('11:47')
+      expect(refresh.compareDocumentPosition(clock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('keeps the rest of the strip intact with the control mounted', () => {
+      renderWithRefresh()
+      expect(screen.getByText('Eli Cruz')).toBeInTheDocument()
+      expect(screen.getByText('11:47')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Bloquear sesión' })).toBeInTheDocument()
+    })
+
+    it('renders without the slot (prop opcional: la barra no depende del contexto)', () => {
+      render(<IdentityStripV2 {...baseProps} />)
+      expect(screen.queryByRole('button', { name: 'Actualizar datos' })).not.toBeInTheDocument()
+      expect(screen.getByText('11:47')).toBeInTheDocument()
+    })
   })
 })

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { PosBarberStatus } from '@/core/auth/auth.repository'
 import { cldThumb } from '@/shared/lib/cloudinary'
 import { formatTimeInTz } from '@/shared/lib/date'
@@ -35,6 +36,13 @@ interface IdentityStripV2Props {
    *  la sucursal, no la del device. Presentational: no puede llamar
    *  useLocation(), así que el padre (PosShell) la pasa como prop. */
   timezone: string
+  /**
+   * Slot del cluster derecho, justo a la IZQUIERDA del reloj. Aquí vive el
+   * control "Actualizar" (`RefreshControl`), que necesita el contexto de
+   * frescura: se pasa ya construido para que la barra —presentacional— no
+   * quede acoplada a ese provider ni se re-renderice con cada refresco.
+   */
+  trailing?: ReactNode
 }
 
 /**
@@ -85,6 +93,7 @@ export function IdentityStripV2({
   staffPhotoUrl,
   onLock,
   timezone,
+  trailing,
 }: IdentityStripV2Props) {
   const timeStr = formatTimeInTz(now.toISOString(), timezone)
   const dateStr = new Intl.DateTimeFormat('es-MX', {
@@ -112,6 +121,11 @@ export function IdentityStripV2({
       </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-3 sm:gap-4">
+        {/* Frescura ("Actualizar" + hora del último dato + estado del canal en
+            vivo): va pegado al reloj y a su izquierda, porque las dos horas se
+            leen juntas — la del mundo y la del dato. */}
+        {trailing}
+
         {/* Reloj — primero en ceder junto con su fecha: la hora está también
             en el device y en cada ticket, el nombre no. */}
         <div className="hidden shrink-0 text-right sm:block">
