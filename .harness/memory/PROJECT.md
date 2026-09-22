@@ -27,7 +27,9 @@ reimplementa precios, stock ni permisos.
 - `src/features/<feature>/{data,domain,lib,application,presentation}/` + `index.ts`: `auth`, `home` (Hoy),
   `checkout`, `register` (Caja), `clock`, `agenda`, `walkins`, `my-day` (Mis ventas), `day-sales` (Ventas del
   día); `_dev/` (páginas de prueba, ruta solo bajo `import.meta.env.DEV`, fuera del build de producción).
-- `src/shared/pos-ui/` (TouchButton, BottomTabNav, sheets, `MoneyValue`/`MoneyDisplay`, iconos game-icons),
+- `src/shared/pos-ui/` (TouchButton, BottomTabNav, MoneyValue/MoneyDisplay, MoneyInput, Numpad, PinKeypad,
+  StatusBoard, WizardShell, iconos game-icons en `icons/`); los Sheet (TakeWalkIn, Payment, CustomerLookup...)
+  viven en cada feature, no aquí — comparten la animación `pos-sheet-up/down`.
   `src/shared/lib/` (money, date con tz de sucursal, cn, cloudinary, errores, reputation), `src/shared/cash/`
   (conteo de caja).
 - `src/test/mocks/repositories.ts` (repos in-memory + `MOCK_VIEWER`), `src/test/helpers/renderWithProviders.tsx`.
