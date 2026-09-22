@@ -349,7 +349,7 @@ export class InMemoryCheckoutRepository implements CheckoutRepository {
 }
 
 export class InMemoryRegisterRepository implements RegisterRepository {
-  async getRegisters(_locationId: string, _opts?: { force?: boolean }): Promise<Register[]> {
+  async getRegisters(_locationId: string): Promise<Register[]> {
     return [{ id: 'reg-1', name: 'Caja 1', isActive: true, locationId: 'loc-1', openSession: null }]
   }
   async getCajaStatus(): Promise<CajaStatus> {

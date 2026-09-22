@@ -50,7 +50,18 @@ const CLOSE_SESSION = graphql(`
 `)
 
 export interface RegisterRepository {
-  getRegisters(locationId: string, opts?: { force?: boolean }): Promise<Register[]>
+  /**
+   * Cajas de la sucursal con su sesión abierta (fondo y montos esperados).
+   *
+   * SIEMPRE va a la red (`network-only`). Regla del dueño (18 sep 2026): el
+   * dinero nunca se muestra desde la memoria guardada — con varias iPads
+   * cobrando a la vez, un monto esperado guardado está mal en cuanto otra
+   * cobra, y una apertura/cierre hecha desde otro device o desde el admin no
+   * invalida nada en ÉSTE (R8). Por eso no hay parámetro para elegir la
+   * política: no existe una lectura legítima de caja que se sirva sin
+   * preguntarle al servidor.
+   */
+  getRegisters(locationId: string): Promise<Register[]>
   /** Siempre por red: decide si el shell bloquea al operador. */
   getCajaStatus(locationId: string): Promise<CajaStatus>
   openSession(registerId: string, openingCashCents: number): Promise<RegisterSession>
@@ -63,19 +74,16 @@ export class ApolloRegisterRepository implements RegisterRepository {
     this.#client = client
   }
 
-  async getRegisters(locationId: string, opts?: { force?: boolean }): Promise<Register[]> {
-    // cache-first por default: pinta el último snapshot al toque. Las
-    // mutaciones de abrir/cerrar caja evictan el field `registers` del
-    // cache, así que el bug histórico (mostrar "cerrada" tras open por
-    // servir el snapshot pre-open) está cubierto para ESTE cliente Apollo.
-    // Pero apertura/cierre desde OTRO device o desde el admin no evicta
-    // este cache — force:true (network-only) es lo que CajaPage usa en su
-    // refetch de window.focus / visibilitychange para que ese caso
-    // cross-device de verdad llegue a la red.
+  async getRegisters(locationId: string): Promise<Register[]> {
     const { data } = await this.#client.query<{ registers: Register[] }>({
       query: REGISTERS_QUERY,
       variables: { locationId },
-      fetchPolicy: opts?.force ? 'network-only' : 'cache-first',
+      // `registers` es clase DINERO/SENSIBLE (core/apollo/dataClasses.ts):
+      // ni se guarda en el dispositivo ni se sirve de lo ya leído. Las
+      // evicciones de abrir/cerrar de abajo siguen ahí para los demás
+      // consumidores del mismo cliente Apollo (el gate del shell, Hoy),
+      // que ven el field vacío en su próximo montaje.
+      fetchPolicy: 'network-only',
     })
     return data!.registers.filter((r: Register) => r.isActive)
   }

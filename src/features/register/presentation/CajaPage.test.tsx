@@ -88,7 +88,7 @@ describe('CajaPage', () => {
     expect(getWalkIns).toHaveBeenCalledWith('loc1', undefined, undefined, { force: true })
   })
 
-  it('refetches registers with force:true on mount, window focus and visibilitychange', async () => {
+  it('refetches registers on mount, window focus and visibilitychange (siempre de red)', async () => {
     const repos = createMockRepositories()
     const getRegisters = vi.fn().mockResolvedValue([OPEN_REGISTER])
     repos.register.getRegisters = getRegisters
@@ -96,17 +96,18 @@ describe('CajaPage', () => {
       repos: { ...repos, auth: new TestAuthRepo() },
     })
 
-    // Mount fuerza network-only (force:true): entrar a Caja no confía en el
-    // snapshot persistido — el cierre remoto desde admin debe reflejarse.
-    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', { force: true }))
+    // Ninguna llamada pide política de caché: el repositorio va a la red
+    // siempre ([D-017]), así que el cierre remoto desde admin se refleja.
+    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1'))
+    const callsAfterMount = getRegisters.mock.calls.length
 
     act(() => { window.dispatchEvent(new Event('focus')) })
-    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', { force: true }))
+    await waitFor(() => expect(getRegisters.mock.calls.length).toBeGreaterThan(callsAfterMount))
+    const callsAfterFocus = getRegisters.mock.calls.length
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
     act(() => { document.dispatchEvent(new Event('visibilitychange')) })
-    await waitFor(() =>
-      expect(getRegisters.mock.calls.filter((c) => c[1]?.force === true).length).toBeGreaterThanOrEqual(2),
-    )
+    await waitFor(() => expect(getRegisters.mock.calls.length).toBeGreaterThan(callsAfterFocus))
+    expect(getRegisters.mock.calls.every((c) => c.length === 1)).toBe(true)
   })
 })

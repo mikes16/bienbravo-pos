@@ -1815,24 +1815,24 @@
     {
       "id": "T-031",
       "title": "useCheckout con modo venta a staff",
-      "description": "Agrega a src/features/checkout/application/useCheckout.ts el modo 'venta a staff', sin tocar el cobro normal. Estado nuevo: staffSale: { enabled: boolean, buyerStaffUserId: string | null }. Reglas: (1) Quién puede: enabled solo se puede activar si el viewer tiene 'pos.staff_sale.create' o 'pos.staff_sale.create_for_others' (viewer.permissions). Por default el comprador es el barbero de la SESIÓN ACTIVA. Elegir a OTRO comprador solo si el viewer tiene 'pos.staff_sale.create_for_others' (caso real: recepción cobra la compra de un barbero); sin ese permiso setBuyer con otro id se ignora. (2) Al activar: los cupones aplicados se quitan y el bloque de cupones queda deshabilitado con el texto 'Una venta a staff no admite cupones'; se carga el cupo con getStaffSaleQuota (siempre red) para el comprador y se vuelve a cargar si cambia el comprador. (3) Precios: las líneas de PRODUCTO usan staffLineView (src/features/checkout/lib/staff-sale.ts): unitPrice = precio staff; se conserva el precio público para mostrarlo tachado; un producto no elegible NO se puede agregar en este modo (devuelve el motivo para que la UI lo muestre); si needsVariant, la línea requiere productVariantId antes de poder cobrar. Servicios y combos siguen a precio normal si quota.allowServicesInTicket; si no, no se pueden agregar en este modo. Al DESACTIVAR el modo, las líneas vuelven a su precio normal. (4) Antes de cobrar: quotaView; si algún tope queda exceeded, canCharge = false con el mensaje; el API valida de nuevo de todos modos. (5) Al cobrar: envía staffSale { buyerStaffUserId } y productVariantId por línea; el resto del input igual. (6) Tras una venta a staff exitosa el modo se apaga (la siguiente venta arranca normal) y el cupo se invalida. (7) Si el cupo llega con enabled = false (política apagada en el admin), el modo no se puede activar. No dupliques reglas del API: nada de calcular topes por mes aquí. Clasifica el campo raíz staffSaleQuota como SENSITIVE en src/core/apollo/dataClasses.ts (así se borra de la memoria al bloquear la sesión). Agrega getStaffSaleQuota al mock de src/test/mocks/repositories.ts. Test src/features/checkout/application/useCheckout.staffSale.test.tsx: permisos; comprador por default y cambio con/sin permiso; quita cupones; precios staff y regreso a normal; no elegible; variante requerida; tope excedido bloquea; input enviado; se apaga tras cobrar.",
+      "description": "Agrega a src/features/checkout/application/useCheckout.ts el modo 'venta a staff' sin tocar el cobro normal. Estado: staffSale: { enabled, buyerStaffUserId }. (1) Permisos: enabled solo con 'pos.staff_sale.create' o 'pos.staff_sale.create_for_others' (viewer.permissions). Comprador default: el barbero de la SESIÓN ACTIVA; elegir a OTRO solo con create_for_others (recepción cobra la compra de un barbero); sin ese permiso setBuyer con otro id se ignora. (2) Al activar: se quitan los cupones y el bloque queda deshabilitado con 'Una venta a staff no admite cupones'; se carga el cupo con getStaffSaleQuota (siempre red) para el comprador y se recarga si cambia. (3) Precios: las líneas de PRODUCTO usan staffLineView (lib/staff-sale.ts): unitPrice = precio staff; listUnitPriceCents guarda el precio público congelado ([D-041]: ÚNICA marca de línea staff, sin banderas paralelas); un producto no elegible NO se agrega en este modo (devuelve el motivo); si needsVariant, la línea exige productVariantId antes de cobrar. Servicios y combos a precio normal si quota.allowServicesInTicket; si no, no se agregan. Al DESACTIVAR, las líneas vuelven a precio normal (listUnitPriceCents = null). (4) Antes de cobrar: quotaView; tope exceeded ⇒ canCharge = false con el mensaje (el API valida igual). (5) Al cobrar: envía staffSale { buyerStaffUserId } y productVariantId por línea. (6) Tras una venta a staff exitosa el modo se apaga y el cupo se invalida. (7) Cupo con enabled = false ⇒ el modo no se puede activar. (8) Re-precio tras rechazo ([D-036], minor del Principal): en repriceCartLines una línea staff se re-precia con staffLineView(product, variantId) — precio staff de SU variante — y refresca listUnitPriceCents con el precio público de esa variante; nunca se convierte en silencio a precio público ni ignora la variante. YA HECHO, no repetir: staffSaleQuota es SENSITIVE en dataClasses.ts (T-037) y el mock InMemory ya expone getStaffSaleQuota (T-029); si el test necesita configurar el cupo, agrega un setter al mock. No dupliques reglas del API (nada de topes por mes aquí). Test useCheckout.staffSale.test.tsx: permisos; comprador default y cambio con/sin permiso; quita cupones; precios staff y regreso a normal; no elegible; variante requerida; tope excedido bloquea; input enviado; se apaga tras cobrar; el re-precio conserva el precio staff por variante.",
       "acceptance_criteria": [
         {
           "id": "AC-1",
-          "desc": "Permisos, comprador, cupones, precios, variante, cupo, input y apagado tras cobrar",
+          "desc": "Permisos, comprador, cupones, precios, variante, cupo, input, apagado tras cobrar y re-precio staff",
           "check": "npm test -- src/features/checkout/application/useCheckout.staffSale.test.tsx",
           "kind": "test"
         },
         {
           "id": "AC-2",
-          "desc": "El cobro normal y la actividad de venta siguen en verde",
+          "desc": "El cobro normal, la actividad de venta y la recuperación de rechazos siguen en verde",
           "check": "npm test -- src/features/checkout/application/useCheckout.saleActivity.test.tsx src/features/checkout/presentation/CheckoutPage.test.tsx",
           "kind": "test"
         },
         {
           "id": "AC-3",
           "desc": "Typecheck y eslint",
-          "check": "grep -q 'staffSaleQuota' src/core/apollo/dataClasses.ts && npm run typecheck && npx eslint src/features/checkout/application src/test/mocks src/core/apollo",
+          "check": "npm run typecheck && npx eslint src/features/checkout/application src/test/mocks",
           "kind": "build"
         }
       ],
@@ -1845,12 +1845,22 @@
         {
           "type": "interface",
           "path": "src/features/checkout/application/useCheckout.ts",
-          "reason": "Estado del carrito, cupones, precios y envío del cobro (AC-1, AC-2)"
+          "reason": "Estado del carrito, cupones, repriceCartLines/refetchCatalogAndOverlay y envío del cobro (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/lib/staff-sale.ts",
+          "reason": "staffLineView, needsVariant, staffCartSummary y quotaView: reglas puras que el hook consume (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-036] re-precio por ruta única; [D-039] códigos STAFF_SALE_*; [D-041] marca de línea staff; [D-042] sin precio aproximado (AC-1)"
         },
         {
           "type": "interface",
           "path": "src/test/mocks/repositories.ts",
-          "reason": "Mock del repositorio de cobro que gana getStaffSaleQuota (AC-1)"
+          "reason": "Mock del repositorio de cobro: getStaffSaleQuota ya existe; agregar setter si el test lo necesita (AC-1)"
         },
         {
           "type": "interface",
@@ -1861,13 +1871,10 @@
       "files": [
         "src/features/checkout/application/useCheckout.ts",
         "src/features/checkout/application/useCheckout.staffSale.test.tsx",
-        "src/test/mocks/repositories.ts",
-        "src/core/apollo/dataClasses.ts"
+        "src/test/mocks/repositories.ts"
       ],
       "depends_on": [
-        "T-030",
-        "T-016d",
-        "T-005"
+        "T-030"
       ],
       "priority": 4,
       "type": "feature",
@@ -2216,54 +2223,60 @@
     },
     {
       "id": "T-016b",
-      "title": "Caja: el estado y los montos siempre de la red, conectados al canal",
-      "description": "Depende de la subtarea 1 (necesita el tema 'register' y el stub del helper de tests). (a) src/features/register/data/register.repository.ts: `getRegisters(locationId)` pierde el parametro `opts` (en la interfaz RegisterRepository y en ApolloRegisterRepository) y usa SIEMPRE fetchPolicy 'network-only'; getCajaStatus ya lo hace. Reescribe los comentarios que explican la politica vieja SIN escribir el token prohibido (el check de AC-2 tambien lee comentarios). Conserva las evicciones de 'registers' y 'posCajaStatusHome' tras openSession/closeSession. (b) src/test/mocks/repositories.ts: InMemoryRegisterRepository.getRegisters pierde el `_opts`. (c) src/features/register/application/useRegister.ts: `load()` sin opts, devuelve su promesa y RE-LANZA el error tras pintar el fallo (el canal solo mueve 'Actualizado HH:MM' si todos resolvieron); el estado pasa a `registers: Register[] | null` — null es 'no se' y un fallo TIRA lo anterior ([D-018]), nunca se deja la cifra vieja en pantalla; registra la carga con `useLiveRefresh(load, ['sales','register'])` (una venta de otra iPad mueve el esperado; abrir/cerrar caja en otra iPad cambia el estado); expone `status: 'loading' | 'fresh' | 'updating' | 'offline' | 'error'` derivado (sin espejo del dato) usando ademas `useFreshness().connection` para 'offline'; 'updating' solo cuando ya hay dato del servidor y se pidio uno nuevo. Mantiene openSession/closeSession re-sincronizando y re-lanzando. El mount sigue con fetch inline + bandera `cancelled` (T-002a) para no disparar react-hooks/set-state-in-effect. (d) src/features/register/application/useRegister.test.tsx: siempre red (sin force en ninguna llamada), un aviso de 'sales' y uno de 'register' recargan, el fallo deja registers en null + status 'error', closeSession sigue re-lanzando y re-sincronizando. (e) src/features/register/presentation/CajaPage.tsx: adapta al hook nuevo — borra los listeners propios de focus/visibilitychange (ya los cubre el canal, [D-019] y precedente de T-013) y las llamadas `refresh({ force: true })`; `registers === null` se trata como 'aun no se' (esqueleto existente), no como lista vacia. NO cambies aun como CajaOpenView pinta el dinero (eso es la subtarea 3).",
+      "title": "Caja: el repositorio deja de ofrecer política de caché y todo va a la red",
+      "description": "Primer paso de la migración de Caja a 'dinero siempre de la red' ([D-017]), SIN tocar el contrato de estado del hook (registers sigue siendo Register[]; el 'no sé' llega en la tarea siguiente, T-044). (a) src/features/register/data/register.repository.ts: getRegisters(locationId) pierde el parámetro opts en la interfaz RegisterRepository y en ApolloRegisterRepository y usa SIEMPRE fetchPolicy 'network-only' (getCajaStatus ya lo hace). Reescribe los comentarios de la política vieja SIN escribir el token prohibido: el check de AC-2 también lee comentarios. Conserva tal cual las evicciones de 'registers' y 'posCajaStatusHome' tras openSession/closeSession. (b) src/test/mocks/repositories.ts: InMemoryRegisterRepository.getRegisters pierde el _opts. (c) src/features/register/application/useRegister.ts: refresh() pierde su parámetro y las tres llamadas internas (mount, openSession, closeSession) dejan de pasar force; todo lo demás igual (mismo estado; open/closeSession siguen re-sincronizando y re-lanzando). (d) src/features/register/presentation/CajaPage.tsx: los listeners de focus/visibilitychange pasan a refresh() sin argumentos; NO los borres todavía (los quita T-044 al registrar Caja en el canal). (e) useRegister.test.tsx y CajaPage.test.tsx dejan de asertar force: el mount aserta toHaveBeenCalledWith('loc1') con un solo argumento; el helper forceCalls() desaparece y el caso del catch de closeSession cuenta llamadas totales. useCheckout ya llama getRegisters(locationId) sin opts: verifica que checkout y shell sigan verdes. OJO: ConfirmDigitalStep.tsx tiene un error de lint pre-existente fuera de alcance; por eso AC-5 se acota a los archivos tocados.",
       "acceptance_criteria": [
         {
           "id": "AC-1",
-          "desc": "Caja siempre pide a la red, se refresca por 'sales' y 'register', y un fallo deja 'no se' en vez de cifras viejas",
+          "desc": "Caja siempre pide a la red: ninguna llamada a getRegisters pasa opciones de caché y toda la feature sigue verde",
           "check": "npm test -- src/features/register",
           "kind": "test"
         },
         {
           "id": "AC-2",
-          "desc": "El repositorio de caja no conserva politica de cache en codigo ni en comentarios",
+          "desc": "El repositorio de caja no conserva política de caché en código ni en comentarios",
           "check": "! grep -q 'cache-first' src/features/register/data/register.repository.ts",
           "kind": "lint"
         },
         {
           "id": "AC-3",
-          "desc": "Los demas consumidores del repositorio (checkout, shell) siguen verdes",
+          "desc": "Los demás consumidores del repositorio (checkout, shell) siguen verdes",
           "check": "npm test -- src/features/checkout src/app",
           "kind": "test"
         },
         {
           "id": "AC-4",
-          "desc": "Typecheck y eslint limpios",
-          "check": "npm run typecheck && npx eslint src/features/register src/test/mocks",
+          "desc": "Typecheck limpio tras quitar el parámetro de la interfaz",
+          "check": "npm run typecheck",
           "kind": "build"
+        },
+        {
+          "id": "AC-5",
+          "desc": "Eslint limpio en los archivos tocados",
+          "check": "npx eslint src/features/register/data/register.repository.ts src/features/register/application/useRegister.ts src/features/register/presentation/CajaPage.tsx src/test/mocks/repositories.ts",
+          "kind": "lint"
         }
       ],
       "context": [
         {
           "type": "spec",
           "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
-          "reason": "Secciones 3.1 y 3.3: 'registers' y 'posCajaStatusHome' son DINERO/SENSIBLE — siempre de la red"
+          "reason": "Secciones 3.1 y 3.3: 'registers' y 'posCajaStatusHome' son DINERO/SENSIBLE — siempre de la red (AC-1, AC-2)"
         },
         {
           "type": "code_pattern",
           "path": "src/features/day-sales/data/day-sales.repository.ts",
-          "reason": "Repositorio de dinero ya migrado: sin opts force, network-only fijo"
+          "reason": "Repositorio de dinero ya migrado: sin opts force, network-only fijo y docblock que explica por qué (AC-2)"
         },
         {
           "type": "decision",
           "path": ".harness/memory/DECISIONS.md",
-          "reason": "[D-017] nada de opts force 'por si acaso'; [D-018] un fallo tira el dato; [D-019] registro por clase de dato"
+          "reason": "[D-017] un repositorio de dinero no expone política de fetch; quien migre Caja borra su opts force (AC-1)"
         },
         {
           "type": "interface",
-          "path": ".harness/handoffs/T-013.md",
-          "reason": "Esqueleto de estados de una pantalla de dinero y trampas de sus tests"
+          "path": "src/features/register/data/register.repository.ts",
+          "reason": "getRegisters con fetchPolicy condicional y las evicciones que deben conservarse (AC-2)"
         }
       ],
       "files": [
@@ -2278,7 +2291,7 @@
       ],
       "priority": 2,
       "type": "fix",
-      "status": "blocked",
+      "status": "done",
       "attempts": 0,
       "redispatches": 0,
       "split_from": "T-016",
@@ -2303,8 +2316,8 @@
         },
         {
           "id": "AC-3",
-          "desc": "Typecheck y eslint limpios",
-          "check": "npm run typecheck && npx eslint src/features/register",
+          "desc": "Typecheck y eslint limpios en los archivos tocados (ConfirmDigitalStep.tsx tiene deuda pre-existente fuera de alcance)",
+          "check": "npm run typecheck && npx eslint src/features/register/presentation/CajaOpenView.tsx src/features/register/presentation/CajaOpenView.test.tsx src/features/register/presentation/CajaPage.tsx",
           "kind": "build"
         }
       ],
@@ -2331,7 +2344,8 @@
         "src/features/register/presentation/CajaPage.tsx"
       ],
       "depends_on": [
-        "T-016b"
+        "T-016b",
+        "T-044"
       ],
       "priority": 2,
       "type": "fix",
@@ -2348,20 +2362,20 @@
       "acceptance_criteria": [
         {
           "id": "AC-1",
-          "desc": "Si no se puede confirmar el estado de la caja, el corte no arranca y se explica por que; con la carga OK el wizard funciona igual que antes",
+          "desc": "Si no se puede confirmar el estado de la caja, el corte no arranca y se explica por qué; con la carga OK el wizard funciona igual que antes",
           "check": "npm test -- src/features/register/presentation/CloseCajaWizard.test.tsx",
           "kind": "test"
         },
         {
           "id": "AC-2",
-          "desc": "El resto de la feature de caja sigue verde (no se toco la logica del corte)",
+          "desc": "El resto de la feature de caja sigue verde (no se tocó la lógica del corte)",
           "check": "npm test -- src/features/register",
           "kind": "test"
         },
         {
           "id": "AC-3",
-          "desc": "Typecheck y eslint limpios",
-          "check": "npm run typecheck && npx eslint src/features/register",
+          "desc": "Typecheck y eslint limpios en los archivos tocados (ConfirmDigitalStep.tsx tiene deuda pre-existente fuera de alcance)",
+          "check": "npm run typecheck && npx eslint src/features/register/presentation/CloseCajaWizard.tsx src/features/register/presentation/CloseCajaWizard.test.tsx",
           "kind": "build"
         }
       ],
@@ -3142,6 +3156,162 @@
       "priority": 1,
       "type": "fix",
       "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-044",
+      "title": "Caja: 'no sé' en vez de cifras viejas y registro en el canal de frescura",
+      "description": "Segundo paso de Caja; requiere el repositorio ya sin opts (T-016b). (a) src/features/register/application/useRegister.ts: el estado pasa a registers: Register[] | null — null es 'no sé' y un fallo TIRA lo anterior ([D-018]/[D-020]), nunca cifra vieja en pantalla. load() devuelve su promesa y RE-LANZA el error tras pintar el fallo (el canal solo mueve 'Actualizado HH:MM' si todos resolvieron). Registra la carga con useLiveRefresh(load, ['sales','register']) ([D-019]: una venta de otra iPad mueve el esperado; posDataChanged REGISTER/PAYMENT ya emite 'register' desde T-020). Expone status: 'loading' | 'fresh' | 'updating' | 'offline' | 'error' DERIVADO (sin espejo del dato) usando useFreshness().connection para 'offline'; 'updating' solo con dato previo del servidor y una carga nueva en vuelo. openSession/closeSession siguen re-sincronizando y re-lanzando. El mount va con fetch inline + bandera cancelled y cero setState en el cuerpo del efecto (lección T-002a; hoy useRegister.ts:30 dispara react-hooks/set-state-in-effect). (b) src/features/register/presentation/CajaPage.tsx: borra los listeners de focus/visibilitychange (los cubre el canal) y trata registers === null como 'aún no sé' (esqueleto existente), NO como lista vacía ('sin cajas configuradas'). (c) src/features/register/presentation/CloseCajaWizard.tsx: tercer consumidor de useRegister; sus dos lecturas (session con registers.find y el efecto que rebota a /caja cuando registers.length > 0 && !session) se adaptan a null: ni crash ni navegación prematura mientras no haya respuesta del servidor. Solo eso: la espera/bloqueo del corte es T-016d. (d) Tests: useRegister.test.tsx — announce('sales') y announce('register') recargan (el stub del canal de renderWithProviders ya expone announce, [D-023]; para renderHook usa un provider de prueba equivalente), el fallo deja registers null + status 'error', closeSession re-lanza y re-sincroniza; CajaPage.test.tsx — ya no escucha foco/visibilidad; CloseCajaWizard.test.tsx sigue verde. NO cambies cómo CajaOpenView pinta el dinero (T-016c). AC-5 se acota a los archivos tocados: ConfirmDigitalStep.tsx tiene un error de lint pre-existente fuera de alcance.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Caja se refresca por 'sales' y 'register' y un fallo deja 'no sé' (registers null + status error) en vez de cifras viejas",
+          "check": "npm test -- src/features/register",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "CajaPage ya no vigila foco/visibilidad por su cuenta y el hook está registrado en el canal",
+          "check": "! grep -q 'visibilitychange' src/features/register/presentation/CajaPage.tsx && grep -q 'useLiveRefresh' src/features/register/application/useRegister.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Los demás consumidores (checkout, shell) siguen verdes",
+          "check": "npm test -- src/features/checkout src/app",
+          "kind": "test"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Typecheck limpio con registers nullable en los tres consumidores",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-5",
+          "desc": "El hook queda sin warnings (mount sin setState en efecto); CajaPage y el wizard sin errores nuevos",
+          "check": "npx eslint src/features/register/application/useRegister.ts --max-warnings=0 && npx eslint src/features/register/presentation/CajaPage.tsx src/features/register/presentation/CloseCajaWizard.tsx",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.1b: 'no sé' vs cero real; un fallo nunca deja la cifra anterior en pantalla (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/day-sales/presentation/DaySalesPage.tsx",
+          "reason": "Pantalla de dinero migrada: status derivado, useLiveRefresh y mount con fetch inline + cancelled (AC-1, AC-5)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-018] un fallo tira el dato; [D-019] una carga por clase; [D-020] 'no sé' viaja como null; [D-023] stub del canal (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/freshness/useLiveRefresh.ts",
+          "reason": "Contrato del registro en el canal: no invoca al montar; el cargador devuelve promesa y rechaza en error (AC-2)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/test/helpers/renderWithProviders.tsx",
+          "reason": "Stub del canal y announce(topic) para probar recargas por tema (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/register/presentation/CloseCajaWizard.tsx",
+          "reason": "Las dos lecturas de registers que deben tolerar null sin cambiar la lógica del corte (AC-4)"
+        }
+      ],
+      "files": [
+        "src/features/register/application/useRegister.ts",
+        "src/features/register/application/useRegister.test.tsx",
+        "src/features/register/presentation/CajaPage.tsx",
+        "src/features/register/presentation/CajaPage.test.tsx",
+        "src/features/register/presentation/CloseCajaWizard.tsx"
+      ],
+      "depends_on": [
+        "T-016b"
+      ],
+      "priority": 2,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-045",
+      "title": "El gate de corte pendiente se pone al día por el canal, no por foco",
+      "description": "src/features/register/application/useCajaGate.ts (montado en PosShell) revalida getCajaStatus al montar, por focus/visibilitychange y por cambio de ruta mientras está bloqueado — el patrón R8 que el canal de frescura reemplazó ([D-015]/[D-019]; minor del Principal). Consecuencia real: cuando el cobro recibe REGISTER_SESSION_STALE (T-026) emite refreshAll() y el gate no lo escucha; y un corte hecho desde otra iPad no suelta el bloqueo hasta cambiar de ruta. Cambios: (1) Registra check en el canal con useLiveRefresh(check, ['register']) — el tema lo alimentan posDataChanged REGISTER/PAYMENT (T-020), la reconexión, foco/visibilidad del propio canal, refreshAll() y el desbloqueo con PIN (T-011); useCajaGate corre dentro de PosShell, que vive bajo FreshnessProvider, y los tests del shell ya montan el stub del canal ([D-023]). check devuelve su promesa; conserva el fail-open (pinta clear si falla, el API rechaza igual las ventas contra una caja de ayer) pero RE-LANZA el error después de pintar, para que el canal no mueva 'Actualizado HH:MM' sobre un fallo (contrato T-007). (2) Borra los listeners de focus/visibilitychange del hook; conserva el check del mount (PosShell se monta en cada desbloqueo) y el re-check por cambio de ruta mientras está stale (disparador por acción del usuario, no por tiempo). No escribas los tokens prohibidos ni en comentarios. (3) Actualiza el docblock. Tests: crea src/features/register/application/useCajaGate.test.tsx (renderHook con el repo mock y un provider de prueba del canal): monta y consulta una vez; announce('register') vuelve a consultar; announce('sales') no; un fallo deja clear; el cambio de ruta re-consulta solo mientras está stale. PosShell.test.tsx y PosShell.cajaGate.test.tsx siguen verdes sin cambios de comportamiento visibles.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El gate se revalida por el tema 'register' y por ruta mientras está stale; fail-open intacto; shell en verde",
+          "check": "npm test -- src/features/register/application/useCajaGate.test.tsx src/app/PosShell.cajaGate.test.tsx src/app/PosShell.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Sin vigilancia propia de foco/visibilidad; registrado en el canal",
+          "check": "! grep -qE 'visibilitychange|addEventListener' src/features/register/application/useCajaGate.ts && grep -q 'useLiveRefresh' src/features/register/application/useCajaGate.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint limpios en los archivos tocados",
+          "check": "npm run typecheck && npx eslint src/features/register/application/useCajaGate.ts src/features/register/application/useCajaGate.test.tsx --max-warnings=0",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "interface",
+          "path": "src/features/register/application/useCajaGate.ts",
+          "reason": "Hook a migrar: check con seq (última respuesta gana), fail-open y re-check por ruta (AC-1, AC-2)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/agenda/application/useAgenda.ts",
+          "reason": "Hook ya migrado: refresh devuelve promesa y re-lanza tras pintar el fallo (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/freshness/useLiveRefresh.ts",
+          "reason": "Contrato del registro por tema: no invoca al montar (AC-2)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-015] sin temporizadores; [D-019] un registro por clase; [D-023] stub del canal en tests (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/app/PosShell.tsx",
+          "reason": "Dónde se monta useCajaGate y bajo qué providers (AC-1)"
+        },
+        {
+          "type": "spec",
+          "path": "docs/superpowers/specs/2026-09-18-frescura-y-consistencia-pos-admin-design.md",
+          "reason": "Sección 3.3: disparadores por evento y por acción del usuario, nunca por foco ni sondeo (AC-2)"
+        }
+      ],
+      "files": [
+        "src/features/register/application/useCajaGate.ts",
+        "src/features/register/application/useCajaGate.test.tsx",
+        "src/app/PosShell.cajaGate.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 3,
+      "type": "fix",
+      "status": "pending",
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,

@@ -34,12 +34,8 @@ function wrapper(repos: Repositories) {
   }
 }
 
-function forceCalls(getRegisters: ReturnType<typeof vi.fn>): number {
-  return getRegisters.mock.calls.filter((c) => c[1]?.force === true).length
-}
-
 describe('useRegister', () => {
-  it('carga en mount con force:true (network-only, no confía en el snapshot persistido)', async () => {
+  it('carga en mount sin pedir política de caché: el repositorio siempre va a la red', async () => {
     const repos = createMockRepositories()
     const getRegisters = vi.fn().mockResolvedValue([
       { id: 'reg-a', name: 'Caja', isActive: true, locationId: 'loc1', openSession: SESSION },
@@ -48,7 +44,8 @@ describe('useRegister', () => {
 
     renderHook(() => useRegister('loc1'), { wrapper: wrapper(repos) })
 
-    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1', { force: true }))
+    // Un solo argumento: la política la decide la clase del dato, no el caller ([D-017]).
+    await waitFor(() => expect(getRegisters).toHaveBeenCalledWith('loc1'))
   })
 
   it('closeSession devuelve la sesión y refresca en éxito', async () => {
@@ -74,7 +71,7 @@ describe('useRegister', () => {
     await waitFor(() => expect(getRegisters.mock.calls.length).toBeGreaterThan(callsBefore))
   })
 
-  it('closeSession re-lanza el error del servidor y re-sincroniza con force:true en el catch', async () => {
+  it('closeSession re-lanza el error del servidor y re-sincroniza en el catch', async () => {
     const repos = createMockRepositories()
     const getRegisters = vi.fn().mockResolvedValue([
       { id: 'reg-a', name: 'Caja', isActive: true, locationId: 'loc1', openSession: SESSION },
@@ -86,8 +83,9 @@ describe('useRegister', () => {
     repos.register.closeSession = vi.fn().mockRejectedValue(serverError)
 
     const { result } = renderHook(() => useRegister('loc1'), { wrapper: wrapper(repos) })
-    // Espera el mount (force:true) antes de contar los refresh subsecuentes.
-    await waitFor(() => expect(forceCalls(getRegisters)).toBe(1))
+    // Espera la carga del mount antes de contar los refresh subsecuentes.
+    await waitFor(() => expect(getRegisters).toHaveBeenCalled())
+    const callsBefore = getRegisters.mock.calls.length
 
     let thrown: unknown
     await act(async () => {
@@ -100,7 +98,7 @@ describe('useRegister', () => {
 
     // (a) Re-lanza el error original — no lo traga devolviendo null.
     expect(thrown).toBe(serverError)
-    // (b) El catch forzó un refresh de red adicional para auto-sanar la vista.
-    await waitFor(() => expect(forceCalls(getRegisters)).toBeGreaterThan(1))
+    // (b) El catch disparó una lectura adicional (siempre de red) para auto-sanar la vista.
+    await waitFor(() => expect(getRegisters.mock.calls.length).toBeGreaterThan(callsBefore))
   })
 })
