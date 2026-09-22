@@ -3311,11 +3311,32 @@
       "depends_on": [],
       "priority": 3,
       "type": "fix",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 1,
       "redispatches": 0,
       "split_from": null,
-      "review_feedback": []
+      "review_feedback": [
+        {
+          "attempt": 1,
+          "criteria": {
+            "pass": [
+              "AC-2",
+              "AC-3"
+            ],
+            "fail": [
+              "AC-1"
+            ],
+            "no_evaluable": []
+          },
+          "reasons": [
+            {
+              "ac": "AC-1",
+              "issue": "useCajaGate usa useLiveRefresh, pero PosShell sí renderiza sin sesión (sus guardas corren tras los hooks) y useFreshness lanza: pantalla blanca",
+              "fix": "useCajaGate.ts:useCajaGate — leer FreshnessContext con useContext y registrar sólo si existe, patrón de usePosSettings.ts ([D-029]/[D-030])"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

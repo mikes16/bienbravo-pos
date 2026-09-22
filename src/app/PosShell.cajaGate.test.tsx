@@ -1,4 +1,4 @@
-import { screen, act } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Routes, Route } from 'react-router-dom'
 
@@ -11,7 +11,6 @@ vi.mock('@/core/auth/useAutoLock.ts', async (importOriginal) => ({
 }))
 
 import { PosShell } from './PosShell'
-import { FreshnessContext, type FreshnessContextValue } from '@/core/freshness/FreshnessProvider'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import {
   createMockRepositories,
@@ -56,28 +55,19 @@ function cajaRepo(status: CajaStatus) {
 const CAN_CORTE = ['pos.tab.today', 'pos.tab.register', 'pos.register.open', 'pos.register.close']
 const NO_CORTE = ['pos.tab.today', 'pos.tab.clock']
 
-/** El shell pinta el control "Actualizar" de la barra, que exige contexto de
- *  frescura. Aquí basta un contexto inerte: este archivo mide el gate de caja,
- *  y el provider real abriría suscripciones contra el MockedProvider. */
-const INERT_FRESHNESS: FreshnessContextValue = {
-  connection: 'connected',
-  lastUpdatedAt: null,
-  refreshAll: () => {},
-  setPaused: () => {},
-  register: () => () => {},
-}
-
+/** El shell pinta el control "Actualizar" de la barra y el gate se registra en
+ *  el canal de frescura: basta el stub que `renderWithProviders` monta por
+ *  default ([D-023]) — trae `announce(tema)` para hacer de servidor y evita el
+ *  provider real, que abriría suscripciones contra el MockedProvider. */
 function renderShell(permissions: string[], register: InMemoryRegisterRepository, initialRoute = '/hoy') {
-  renderWithProviders(
-    <FreshnessContext.Provider value={INERT_FRESHNESS}>
-      <Routes>
-        <Route element={<PosShell />}>
-          <Route path="/hoy" element={<p>PAGE HOY</p>} />
-          <Route path="/caja" element={<p>PAGE CAJA</p>} />
-          <Route path="/reloj" element={<p>PAGE RELOJ</p>} />
-        </Route>
-      </Routes>
-    </FreshnessContext.Provider>,
+  return renderWithProviders(
+    <Routes>
+      <Route element={<PosShell />}>
+        <Route path="/hoy" element={<p>PAGE HOY</p>} />
+        <Route path="/caja" element={<p>PAGE CAJA</p>} />
+        <Route path="/reloj" element={<p>PAGE RELOJ</p>} />
+      </Route>
+    </Routes>,
     {
       repos: { ...createMockRepositories(), auth: authWith(permissions), register },
       initialRoute,
@@ -119,16 +109,18 @@ describe('PosShell caja gate (caja abierta de un día anterior)', () => {
     expect(screen.getByRole('navigation')).toBeInTheDocument()
   })
 
-  it('se libera al re-verificar (p. ej. al volver el foco) cuando la caja ya se cerró', async () => {
+  it('se libera cuando el canal avisa del tema register y la caja ya se cerró', async () => {
     const repo = cajaRepo({ isOpen: true, isStale: true, openedAt: YESTERDAY })
-    renderShell(CAN_CORTE, repo)
+    const { announce } = renderShell(CAN_CORTE, repo)
     expect(await screen.findByText(/corte pendiente/i)).toBeInTheDocument()
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
 
+    // El corte lo hizo otra iPad: llega `posDataChanged` REGISTER. El gate ya
+    // no vigila la ventana por su cuenta, así que ésta es la vía por la que se
+    // entera sin que el operador toque nada.
     repo.status = { isOpen: false, isStale: false, openedAt: null }
-    await act(async () => {
-      window.dispatchEvent(new Event('focus'))
-    })
+    await announce('register')
+
     expect(await screen.findByRole('navigation')).toBeInTheDocument()
     expect(screen.queryByText(/corte pendiente/i)).not.toBeInTheDocument()
   })
