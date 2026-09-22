@@ -14,7 +14,7 @@ function baseInput(overrides: Partial<Parameters<typeof deriveHoyViewModel>[0]> 
     appointments: [] as Appointment[],
     walkIns: [] as WalkIn[],
     clockEvents: [] as TimeClockEvent[],
-    commission: { amountCents: 0, serviceCount: 0, loading: false },
+    commission: { amountCents: 0, serviceCount: 0, status: 'fresh' as const },
     caja: { isOpen: true, accumulatedCents: 0, openedAt: new Date() },
     tz: 'America/Monterrey',
     ...overrides,

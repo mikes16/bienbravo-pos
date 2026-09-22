@@ -5,10 +5,13 @@ import { describe, it, expect, vi } from 'vitest'
 import { HoyView } from './HoyView'
 import type { HoyViewModel } from './deriveHoyViewModel'
 
+/** Nombre accesible de la cifra de comisiones (MoneyValue, [D-006]). */
+const COMMISSION_LABEL = 'Comisiones hoy'
+
 function makeVm(overrides: Partial<HoyViewModel> = {}): HoyViewModel {
   return {
     staffName: 'Eli Cruz',
-    commission: { amountCents: 84500, serviceCount: 5, loading: false, projectedCents: null },
+    commission: { amountCents: 84500, serviceCount: 5, status: 'fresh', projectedCents: null },
     rows: [],
     cta: { variant: 'nueva-venta', actionLabel: 'Nueva venta' },
     cajaIsOpen: true,
@@ -31,20 +34,24 @@ describe('HoyView', () => {
     expect(screen.queryByText(/eli cruz garcía/i)).toBeNull()
   })
 
-  it('renders commission amount with formatMoney', () => {
+  it('renders the commission amount as money with its accessible label', () => {
     render(
       <MemoryRouter>
         <HoyView vm={makeVm()} onCtaClick={() => {}} onGateAction={() => {}} onAddWalkIn={() => {}} />
       </MemoryRouter>,
     )
-    expect(screen.getByText('$845')).toBeInTheDocument()
+    // MoneyValue/MoneyDisplay parten "$" y el número en spans distintos: la
+    // cifra se consulta por su nombre accesible ([D-006]), no por getByText.
+    const figure = screen.getByRole('group', { name: COMMISSION_LABEL })
+    expect(figure).toHaveTextContent('$845')
+    expect(figure).not.toHaveAttribute('aria-busy')
   })
 
   it('shows pluralized service count', () => {
     render(
       <MemoryRouter>
         <HoyView
-          vm={makeVm({ commission: { amountCents: 84500, serviceCount: 5, loading: false, projectedCents: null } })}
+          vm={makeVm({ commission: { amountCents: 84500, serviceCount: 5, status: 'fresh', projectedCents: null } })}
           onCtaClick={() => {}}
           onGateAction={() => {}} onAddWalkIn={() => {}}
         />
@@ -57,7 +64,7 @@ describe('HoyView', () => {
     render(
       <MemoryRouter>
         <HoyView
-          vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, loading: false, projectedCents: null } })}
+          vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, status: 'fresh', projectedCents: null } })}
           onCtaClick={() => {}}
           onGateAction={() => {}} onAddWalkIn={() => {}}
         />
@@ -277,17 +284,71 @@ describe('HoyView', () => {
     expect(onGateAction).toHaveBeenCalledTimes(1)
   })
 
-  it('shows loading state in commission when loading=true', () => {
+  // Spec 2026-09-18 § 3.1b: una cifra de dinero cargando es esqueleto —
+  // nunca "$0", nunca la cifra anterior, nunca un dígito inventado.
+  it('commission while loading shows a skeleton without a single digit', () => {
     render(
       <MemoryRouter>
         <HoyView
-          vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, loading: true, projectedCents: null } })}
+          vm={makeVm({ commission: { amountCents: null, serviceCount: null, status: 'loading', projectedCents: null } })}
           onCtaClick={() => {}}
           onGateAction={() => {}} onAddWalkIn={() => {}}
         />
       </MemoryRouter>,
     )
-    // Loading dash or skeleton — check for "—" or absence of "$0"
-    expect(screen.getByText(/—|cargando/i)).toBeInTheDocument()
+    const figure = screen.getByRole('group', { name: COMMISSION_LABEL })
+    expect(figure).toHaveAttribute('aria-busy', 'true')
+    expect(figure.textContent ?? '').not.toMatch(/\d/)
+    expect(figure.textContent ?? '').not.toContain('$')
+    // El pie tampoco puede decir "0 servicios": sería un conteo inventado.
+    expect(screen.queryByText(/servicios/i)).toBeNull()
+  })
+
+  it('commission in error shows no previous amount and offers Reintentar', async () => {
+    const onRetryCommission = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <HoyView
+          vm={makeVm({ commission: { amountCents: null, serviceCount: null, status: 'error', projectedCents: null } })}
+          onCtaClick={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
+          onRetryCommission={onRetryCommission}
+        />
+      </MemoryRouter>,
+    )
+    const figure = screen.getByRole('group', { name: COMMISSION_LABEL })
+    expect(figure).toHaveTextContent(/no se pudo cargar/i)
+    expect(figure.textContent ?? '').not.toMatch(/\d/)
+    await user.click(screen.getByRole('button', { name: /reintentar/i }))
+    expect(onRetryCommission).toHaveBeenCalledTimes(1)
+  })
+
+  it('commission offline says so instead of showing a stale figure', () => {
+    render(
+      <MemoryRouter>
+        <HoyView
+          vm={makeVm({ commission: { amountCents: null, serviceCount: null, status: 'offline', projectedCents: null } })}
+          onCtaClick={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
+        />
+      </MemoryRouter>,
+    )
+    const figure = screen.getByRole('group', { name: COMMISSION_LABEL })
+    expect(figure).toHaveTextContent(/sin conexión/i)
+    expect(figure.textContent ?? '').not.toMatch(/\d/)
+  })
+
+  it('a real $0 from the server is still painted as $0', () => {
+    render(
+      <MemoryRouter>
+        <HoyView
+          vm={makeVm({ commission: { amountCents: 0, serviceCount: 0, status: 'fresh', projectedCents: null } })}
+          onCtaClick={() => {}}
+          onGateAction={() => {}} onAddWalkIn={() => {}}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('group', { name: COMMISSION_LABEL })).toHaveTextContent('$0')
   })
 })

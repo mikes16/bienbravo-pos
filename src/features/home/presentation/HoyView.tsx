@@ -1,4 +1,4 @@
-import { formatMoney } from '@/shared/lib/money'
+import { MoneyValue } from '@/shared/pos-ui'
 import { HoyRow } from './HoyRow'
 import { ContextualCTABar } from './ContextualCTABar'
 import { HoyGate } from './HoyGate'
@@ -29,23 +29,43 @@ interface HoyViewProps {
   onTakeAppointment?: (row: HoyRowData) => void
   /** True while the CTA action is in-flight — dims + spinner on the bar. */
   ctaBusy?: boolean
+  /**
+   * Reintentar la carga de comisiones tras un fallo del servidor. Sin él, el
+   * estado `error` de la cifra se queda sin salida (spec § 3.1b).
+   */
+  onRetryCommission?: () => void
 }
+
+/** Etiqueta accesible de la cifra ([D-006]: `label` es obligatoria). */
+const COMMISSION_LABEL = 'Comisiones hoy'
 
 function pluralizeServicios(n: number): string {
   return n === 1 ? '1 servicio' : `${n} servicios`
 }
 
-function commissionCaption(amountCents: number, serviceCount: number): string {
+/**
+ * Pie de la cifra. Mientras el servidor no responde NO hay conteo: "no sé"
+ * jamás se disfraza de "0 servicios" (sería un dígito falso junto a una cifra
+ * que todavía es esqueleto). En offline/error el propio MoneyValue explica
+ * qué pasó, así que el pie se calla.
+ */
+function commissionCaption(commission: HoyViewModel['commission']): string | null {
+  const { amountCents, serviceCount, status } = commission
+  if (amountCents === null || serviceCount === null) {
+    return status === 'loading' ? 'Cargando…' : null
+  }
   if (amountCents === 0 && serviceCount === 0) {
     return '0 servicios · empezamos el día'
   }
   return pluralizeServicios(serviceCount)
 }
 
-export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn, onTakeQueueItem, onTakeAppointment, ctaBusy = false }: HoyViewProps) {
+export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeWalkIn, onTakeQueueItem, onTakeAppointment, ctaBusy = false, onRetryCommission }: HoyViewProps) {
   if (vm.gate) {
     return <HoyGate staffName={vm.staffName} gate={vm.gate} onAction={onGateAction} />
   }
+
+  const caption = commissionCaption(vm.commission)
 
   return (
     <div className="flex h-full flex-col">
@@ -53,18 +73,26 @@ export function HoyView({ vm, onCtaClick, onGateAction, onAddWalkIn, onFinalizeW
           identidad de la sesión vive en la barra superior (IdentityStripV2),
           que es persistente en todas las pestañas y la canta a 28 px; aquí
           era un dato chico, redundante y sólo visible en "Hoy". El padding
-          superior que gastaba ese bloque pasa a las comisiones. */}
+          superior que gastaba ese bloque pasa a las comisiones.
+
+          Comisiones del día: dinero del servidor, así que se pinta con
+          MoneyValue ([D-005]) y con el estado que decidió quien lo cargó.
+          Antes era un numeral suelto que mostraba "—" en la carga y la cifra
+          anterior en cualquier otro caso; ahora cargando es esqueleto (cero
+          dígitos) y un fallo nunca deja el número viejo en pantalla. */}
       <div className="flex items-baseline gap-4 border-b border-[var(--color-leather-muted)]/40 px-5 pt-4 pb-3">
-        <span className="font-[var(--font-pos-display)] text-[38px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-[var(--color-bone)]">
-          {vm.commission.loading ? '—' : formatMoney(vm.commission.amountCents)}
-        </span>
+        <MoneyValue
+          status={vm.commission.status}
+          cents={vm.commission.amountCents}
+          label={COMMISSION_LABEL}
+          size="S"
+          onRetry={onRetryCommission}
+        />
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
             COMISIONES HOY
           </span>
-          <span className="text-[11px] text-[var(--color-bone-muted)]">
-            {commissionCaption(vm.commission.amountCents, vm.commission.serviceCount)}
-          </span>
+          {caption && <span className="text-[11px] text-[var(--color-bone-muted)]">{caption}</span>}
         </div>
       </div>
 

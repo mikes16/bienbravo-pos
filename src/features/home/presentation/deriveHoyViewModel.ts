@@ -2,6 +2,7 @@ import type { Appointment, CustomerReputationTag } from '@/features/agenda/domai
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types'
 import { formatTimeInTz } from '@/shared/lib/date'
+import type { MoneyValueStatus } from '@/shared/pos-ui'
 import { reputationMark, type ReputationMark } from '@/shared/lib/reputation'
 
 export interface HoyViewModelInput {
@@ -10,7 +11,14 @@ export interface HoyViewModelInput {
   appointments: Appointment[]
   walkIns: WalkIn[]
   clockEvents: TimeClockEvent[]
-  commission: { amountCents: number; serviceCount: number; loading: boolean }
+  /**
+   * Comisiones del día — clase DINERO (spec 2026-09-18 § 3.1): la cifra o es
+   * la que acaba de responder el servidor o es "no sé". Por eso
+   * `amountCents` y `serviceCount` son anulables (jamás se rellenan con 0
+   * para tapar un hueco) y `status` dice con qué cara la pinta la vista
+   * (§ 3.1b). Quien carga el dato decide el estado; aquí sólo se transporta.
+   */
+  commission: { amountCents: number | null; serviceCount: number | null; status: MoneyValueStatus }
   caja: { isOpen: boolean; accumulatedCents: number | null; openedAt: Date | null }
   /** Tz de la sucursal — todas las horas mostradas en Hoy (citas, walk-ins)
    *  se leen en esta tz, no en la del device. */
@@ -80,7 +88,12 @@ export type HoyGate =
 
 export interface HoyViewModel {
   staffName: string
-  commission: { amountCents: number; serviceCount: number; loading: boolean; projectedCents: number | null }
+  commission: {
+    amountCents: number | null
+    serviceCount: number | null
+    status: MoneyValueStatus
+    projectedCents: number | null
+  }
   rows: HoyRowData[]
   cta: ContextualCTAData
   cajaIsOpen: boolean
@@ -403,7 +416,7 @@ export function deriveHoyViewModel(input: HoyViewModelInput): HoyViewModel {
     commission: {
       amountCents: commission.amountCents,
       serviceCount: commission.serviceCount,
-      loading: commission.loading,
+      status: commission.status,
       projectedCents: null,
     },
     rows,

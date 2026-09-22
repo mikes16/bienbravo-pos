@@ -1,28 +1,65 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useApolloClient } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { usePosAuth } from '@/core/auth/usePosAuth'
 import { useLocation } from '@/core/location/useLocation'
 import { useRepositories } from '@/core/repositories/RepositoryProvider'
 import { useToast } from '@/core/toast/useToast'
+import { useFreshness, useLiveRefresh } from '@/core/freshness/useLiveRefresh'
+import type { FreshnessTopic } from '@/core/freshness/FreshnessProvider'
 import { localDayInTz, localDayRangeInTz } from '@/shared/lib/date'
 import { readableSpanishError } from '@/shared/lib/errors'
-import {
-  POS_MY_DAY_EARNINGS,
-  POS_HOME_CAJA_STATUS,
-  POS_HOME_WALK_IN_QUEUE_UPDATED,
-  POS_HOME_APPOINTMENT_UPDATED,
-  POS_HOME_SALE_EVENT,
-} from '../data/home.queries'
+import { POS_MY_DAY_EARNINGS, POS_HOME_CAJA_STATUS } from '../data/home.queries'
 import { deriveHoyViewModel, type HoyViewModel, type HoyRowData } from './deriveHoyViewModel'
 import { HoyView } from './HoyView'
 import { FinalizeWalkInSheet } from './FinalizeWalkInSheet'
 import { TakeWalkInSheet, type TakeWalkInTarget } from './TakeWalkInSheet'
 import { AddWalkInSheet } from '@/features/walkins/presentation/AddWalkInSheet'
-import { SkeletonRow } from '@/shared/pos-ui'
+import { SkeletonRow, type MoneyValueStatus } from '@/shared/pos-ui'
 import type { Appointment } from '@/features/agenda/domain/agenda.types'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types'
+
+/**
+ * Lo VIVO sin dinero de Hoy (spec 2026-09-18 § 3.1): fila, agenda, reloj y el
+ * estado de caja que decide el gate. Puede pintarse desde la memoria de ESTA
+ * sesión, pero cada carga —la de montaje incluida— se revalida contra la red.
+ */
+interface HoyBoard {
+  appointments: Appointment[]
+  walkIns: WalkIn[]
+  clockEvents: TimeClockEvent[]
+  caja: { isOpen: boolean; accumulatedCents: number | null; openedAt: Date | null }
+}
+
+/** Lo que Hoy necesita de las comisiones del día (clase DINERO). */
+interface HoyEarnings {
+  totalCommissionCents: number
+  /** Ventas directas (sin walk-in ni cita): también son servicios atendidos. */
+  directSaleCount: number
+}
+
+interface EarningsQueryData {
+  staffDayEarnings: {
+    totalCommissionCents: number
+    perSale: Array<{
+      saleId: string
+      linkedWalkInId: string | null
+      linkedAppointmentId: string | null
+    }>
+  } | null
+}
+
+interface CajaQueryData {
+  posCajaStatusHome: { isOpen: boolean; accumulatedCents: number | null; openedAt: string | null } | null
+}
+
+// Temas del canal ÚNICO de avisos (src/core/freshness). Constantes de módulo:
+// un literal nuevo en cada render re-registraría el cargador sin parar.
+/** La cifra de comisiones sólo se mueve con ventas. */
+const MONEY_TOPICS: readonly FreshnessTopic[] = ['sales']
+/** La lista se mueve con la fila y la agenda. */
+const BOARD_TOPICS: readonly FreshnessTopic[] = ['walkins', 'appointments']
 
 function todayRangeISO(tz: string): { from: string; to: string } {
   const now = new Date()
@@ -33,11 +70,18 @@ function todayRangeISO(tz: string): { from: string; to: string } {
 export function HoyPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
-  const { locationId, locationSlug, locationTimezone } = useLocation()
+  const { locationId, locationTimezone } = useLocation()
   const { agenda, clock, walkins } = useRepositories()
   const navigate = useNavigate()
+  const { addToast } = useToast()
+  // Estado del canal en vivo: distingue "se cayó la red" de "el servidor
+  // respondió con error" para la cifra de dinero (spec § 3.1b).
+  const { connection } = useFreshness()
 
-  const [vm, setVm] = useState<HoyViewModel | null>(null)
+  const [board, setBoard] = useState<HoyBoard | null>(null)
+  const [earnings, setEarnings] = useState<HoyEarnings | null>(null)
+  const [commissionFailed, setCommissionFailed] = useState(false)
+  const [commissionRefreshing, setCommissionRefreshing] = useState(false)
   const [addWalkInOpen, setAddWalkInOpen] = useState(false)
   // Companion close-out: papá pays for both, hijo's walk-in stays open. The
   // operator picks "Finalizar" on the hijo row → confirms here → row drops.
@@ -47,161 +91,199 @@ export function HoyPage() {
   // el primero FIFO). Confirmamos en sheet, ejecutamos assignWalkIn(viewer).
   const [takeTarget, setTakeTarget] = useState<TakeWalkInTarget | null>(null)
   const [taking, setTaking] = useState(false)
-  const { addToast } = useToast()
+  const [ctaBusy, setCtaBusy] = useState(false)
 
-  const refetch = useCallback(async (opts?: { force?: boolean }) => {
-    if (!viewer || !locationId) return
+  // --- Lecturas puras (sin tocar estado) ------------------------------------
+  // Se usan tal cual en el montaje y detrás de los cargadores del canal de
+  // frescura; así ningún setState cuelga del cuerpo de un efecto.
+
+  const fetchBoard = useCallback(async (): Promise<{ board: HoyBoard; failed: boolean } | null> => {
+    if (!viewer || !locationId) return null
     const date = localDayInTz(new Date(), locationTimezone)
     const { from, to } = todayRangeISO(locationTimezone)
-    // force=true → network-only (focus refetch, post-mutación). force=false
-    // → cache-first (mount inicial — pinta del cache persistido al instante
-    // si existe). `client.query()` no admite cache-and-network.
-    const earningsPolicy = opts?.force ? 'network-only' : 'cache-first'
 
     const settled = await Promise.allSettled([
-      // walkIns y appointments SIEMPRE van por red en mount. Si subscription
-      // WS pierde un evento (ej. tab oculto, race con createPOSSale, fallo
-      // de publish) el operador igual ve estado correcto al volver a Hoy.
-      // Antes era cache-first → el walk-in "EN SERVICIO 190 MIN" zombie
-      // persistía hasta el siguiente window.focus.
+      // walkIns y appointments SIEMPRE van por red. Si el canal en vivo pierde
+      // un evento (pausa por cobro, corte de red, fallo de publish) el
+      // operador igual ve el estado correcto al volver a Hoy. Con cache-first
+      // el walk-in "EN SERVICIO · 190 MIN" zombie sobrevivía en pantalla.
       agenda.getAppointments(from, to, locationId, undefined, { force: true }),
       clock.getEvents(viewer.staff.id, locationId, date, date),
       walkins.getWalkIns(locationId, undefined, undefined, { force: true }),
-      apollo.query<{
-        staffDayEarnings: {
-          totalCommissionCents: number
-          perSale: Array<{
-            saleId: string
-            linkedWalkInId: string | null
-            linkedAppointmentId: string | null
-          }>
-        }
-      }>({
-        query: POS_MY_DAY_EARNINGS,
-        variables: { staffUserId: viewer.staff.id, locationId, date },
-        fetchPolicy: earningsPolicy,
-      }),
-      apollo.query<{
-        posCajaStatusHome: { isOpen: boolean; accumulatedCents: number | null; openedAt: string | null }
-      }>({
+      apollo.query<CajaQueryData>({
         query: POS_HOME_CAJA_STATUS,
         variables: { locationId },
         // Caja gating SIEMPRE va por red. Su valor decide si mostramos el
-        // gate "abre la caja" — usar cache-first causaba flash:
-        // mount → cache devuelve caja cerrada de ayer → render gate →
-        // segunda pasada de red corrige a abierta → gate desaparece.
-        // El flicker era visible 200-400ms y se sentía como UI rota.
+        // gate "abre la caja" — con cache-first había flash: mount → cache
+        // devuelve caja cerrada de ayer → render gate → la red corrige a
+        // abierta → gate desaparece. Visible 200-400ms, se sentía roto.
         fetchPolicy: 'network-only',
       }),
     ])
 
-    const appts: Appointment[] = settled[0].status === 'fulfilled' ? settled[0].value : []
-    const events: TimeClockEvent[] = settled[1].status === 'fulfilled' ? settled[1].value : []
-    const wkins: WalkIn[] = settled[2].status === 'fulfilled' ? settled[2].value : []
-    const earningsRes = settled[3].status === 'fulfilled' ? settled[3].value.data?.staffDayEarnings : null
-    const cajaRes = settled[4].status === 'fulfilled' ? settled[4].value.data?.posCajaStatusHome : null
+    const cajaRes = settled[3].status === 'fulfilled' ? settled[3].value.data?.posCajaStatusHome : null
 
-    // Service count: completed appts + done walk-ins + direct POS sales
-    // (sales without walk-in/appt link). Antes contábamos solo appts/walk-ins
-    // y las ventas directas quedaban invisibles a este contador.
-    const todayStart = localDayRangeInTz(localDayInTz(new Date(), locationTimezone), locationTimezone).startUtc
-    const directSaleCount = (earningsRes?.perSale ?? []).filter(
-      (e) => !e.linkedWalkInId && !e.linkedAppointmentId,
-    ).length
-    const serviceCount =
-      appts.filter((a) => a.status === 'COMPLETED' && a.staffUser?.id === viewer.staff.id && new Date(a.startAt) >= todayStart).length +
-      wkins.filter((w) => w.status === 'DONE' && w.assignedStaffUser?.id === viewer.staff.id && new Date(w.createdAt) >= todayStart).length +
-      directSaleCount
-
-    setVm(
-      deriveHoyViewModel({
-        staffId: viewer.staff.id,
-        staffName: viewer.staff.fullName,
-        appointments: appts,
-        walkIns: wkins,
-        clockEvents: events,
-        commission: {
-          amountCents: earningsRes?.totalCommissionCents ?? 0,
-          serviceCount,
-          loading: false,
-        },
+    return {
+      board: {
+        appointments: settled[0].status === 'fulfilled' ? settled[0].value : [],
+        clockEvents: settled[1].status === 'fulfilled' ? settled[1].value : [],
+        walkIns: settled[2].status === 'fulfilled' ? settled[2].value : [],
         caja: {
           isOpen: cajaRes?.isOpen ?? false,
           accumulatedCents: cajaRes?.accumulatedCents ?? null,
           openedAt: cajaRes?.openedAt ? new Date(cajaRes.openedAt) : null,
         },
-        tz: locationTimezone,
-      }),
-    )
+      },
+      failed: settled.some((result) => result.status === 'rejected'),
+    }
   }, [agenda, apollo, clock, walkins, viewer, locationId, locationTimezone])
 
+  const fetchEarnings = useCallback(async (): Promise<HoyEarnings | null> => {
+    if (!viewer || !locationId) return null
+    const date = localDayInTz(new Date(), locationTimezone)
+    const res = await apollo.query<EarningsQueryData>({
+      query: POS_MY_DAY_EARNINGS,
+      variables: { staffUserId: viewer.staff.id, locationId, date },
+      // DINERO: siempre de la red, sin política alternativa (spec § 3.1 y
+      // [D-017]). Con varias iPads cobrando, una comisión guardada está mal
+      // en cuanto otra terminal cobra. El costo es un esqueleto de carga.
+      fetchPolicy: 'network-only',
+    })
+    const data = res.data?.staffDayEarnings
+    // Sin dato NO es cero: se trata como fallo para que la cifra caiga a
+    // "no se pudo cargar" en vez de anunciar $0 de comisiones.
+    if (!data) throw new Error('El servidor no devolvió las comisiones del día.')
+    return {
+      totalCommissionCents: data.totalCommissionCents,
+      directSaleCount: data.perSale.filter((e) => !e.linkedWalkInId && !e.linkedAppointmentId).length,
+    }
+  }, [apollo, viewer, locationId, locationTimezone])
+
+  // --- Cargas registradas en el canal de frescura ---------------------------
+
+  const loadBoard = useCallback((): Promise<void> => {
+    return fetchBoard().then((result) => {
+      if (!result) return
+      setBoard(result.board)
+      // Si algo no llegó, el refresco NO cuenta como exitoso: la hora de
+      // "Actualizado HH:MM" del canal no debe moverse con datos incompletos.
+      if (result.failed) throw new Error('No se pudo actualizar la lista de Hoy.')
+    })
+  }, [fetchBoard])
+
+  const loadCommission = useCallback((): Promise<void> => {
+    if (!viewer || !locationId) return Promise.resolve()
+    setCommissionRefreshing(true)
+    return fetchEarnings()
+      .then((data) => {
+        if (!data) return
+        setCommissionFailed(false)
+        setEarnings(data)
+      })
+      .catch((err: unknown) => {
+        // [D-018]: al fallar se tira la cifra. Nunca queda la anterior
+        // haciéndose pasar por la de ahora.
+        setEarnings(null)
+        setCommissionFailed(true)
+        throw err
+      })
+      .finally(() => {
+        setCommissionRefreshing(false)
+      })
+  }, [fetchEarnings, viewer, locationId])
+
+  // Un solo canal de avisos para todo el POS: esta pantalla ya no abre sus
+  // propias conexiones en vivo ni vigila el foco/visibilidad de la ventana
+  // (eso lo hace FreshnessProvider una vez por sucursal). Cada tema mueve lo
+  // suyo: una venta de otra iPad recarga el dinero, la fila y la agenda
+  // recargan la lista.
+  useLiveRefresh(loadCommission, MONEY_TOPICS)
+  useLiveRefresh(loadBoard, BOARD_TOPICS)
+
+  // Carga inicial. El efecto sólo lanza las lecturas: no llama a los `load*`
+  // ni escribe estado en su cuerpo — todo setState vive en los callbacks de
+  // la promesa, con `cancelled` para no pintar sobre un componente desmontado.
   useEffect(() => {
     if (!viewer || !locationId) return
-    // Single refetch en mount: las queries que afectan el gate (clock +
-    // caja) ya van por red dentro de refetch() — el resto pinta del cache
-    // persistido para que el shell se sienta instant. Antes hacíamos doble
-    // pass (cache-first → network-only) para revalidar todo, pero eso
-    // provocaba un flash del gate "abre tu caja" cuando el cache tenía
-    // estado viejo. Para casos de stale el cliente cuenta con: window.focus,
-    // WS subscription on walk-in events, y refetch post-mutación.
-    void refetch()
-  }, [viewer, locationId, refetch])
-
-  useEffect(() => {
-    const onFocus = () => { void refetch({ force: true }) }
-    // visibilitychange además de focus: en el tablet el operador alterna entre
-    // pantallas/apps (ej. cerrar caja y volver) sin que dispare window.focus.
-    // Al volver a estar visible, refrescamos el gate (clock + caja) — así una
-    // caja recién cerrada o un clock-out se reflejan y Hoy bloquea como debe.
-    const onVisible = () => { if (document.visibilityState === 'visible') void refetch({ force: true }) }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [refetch])
-
-  // Push real-time: subscription a la cola de walk-ins. Cuando llega un
-  // evento (cliente creó walk-in en kiosk, otro barbero asignó/terminó),
-  // disparamos refetch silencioso para que Hoy refleje el cambio en <1s
-  // sin esperar al refetch on focus o al poll. Apollo `subscribe()` no
-  // expone subscribeToMore aquí porque la data de Hoy no viene de useQuery
-  // sino de Promise.allSettled con repos + apollo.query() one-shot.
-  useEffect(() => {
-    if (!locationSlug) return
-    // Helper local — todas las subscriptions de Hoy comparten el mismo
-    // efecto: cuando llega cualquier evento, dispara refetch silencioso.
-    // Apollo dedupea queries en flight si tres eventos llegan en <50ms.
-    const onEvent = () => { void refetch({ force: true }) }
-    const subscribeTo = (query: typeof POS_HOME_WALK_IN_QUEUE_UPDATED, label: string) => {
-      const obs = apollo.subscribe({ query, variables: { slug: locationSlug } })
-      return obs.subscribe({
-        next: onEvent,
-        error: (err) => {
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.warn(`[HoyPage] ${label} subscription error`, err)
-          }
-        },
+    let cancelled = false
+    void fetchBoard()
+      .then((result) => {
+        if (cancelled || !result) return
+        setBoard(result.board)
       })
-    }
-
-    // 3 subscriptions paralelas — todas reaccionan disparando el mismo
-    // refetch. Una sola conexión WS las multiplexea (graphql-ws lo hace
-    // por debajo), no son 3 sockets distintos.
-    const walkInSub = subscribeTo(POS_HOME_WALK_IN_QUEUE_UPDATED as never, 'walk-in')
-    const apptSub = subscribeTo(POS_HOME_APPOINTMENT_UPDATED as never, 'appointment')
-    const saleSub = subscribeTo(POS_HOME_SALE_EVENT as never, 'sale')
-
+      .catch(() => {})
+    void fetchEarnings()
+      .then((data) => {
+        if (cancelled || !data) return
+        setEarnings(data)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setCommissionFailed(true)
+      })
     return () => {
-      walkInSub.unsubscribe()
-      apptSub.unsubscribe()
-      saleSub.unsubscribe()
+      cancelled = true
     }
-  }, [apollo, locationSlug, refetch])
+  }, [viewer, locationId, fetchBoard, fetchEarnings])
 
-  const [ctaBusy, setCtaBusy] = useState(false)
+  // Re-sincronización completa tras una mutación propia (atender, tomar,
+  // finalizar, alta de walk-in): lista y dinero. `allSettled` para que un
+  // fallo de cualquiera de las dos no deje un rechazo suelto en el handler.
+  const reload = useCallback((): Promise<void> => {
+    return Promise.allSettled([loadBoard(), loadCommission()]).then(() => undefined)
+  }, [loadBoard, loadCommission])
+
+  const retryCommission = useCallback(() => {
+    // El fallo ya se pinta en la cifra; acá sólo se evita la promesa suelta.
+    void loadCommission().catch(() => {})
+  }, [loadCommission])
+
+  // Estados de una cifra de dinero (spec § 3.1b). "No sé" nunca se disfraza
+  // de $0: sin respuesta del servidor es esqueleto y, si falló, es aviso.
+  // `updating` sólo cuando YA hay una cifra del servidor y se pidió la nueva.
+  const commissionStatus: MoneyValueStatus = commissionFailed
+    ? connection === 'offline'
+      ? 'offline'
+      : 'error'
+    : earnings === null
+      ? 'loading'
+      : commissionRefreshing
+        ? 'updating'
+        : 'fresh'
+
+  const vm = useMemo<HoyViewModel | null>(() => {
+    if (!board || !viewer) return null
+    // Service count: completed appts + done walk-ins + direct POS sales
+    // (sales without walk-in/appt link). Sin la respuesta de comisiones el
+    // conteo es desconocido (null) — la vista lo calla en vez de decir
+    // "0 servicios" junto a una cifra que todavía es esqueleto.
+    const todayStart = localDayRangeInTz(localDayInTz(new Date(), locationTimezone), locationTimezone).startUtc
+    const serviceCount =
+      earnings === null
+        ? null
+        : board.appointments.filter(
+            (a) => a.status === 'COMPLETED' && a.staffUser?.id === viewer.staff.id && new Date(a.startAt) >= todayStart,
+          ).length +
+          board.walkIns.filter(
+            (w) => w.status === 'DONE' && w.assignedStaffUser?.id === viewer.staff.id && new Date(w.createdAt) >= todayStart,
+          ).length +
+          earnings.directSaleCount
+
+    return deriveHoyViewModel({
+      staffId: viewer.staff.id,
+      staffName: viewer.staff.fullName,
+      appointments: board.appointments,
+      walkIns: board.walkIns,
+      clockEvents: board.clockEvents,
+      commission: {
+        amountCents: earnings === null ? null : earnings.totalCommissionCents,
+        serviceCount,
+        status: commissionStatus,
+      },
+      caja: board.caja,
+      tz: locationTimezone,
+    })
+  }, [board, earnings, commissionStatus, viewer, locationTimezone])
 
   const handleCtaClick = useCallback(async () => {
     if (!vm || ctaBusy) return
@@ -230,10 +312,9 @@ export function HoyPage() {
           } else {
             await walkins.assign(targetId, viewer.staff.id)
           }
-          await refetch({ force: true })
+          await reload()
         } catch (err) {
           if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
             console.error('[atender] failed', { targetId, targetKind, err })
           }
           // Nunca tragues el fallo. Caso reportado: la cita ya avanzó de estado
@@ -247,7 +328,7 @@ export function HoyPage() {
               'No se pudo iniciar la cita. Se actualizó la lista.',
             'error',
           )
-          await refetch({ force: true })
+          await reload()
         } finally {
           setCtaBusy(false)
         }
@@ -270,7 +351,7 @@ export function HoyPage() {
         break
       }
     }
-  }, [vm, ctaBusy, navigate, viewer, agenda, walkins, refetch, addToast])
+  }, [vm, ctaBusy, navigate, viewer, agenda, walkins, reload, addToast])
 
   const handleGateAction = useCallback(() => {
     if (!vm?.gate) return
@@ -362,14 +443,14 @@ export function HoyPage() {
       }
       addToast(`${takeTarget.name.split(' ')[0]} asignado a ti`, 'success')
       setTakeTarget(null)
-      void refetch({ force: true })
+      void reload()
     } catch (e) {
       const msg = (e as { message?: string }).message ?? 'No se pudo tomar el turno.'
       addToast(msg, 'error')
     } finally {
       setTaking(false)
     }
-  }, [takeTarget, taking, viewer, walkins, agenda, addToast, refetch])
+  }, [takeTarget, taking, viewer, walkins, agenda, addToast, reload])
 
   const confirmFinalize = useCallback(async () => {
     if (!finalizeTarget || finalizing) return
@@ -378,14 +459,14 @@ export function HoyPage() {
       await walkins.complete(finalizeTarget.id)
       addToast(`${finalizeTarget.name} finalizado`, 'success')
       setFinalizeTarget(null)
-      void refetch({ force: true })
+      void reload()
     } catch (e) {
       const msg = (e as { message?: string }).message ?? 'No se pudo finalizar.'
       addToast(msg, 'error')
     } finally {
       setFinalizing(false)
     }
-  }, [finalizeTarget, finalizing, walkins, addToast, refetch])
+  }, [finalizeTarget, finalizing, walkins, addToast, reload])
 
   if (!vm) {
     return (
@@ -410,6 +491,7 @@ export function HoyPage() {
         onFinalizeWalkIn={handleFinalizeWalkIn}
         onTakeQueueItem={handleTakeQueueItem}
         onTakeAppointment={handleTakeAppointment}
+        onRetryCommission={retryCommission}
         ctaBusy={ctaBusy}
       />
       {locationId && (
@@ -417,7 +499,7 @@ export function HoyPage() {
           open={addWalkInOpen}
           locationId={locationId}
           onClose={() => setAddWalkInOpen(false)}
-          onCreated={() => { void refetch({ force: true }) }}
+          onCreated={() => { void reload() }}
         />
       )}
       <FinalizeWalkInSheet
