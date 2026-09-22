@@ -98,9 +98,9 @@
       "depends_on": [],
       "priority": 2,
       "type": "chore",
-      "status": "pending",
+      "status": "split",
       "attempts": 0,
-      "redispatches": 0,
+      "redispatches": 1,
       "split_from": null,
       "review_feedback": []
     },
@@ -797,7 +797,7 @@
         "src/test/mocks/repositories.ts"
       ],
       "depends_on": [
-        "T-002",
+        "T-002c",
         "T-006",
         "T-007",
         "T-012"
@@ -2003,6 +2003,156 @@
       "attempts": 0,
       "redispatches": 0,
       "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-002a",
+      "title": "DaySalesPage: el efecto de mount no llama setState de forma sincrona",
+      "description": "`src/features/day-sales/presentation/DaySalesPage.tsx:55` dispara react-hooks/set-state-in-effect. OJO: la regla es inter-procedural — apunta a la llamada `load(...)` y entra dentro del useCallback, donde hay dos setState sincronos: `if (opts.showSpinner) setLoading(true)` (condicional) y `setLoadError(null)` (incondicional). Ya lo probe: cambiar el mount a `load({ showSpinner: false, force: false })` NO quita el warning. El arreglo tiene que dejar el cuerpo del efecto de mount con CERO setState sincrono: el efecto solo lanza el trabajo asincrono y todo el estado se escribe en los callbacks de la promesa (`.then/.catch/.finally`) con una bandera `cancelled` en el cleanup para no escribir tras desmontar. Detalles a respetar: el estado inicial ya es `loading = true`, asi que el mount no necesita volver a ponerlo; `setLoadError(null)` al arrancar un refetch puede vivir dentro del callback asincrono o en el handler de evento, no en el cuerpo del efecto; los refetch por subscription `saleEvent`, `focus` y `visibilitychange` siguen en silencio (sin spinner) y esos si pueden llamar setState porque ocurren en callbacks, no en el cuerpo del efecto. Comportamiento visible intacto: skeleton de carga, banner `role=\"alert\"` si falla la red (nunca '0 ventas' en silencio), chips de barbero con vuelta a 'Todos' si el barbero filtrado desaparece, sheet de ticket y reimpresion. No tocar DaySaleSheet.tsx (va en su propia tarea).",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "DaySalesPage.tsx no reporta ningun warning de eslint (en particular react-hooks/set-state-in-effect)",
+          "check": "npx eslint src/features/day-sales/presentation/DaySalesPage.tsx --max-warnings=0",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Los tests del feature day-sales siguen en verde (10 tests en 2 archivos)",
+          "check": "npm test -- src/features/day-sales",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "El typecheck del repo sigue limpio tras el refactor",
+          "check": "npm run typecheck",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "code_pattern",
+          "path": "src/features/my-day/presentation/MyDayPage.tsx",
+          "reason": "Mismo trio de efectos (mount+subscription+focus). OJO: tiene el mismo warning en :408; imitar su refetch, no su efecto de mount."
+        },
+        {
+          "type": "doc",
+          "path": ".harness/PROFILE.md",
+          "reason": "Convencion: useEffect solo sincroniza con sistemas externos; el estado derivado se calcula en render."
+        }
+      ],
+      "files": [
+        "src/features/day-sales/presentation/DaySalesPage.tsx",
+        "src/features/day-sales/presentation/DaySalesPage.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 2,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-002",
+      "review_feedback": []
+    },
+    {
+      "id": "T-002b",
+      "title": "DaySaleSheet: animacion de salida sin setState sincrono en el efecto",
+      "description": "`src/features/day-sales/presentation/DaySaleSheet.tsx:40` dispara react-hooks/set-state-in-effect: el efecto que reacciona a `open` llama `setClosing(false)` y `setMounted(true)` de forma sincrona en su cuerpo. Es el segundo (y ultimo) warning del feature day-sales. El unico sistema externo real ahi es el timer de salida de EXIT_MS=240ms: al abrir, `mounted`/`closing` se pueden derivar en render (el archivo ya usa el patron de setState-durante-render para `shown`, ver linea 30), y el efecto queda solo para programar/cancelar el timeout de cierre, que escribe estado desde el callback del timer (permitido). Mantener sin cambios visibles: animacion enter/exit con las clases pos-sheet-up/pos-sheet-down, la venta `shown` conservada durante los 240ms de salida, Escape-to-close, el label de estado (Anulada/Reembolsada) y el boton 'Reimprimir ticket' deshabilitado cuando la venta no esta PAID. Agregar DaySaleSheet.test.tsx cubriendo: abre con la venta, cierra con Escape, y reimprimir deshabilitado en VOID. Nota: `src/features/my-day/presentation/SaleDetailSheet.tsx` tiene el mismo bug (lineas 64 y 99) y no existe hoy ningun sheet limpio en el repo: no hay patron que copiar, hay que disenarlo. No tocar SaleDetailSheet en esta tarea.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "DaySaleSheet.tsx no reporta ningun warning de eslint",
+          "check": "npx eslint src/features/day-sales/presentation/DaySaleSheet.tsx --max-warnings=0",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Los tests del feature day-sales pasan, incluidos los nuevos del sheet (abrir, Escape, reimpresion bloqueada en VOID)",
+          "check": "npm test -- src/features/day-sales",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "El typecheck del repo sigue limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "code_pattern",
+          "path": "src/features/day-sales/presentation/DaySalesPage.test.tsx",
+          "reason": "Setup del sheet en tests: renderWithProviders + repos mock + getByRole dialog 'ticket de venta'. Imitar para el test nuevo."
+        },
+        {
+          "type": "doc",
+          "path": ".harness/PROFILE.md",
+          "reason": "useEffect solo sincroniza con sistemas externos; estado derivado en render. Tests por rol accesible y userEvent con await."
+        }
+      ],
+      "files": [
+        "src/features/day-sales/presentation/DaySaleSheet.tsx",
+        "src/features/day-sales/presentation/DaySaleSheet.test.tsx"
+      ],
+      "depends_on": [
+        "T-002a"
+      ],
+      "priority": 2,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-002",
+      "review_feedback": []
+    },
+    {
+      "id": "T-002c",
+      "title": "Script lint por ruta: que un check de lint pueda medir un solo feature",
+      "description": "`npm run lint` es `eslint .`, asi que `npm run lint -- <ruta> --max-warnings=0` NO acota nada: se expande a `eslint . <ruta>` y lintea el repo entero. Con el baseline actual (2 errores + 52 warnings pre-existentes en 28 archivos, documentado en .github/workflows/ci.yml, que por eso excluye lint de CI) cualquier check de lint con alcance de feature es imposible de poner en verde — fue justo lo que bloqueo T-002. Agregar a package.json el script `\"lint:path\": \"eslint\"` (sin el `.`), de forma que `npm run lint:path -- src/features/day-sales --max-warnings=0` mida solo esa ruta. No tocar eslint.config.js, no cambiar el baseline, no re-activar lint en CI: eso es limpieza aparte. Documentar el script en la seccion de comandos del README o del CLAUDE.md del repo si hay una lista de scripts, en una linea. `npm run lint` se queda igual para el uso repo-wide.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "lint:path acota de verdad: una ruta sin problemas sale exit 0 aunque el repo tenga baseline sucio",
+          "check": "npm run lint:path -- src/shared/lib --max-warnings=0",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "lint:path detecta problemas en la ruta que se le pasa (no es un no-op): una ruta con warning conocido sale distinto de cero",
+          "check": "! npm run lint:path -- src/features/walkins/presentation/WalkInQueueHeader.tsx --max-warnings=0",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "El script lint repo-wide sigue existiendo y sigue siendo eslint .",
+          "check": "node -e \"const p=require('./package.json'); if(p.scripts.lint!=='eslint .') process.exit(1); if(p.scripts['lint:path']!=='eslint') process.exit(1)\"",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".github/workflows/ci.yml",
+          "reason": "Explica por que lint esta fuera de CI (baseline de errores pre-existentes). Esta tarea NO lo reactiva."
+        },
+        {
+          "type": "doc",
+          "path": ".harness/PROFILE.md",
+          "reason": "El `lint: npm run lint` del perfil origina checks repo-wide; con lint:path un check por feature pasa a ser expresable."
+        }
+      ],
+      "files": [
+        "package.json"
+      ],
+      "depends_on": [
+        "T-002b"
+      ],
+      "priority": 2,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": "T-002",
       "review_feedback": []
     }
   ]

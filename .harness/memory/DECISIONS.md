@@ -13,3 +13,4 @@
 - [D-007] 2026-09-22 (T-006) aria-busy solo se emite en loading y updating (atributo ausente en el resto, nunca "false"), siguiendo la convención ya usada en CatalogListRow/CatalogTile.
 - [D-008] 2026-09-22 (T-007) Los eventos de subscription se piden con fetchPolicy 'no-cache': son pings de invalidación, no datos; no deben entrar al cache ni a lo que se evalúa para persistir [D-003].
 - [D-009] 2026-09-22 (T-007) La primera conexión del socket NO dispara refresco; sólo las reconexiones, una vez y para todos los temas. Al reanudar tras pausa lo pendiente corre sin esperar la ventana de 5 s.
+- [D-010] 2026-09-22 (T-008) La identidad del operador se canta en un solo lugar: la barra superior. Ninguna pantalla del POS vuelve a saludar ni a repetir el nombre del viewer (HoyGate es la excepción: es gate, no vista).
