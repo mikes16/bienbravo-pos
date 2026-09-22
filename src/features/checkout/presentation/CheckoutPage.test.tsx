@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CheckoutPage } from './CheckoutPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { CatalogVersionContext } from '@/core/bootstrap/BootstrapProvider'
-import { CheckoutRejectedError } from '../domain/checkout.types'
+import { CheckoutRejectedError, type StaffSaleRejectionCode } from '../domain/checkout.types'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
 
 class TestAuthRepo extends InMemoryAuthRepository {
@@ -1141,4 +1141,43 @@ describe('CheckoutPage — rechazo del servidor por datos viejos', () => {
     expect(repos.checkout.evictCatalogCache).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog', { name: /pago/i })).toBeInTheDocument()
   })
+
+  /* ── Venta a staff ([D-039]) ───────────────────────────────────────────
+   *
+   * Estos tres códigos viajan en `AnyCheckoutRejectionCode` pero NO son
+   * recuperables: no hay catálogo que recargar — los resuelve el operador
+   * (elegir variante, quitar la línea) o el dueño (subir el tope). Antes de
+   * T-039 caían fuera del `switch` de `recoverFromRejection` y el cobro
+   * rechazado dejaba la pantalla MUDA: sin banner y sin aviso.
+   */
+  const STAFF_SALE_REJECTIONS: Array<[StaffSaleRejectionCode, string]> = [
+    ['STAFF_SALE_QUOTA_EXCEEDED', 'Kevin lleva 5 de 6 productos este mes.'],
+    ['STAFF_SALE_NOT_ELIGIBLE', 'Shampoo no está disponible para venta a staff.'],
+    ['STAFF_SALE_VARIANT_REQUIRED', 'Elige la variante de Shampoo antes de cobrar.'],
+  ]
+
+  for (const [code, apiMessage] of STAFF_SALE_REJECTIONS) {
+    it(`${code}: muestra el mensaje del API, conserva el carrito y NO abre el aviso de puesta al día`, async () => {
+      const user = userEvent.setup()
+      const repos = makeRepos()
+      repos.checkout.evictCatalogCache = vi.fn()
+      repos.checkout.createSale = vi.fn().mockRejectedValue(new CheckoutRejectedError(code, apiMessage))
+      renderWithProviders(<CheckoutPage />, {
+        initialRoute: '/checkout',
+        repos: { ...repos, auth: new TestAuthRepo() },
+      })
+      await addCorteAndConfirm(user)
+
+      // El texto en español del API se pinta tal cual (banner de error).
+      await waitFor(() => expect(screen.getAllByText(apiMessage).length).toBeGreaterThan(0))
+      // Y NO como aviso de "ya me puse al día" ([D-035]): ese es el único que
+      // remata con "Toca Cobrar para continuar".
+      expect(screen.queryByText(/toca cobrar para continuar/i)).not.toBeInTheDocument()
+      // Nada que poner al día: el catálogo no se tira.
+      expect(repos.checkout.evictCatalogCache).not.toHaveBeenCalled()
+      // Carrito intacto y hoja abierta: el operador corrige y vuelve a cobrar.
+      expect(await screen.findByRole('button', { name: /cobrar.*280/i })).toBeEnabled()
+      expect(screen.getByRole('dialog', { name: /pago/i })).toBeInTheDocument()
+    })
+  }
 })

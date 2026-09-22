@@ -2831,6 +2831,141 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-039",
+      "title": "recoverFromRejection: ningún rechazo del cobro se traga en silencio (exhaustividad)",
+      "description": "Hallazgo Important del Principal (2ª pasada, run 2026-09-19-a). En src/features/checkout/application/useCheckout.ts (~línea 820, `recoverFromRejection`) el switch de recuperación solo cubre PRICE_MISMATCH / BARBER_EXCLUDED / STOCK / REGISTER_SESSION_STALE, pero `toCheckoutRejection` puede devolver los tres códigos STAFF_SALE_* de T-029 (`AnyCheckoutRejectionCode`, [D-039]): con uno de ellos la función pasa el guard de UNKNOWN, ejecuta `setError(null)` (~827) y sale del switch sin fijar `error` ni `rejectionNotice` — el cobro rechazado no muestra NADA al operador. Hoy es alcanzable por los patrones de texto de checkout.types.ts y queda armado para la tarea que cablee la venta a staff en la UI. Cambios: (1) Agregar casos explícitos para `StaffSaleRejectionCode` que hagan `setError(detail)` con el mensaje en español del API (no son recuperables: el API decide; el carrito se conserva y `submitting` vuelve a false) y un `default:` con check de exhaustividad `satisfies never` (o `const _exhaustive: never = code`) para que el próximo código nuevo NO compile sin decidir su manejo. (2) No cambies la recuperación de los cuatro casos existentes ni la UI. Tests: en src/features/checkout/presentation/CheckoutPage.test.tsx, un rechazo con código STAFF_SALE_* (usa el mock del repositorio para lanzar el CheckoutRejectedError) muestra el mensaje del API en el banner de error existente, conserva el carrito y no abre `rejectionNotice`; y en src/features/checkout/application/useCheckout.saleActivity.test.tsx, `submitting` vuelve a false tras ese rechazo.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Un rechazo STAFF_SALE_* muestra el mensaje del API, conserva el carrito y no abre rejectionNotice",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/application",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Exhaustividad del switch garantizada por el compilador",
+          "check": "grep -q 'never' src/features/checkout/application/useCheckout.ts && npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Eslint limpio en el hook",
+          "check": "npx eslint src/features/checkout/application/useCheckout.ts",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-19-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1 (2ª pasada): el hueco del switch y el fix propuesto (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "recoverFromRejection y el flujo submit/finally que debe conservar el carrito (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/domain/checkout.types.ts",
+          "reason": "CheckoutRejectionCode vs StaffSaleRejectionCode vs AnyCheckoutRejectionCode ([D-039]) (AC-2)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-035] rejectionNotice solo para rechazos recuperados; [D-039] unión hermana de venta a staff (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/checkout/presentation/CheckoutPage.test.tsx",
+          "reason": "Cómo se simula un CheckoutRejectedError desde el repositorio mock (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/presentation/CheckoutPage.test.tsx",
+        "src/features/checkout/application/useCheckout.saleActivity.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-040",
+      "title": "Handoff al API: las suscripciones del canal de frescura no deben ser públicas",
+      "description": "Hallazgo Important del Principal (2ª pasada, run 2026-09-19-a). Las CUATRO suscripciones del canal (walkInQueueUpdated, saleEvent, appointmentUpdated y posDataChanged, esta última estrenada en T-019/T-020) son públicas en el API: cualquiera que conozca el slug de la sucursal (adivinable: centro/sur/norte) puede observar en tiempo real ventas, movimientos de caja, correcciones de pago y ediciones de comisión (kind + hora + ids). El run amplió esa superficie y el riesgo vive solo en comentarios de src/core/apollo/client.ts (~255) y src/core/freshness/freshness.queries.ts (~19). El arreglo de fondo es del API: PROHIBIDO tocar ../bienbravo-api (repo independiente; solo consulta de lectura). Esta tarea NO acepta el riesgo en nombre del dueño ni cambia el comportamiento del POS: produce el handoff accionable. Entregable: el archivo .harness/handoffs/T-040.md con (a) `## Interfaz expuesta`: el contrato propuesto de autenticación del WebSocket — qué credencial mandaría el POS por `connectionParams` en `createClient` de graphql-ws (audita en src/core/auth/ y src/core/apollo/client.ts qué tiene el POS en memoria: la cookie bb_session es HttpOnly y NO viaja en el upgrade cross-site de Safari/iPad según T-035; di si existe un JWT accesible o si hace falta un token de canal emitido por el API), y el punto exacto del API donde validarlo (api/src/main.ts, `useServer` de graphql-ws: onConnect/context leyendo connectionParams; guards por slug ↔ sucursal de la sesión); (b) `## Archivos`: los del POS que cambiarían (client.ts, freshness.queries.ts y sus tests) y los del API; (c) `## Decisiones tomadas`: ninguna — deja explícito que la decisión (cerrar vs aceptar el riesgo) es del dueño; (d) `## Advertencias para dependientes`: el orden de despliegue (API acepta la credencial ANTES de exigirla; el POS la manda ANTES de que el API la exija; ventana de compatibilidad) y el impacto en el handshake de Safari/iPad. Mismo formato accionable que el handoff de T-036 (archivo, función, línea aproximada, evidencia). Además, reescribe los dos comentarios del POS (client.ts y freshness.queries.ts) para que citen este handoff como deuda rastreada en vez de describir el riesgo como si fuera aceptado. ≤60 líneas.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El handoff trae el contrato propuesto (connectionParams) y el punto del API donde validarlo",
+          "check": "grep -q 'connectionParams' .harness/handoffs/T-040.md && grep -q 'main.ts' .harness/handoffs/T-040.md && grep -q 'Advertencias para dependientes' .harness/handoffs/T-040.md",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Los comentarios del POS citan el handoff como deuda rastreada",
+          "check": "grep -q 'T-040' src/core/apollo/client.ts && grep -q 'T-040' src/core/freshness/freshness.queries.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Sin cambio de comportamiento: typecheck, eslint y tests del canal en verde",
+          "check": "npm run typecheck && npx eslint src/core/apollo src/core/freshness && npm test -- src/core/freshness",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-19-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #2 (2ª pasada): superficie expuesta y las dos mitades del fix (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-036.md",
+          "reason": "Formato de handoff cross-repo accionable a imitar (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-035.md",
+          "reason": "Auditoría previa: las 4 subscriptions son públicas y el upgrade WS de Safari no lleva cookie (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/apollo/client.ts",
+          "reason": "createClient de graphql-ws: dónde irían connectionParams; comentario ~255 a reescribir (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/freshness/freshness.queries.ts",
+          "reason": "Suscripción posDataChanged y su comentario ~19 a reescribir (AC-2)"
+        },
+        {
+          "type": "doc",
+          "path": "../bienbravo-api/docs/PERMISSIONS.md",
+          "reason": "Solo lectura: matriz de permisos del API para proponer el guard por sucursal (AC-1)"
+        }
+      ],
+      "files": [
+        ".harness/handoffs/T-040.md",
+        "src/core/apollo/client.ts",
+        "src/core/freshness/freshness.queries.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "chore",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }

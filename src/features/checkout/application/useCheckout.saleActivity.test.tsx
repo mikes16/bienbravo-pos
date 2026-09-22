@@ -10,6 +10,7 @@ import { FreshnessContext, type FreshnessContextValue } from '@/core/freshness/F
 import { getSaleActivitySnapshot, resetSaleActivity } from '@/core/auth/saleActivity'
 import { createMockRepositories } from '@/test/mocks/repositories'
 import type { Repositories } from '@/core/repositories/registry'
+import { CheckoutRejectedError } from '../domain/checkout.types'
 import type { SaleResult as ApiSaleResult } from '../domain/checkout.types'
 import { useCheckout } from './useCheckout'
 
@@ -185,6 +186,44 @@ describe('useCheckout · venta en curso y envío (core/auth/saleActivity)', () =
     expect(result.current.error).toBe('No hay red.')
     // El carrito conserva sus líneas: la venta sigue abierta para reintentar,
     // así que el operador conserva el plazo largo del bloqueo.
+    expect(getSaleActivitySnapshot().inProgress).toBe(true)
+  })
+
+  /**
+   * Venta a staff ([D-039]): el rechazo NO es recuperable, pero tampoco puede
+   * dejar el cobro colgado. El envío se cierra igual que en cualquier fallo y
+   * el mensaje del API queda en `error` — nunca en `rejectionNotice`, que es
+   * el aviso de "ya me puse al día" ([D-035]).
+   */
+  it('un rechazo de venta a staff cierra el envío y deja el mensaje del API a la vista', async () => {
+    const repos = makeRepos()
+    const sale = deferred<ApiSaleResult>()
+    repos.checkout.createSale = vi.fn(() => sale.promise)
+    const { result, setPaused } = await mountLoaded(repos)
+
+    act(() => {
+      result.current.addCatalogItem(CERA)
+    })
+    let submitted: Promise<unknown> = Promise.resolve(null)
+    act(() => {
+      submitted = result.current.submit(CASH_PAYMENT)
+    })
+    expect(getSaleActivitySnapshot().submitting).toBe(true)
+
+    await act(async () => {
+      sale.reject(
+        new CheckoutRejectedError('STAFF_SALE_VARIANT_REQUIRED', 'Elige la variante antes de cobrar.'),
+      )
+      await submitted
+    })
+
+    expect(result.current.submitting).toBe(false)
+    expect(getSaleActivitySnapshot().submitting).toBe(false)
+    expect(setPaused).toHaveBeenLastCalledWith(false)
+    expect(result.current.error).toBe('Elige la variante antes de cobrar.')
+    expect(result.current.rejectionNotice).toBeNull()
+    // El carrito se conserva: la venta sigue abierta para corregir y reintentar.
+    expect(result.current.cartState.lines).toHaveLength(1)
     expect(getSaleActivitySnapshot().inProgress).toBe(true)
   })
 

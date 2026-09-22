@@ -11,6 +11,7 @@ import { cartLinesToDiscountItems, recomputeAppliedCoupons } from '../lib/coupon
 import { sortCatalogItems, onlyCategorized } from '../lib/sort-catalog'
 import { toCheckoutRejection } from '../domain/checkout.types'
 import type {
+  AnyCheckoutRejectionCode,
   CheckoutPayment,
   CheckoutRejectionCode,
   CatalogService,
@@ -816,23 +817,33 @@ export function useCheckout() {
    * Punto único de entrada: clasifica el rechazo y ejecuta su recuperación.
    * `UNKNOWN` conserva el comportamiento de siempre (mensaje del servidor en
    * el banner) porque no hay nada que poner al día.
+   *
+   * INVARIANTE: ningún rechazo sale de aquí sin dejar algo en pantalla —
+   * `rejectionNotice` si el POS se puso al día, `error` si no hay nada que
+   * poner al día. El `switch` es EXHAUSTIVO sobre `AnyCheckoutRejectionCode`
+   * ([D-039]: recuperables + venta a staff) y el `default` lo fija con un
+   * `never`: un código nuevo del dominio NO compila hasta que alguien decida
+   * qué ve el operador.
    */
   const recoverFromRejection = async (err: unknown, fallbackMessage: string): Promise<void> => {
     const rejection = toCheckoutRejection(err)
     const detail = rejection.message || fallbackMessage
-    if (rejection.code === 'UNKNOWN' || !locationId) {
+    // Copia local para que el narrowing del switch (y el `never` del default)
+    // cuelgue de un const y no de una propiedad leída entre `await`s.
+    const code: AnyCheckoutRejectionCode = rejection.code
+    if (code === 'UNKNOWN' || !locationId) {
       setError(detail)
       return
     }
     setError(null)
     try {
-      switch (rejection.code) {
+      switch (code) {
         case 'PRICE_MISMATCH':
         case 'BARBER_EXCLUDED': {
           const previousTotalCents = computeTotals(cartState.lines).subtotalCents
           const newTotalCents = await repriceCartLines(locationId)
           setRejectionNotice({
-            code: rejection.code,
+            code,
             message: PRICE_CHANGED_MESSAGE,
             detail,
             previousTotalCents,
@@ -863,6 +874,27 @@ export function useCheckout() {
             newTotalCents: null,
             shortages: [],
           })
+          break
+        }
+        // Venta a staff ([D-039]): NADA de esto se arregla recargando el
+        // catálogo — lo resuelve el operador (elegir la variante, quitar la
+        // línea) o el dueño (subir el tope en Ajustes). Por eso van al banner
+        // de `error` con el mensaje en español del API tal cual, y NUNCA a
+        // `rejectionNotice`, que significa "ya me puse al día, confirma"
+        // ([D-035]). El carrito queda intacto y `submitting` vuelve a false en
+        // el `finally` de submit: el operador corrige y vuelve a cobrar.
+        case 'STAFF_SALE_QUOTA_EXCEEDED':
+        case 'STAFF_SALE_NOT_ELIGIBLE':
+        case 'STAFF_SALE_VARIANT_REQUIRED':
+          setError(detail)
+          break
+        default: {
+          // `code` es `never` aquí SOLO si los `case` de arriba cubren toda
+          // la unión: un miembro nuevo rompe el typecheck en esta línea. Si
+          // aun así llegara uno en runtime, el operador ve el texto del API
+          // con el código — jamás la pantalla muda que motivó esta tarea.
+          const unhandledCode: never = code
+          setError(`${detail} (${String(unhandledCode)})`)
           break
         }
       }
