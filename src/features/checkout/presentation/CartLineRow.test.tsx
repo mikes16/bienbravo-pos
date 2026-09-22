@@ -18,6 +18,25 @@ const LINE = {
   staffUserId: 'b1',
 }
 
+// Línea de PRODUCTO ya convertida a precio staff: `unitPriceCents` es lo que
+// se cobra hoy ($150 c/u) y el público congelado ($280 c/u) llega por prop.
+const PRODUCT_LINE = {
+  id: 'l2',
+  kind: 'product' as const,
+  itemId: 'prod-1',
+  name: 'Pomada mate',
+  qty: 2,
+  unitPriceCents: 15000,
+  staffUserId: 'b1',
+}
+
+const NOOP_HANDLERS = {
+  onIncQty: () => {},
+  onDecQty: () => {},
+  onSetBarber: () => {},
+  onRemove: () => {},
+}
+
 describe('CartLineRow', () => {
   it('renders name, qty, line total', () => {
     render(<CartLineRow line={LINE} barbers={BARBERS} onIncQty={() => {}} onDecQty={() => {}} onSetBarber={() => {}} onRemove={() => {}} />)
@@ -77,5 +96,57 @@ describe('CartLineRow', () => {
     // Antonio (b1) sigue disponible; Beto (b2) está excluido y no aparece.
     expect(screen.getByLabelText('Antonio')).toBeInTheDocument()
     expect(screen.queryByLabelText('Beto')).not.toBeInTheDocument()
+  })
+
+  // ── Modo venta a staff (spec §4.5) ──
+  describe('modo venta a staff', () => {
+    it('pinta el precio staff con el público tachado y anuncia los dos', () => {
+      render(
+        <CartLineRow
+          line={PRODUCT_LINE}
+          barbers={BARBERS}
+          staffListUnitPriceCents={28000}
+          {...NOOP_HANDLERS}
+        />,
+      )
+      // Los dos precios son totales de línea (×2): staff $300, público $560.
+      const previo = screen.getByRole('deletion')
+      expect(previo).toHaveTextContent('$560')
+      expect(screen.getByText('$300')).toBeInTheDocument()
+      // El tachado no puede ser solo visual: la fila nombra ambos precios.
+      expect(
+        screen.getByRole('button', {
+          name: /precio staff \$300, precio público anterior \$560/i,
+        }),
+      ).toBeInTheDocument()
+    })
+
+    it('sin precio staff no aparece ningún precio extra', () => {
+      render(<CartLineRow line={PRODUCT_LINE} barbers={BARBERS} {...NOOP_HANDLERS} />)
+      expect(screen.queryByRole('deletion')).not.toBeInTheDocument()
+      expect(screen.getByText('$300')).toBeInTheDocument()
+      expect(screen.queryByText('$560')).not.toBeInTheDocument()
+      // Y la fila se anuncia como siempre: un solo precio, sin rótulos nuevos.
+      expect(screen.queryByRole('button', { name: /precio staff/i })).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /pomada mate, antonio, \$300\. toca para modificar\./i }),
+      ).toBeInTheDocument()
+    })
+
+    it('canta el motivo por el que la línea no se puede cobrar a staff', () => {
+      render(
+        <CartLineRow
+          line={PRODUCT_LINE}
+          barbers={BARBERS}
+          staffBlockMessage="Elige la presentación"
+          {...NOOP_HANDLERS}
+        />,
+      )
+      expect(screen.getByText('Elige la presentación')).toBeInTheDocument()
+      // También viaja en la etiqueta de la fila (el motivo bloquea el cobro).
+      expect(
+        screen.getByRole('button', { name: /elige la presentación/i }),
+      ).toBeInTheDocument()
+    })
   })
 })

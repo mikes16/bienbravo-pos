@@ -17,6 +17,14 @@ interface CartLineRowProps {
   // se ocultan del picker para que el cajero nunca los asigne (dejaría la línea
   // en $0). Vacío para productos o servicios/combos sin exclusiones.
   excludedBarberIds?: string[]
+  // Precio PÚBLICO congelado por unidad cuando la línea va a precio staff —
+  // es la única marca de "esta línea es staff" ([D-041]), no hay bandera
+  // paralela. Ausente/null = línea normal: la fila se pinta como siempre.
+  staffListUnitPriceCents?: number | null
+  // Qué le falta a esta línea para poder cobrarse a staff ("Elige la
+  // presentación", "…no está disponible para venta a staff"). Es lo que
+  // bloquea el cobro, así que se canta en la fila y no solo en la barra.
+  staffBlockMessage?: string | null
   onIncQty: (lineId: string) => void
   onDecQty: (lineId: string) => void
   onSetBarber: (lineId: string, barberId: string) => void
@@ -34,8 +42,22 @@ interface CartLineRowProps {
  * necesita los controles, así que esconderlos por defecto baja muchísimo el
  * ruido visual cuando hay 3-5 servicios en el cart. Patrón inspirado en
  * Shopify POS 2026 — controles aparecen solo cuando se necesitan.
+ *
+ * En modo venta a staff (spec §4.5) la misma fila gana el precio público
+ * tachado a la izquierda del vigente y, si la línea no se puede cobrar, el
+ * motivo bajo el nombre. Sin esas props la fila es idéntica a la de siempre.
  */
-export function CartLineRow({ line, barbers, excludedBarberIds, onIncQty, onDecQty, onSetBarber, onRemove }: CartLineRowProps) {
+export function CartLineRow({
+  line,
+  barbers,
+  excludedBarberIds,
+  staffListUnitPriceCents,
+  staffBlockMessage,
+  onIncQty,
+  onDecQty,
+  onSetBarber,
+  onRemove,
+}: CartLineRowProps) {
   const [expanded, setExpanded] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement | null>(null)
@@ -46,6 +68,21 @@ export function CartLineRow({ line, barbers, excludedBarberIds, onIncQty, onDecQ
   const excluded = excludedBarberIds ?? []
   const selectableBarbers = excluded.length > 0 ? barbers.filter((b) => !excluded.includes(b.id)) : barbers
   const lineTotalCents = line.unitPriceCents * line.qty
+  // Total público de la línea (el tachado). `null` = la línea no va a precio
+  // staff y no se pinta ningún precio extra.
+  const listTotalCents =
+    staffListUnitPriceCents === undefined || staffListUnitPriceCents === null
+      ? null
+      : staffListUnitPriceCents * line.qty
+  // El tachado no puede ser información solo visual: el aria-label de la fila
+  // nombra los dos precios. Sin precio staff, el texto es el de siempre.
+  const priceLabel =
+    listTotalCents === null
+      ? formatMoney(lineTotalCents)
+      : `precio staff ${formatMoney(lineTotalCents)}, precio público anterior ${formatMoney(listTotalCents)}`
+  const rowLabel = `${line.qty}× ${line.name}, ${currentBarber?.fullName ?? 'sin barbero'}, ${priceLabel}${
+    staffBlockMessage ? `, ${staffBlockMessage}` : ''
+  }. Toca para modificar.`
 
   useEffect(() => {
     if (pickerOpen) {
@@ -62,20 +99,41 @@ export function CartLineRow({ line, barbers, excludedBarberIds, onIncQty, onDecQ
         onClick={() => setExpanded((v) => !v)}
         className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-cuero-viejo)]/30"
         aria-expanded={expanded}
-        aria-label={`${line.qty}× ${line.name}, ${currentBarber?.fullName ?? 'sin barbero'}, ${formatMoney(lineTotalCents)}. Toca para modificar.`}
+        aria-label={rowLabel}
       >
         {/* Qty — tabular nums para que dos dígitos no descoloquen el layout. */}
         <span className="w-6 shrink-0 text-center font-mono text-[12px] font-bold tabular-nums text-[var(--color-bone-muted)]">
           {line.qty}×
         </span>
-        {/* Nombre — toma todo el espacio disponible. */}
-        <span className="min-w-0 flex-1 truncate text-[14px] font-bold text-[var(--color-bone)]">
-          {line.name}
+        {/* Nombre — toma todo el espacio disponible. Bajo él, sólo en modo
+            venta a staff, el motivo por el que esta línea no se puede cobrar. */}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[14px] font-bold text-[var(--color-bone)]">
+            {line.name}
+          </span>
+          {staffBlockMessage ? (
+            <span className="mt-0.5 text-[11px] font-bold text-[var(--color-bravo)]">
+              {staffBlockMessage}
+            </span>
+          ) : null}
         </span>
         {/* Barbero pill — info, no acción. La acción es expandir la fila. */}
         <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
           {currentBarber?.fullName.split(' ')[0] ?? '—'}
         </span>
+        {/* Precio público tachado — sólo en modo venta a staff, a la izquierda
+            del vigente. `<s>` (contenido ya no vigente), no una clase suelta:
+            el tachado es semántica, no decoración. */}
+        {listTotalCents !== null && (
+          // `role` explícito (el implícito de `<s>` todavía no lo mapea el
+          // motor de roles de las pruebas) para poder consultarlo por rol.
+          <s
+            role="deletion"
+            className="shrink-0 text-[12px] font-bold tabular-nums text-[var(--color-bone-muted)]"
+          >
+            {formatMoney(listTotalCents)}
+          </s>
+        )}
         {/* Precio — peso visual del total de la línea. */}
         <span className="shrink-0 text-[14px] font-extrabold tabular-nums text-[var(--color-bone)]">
           {formatMoney(lineTotalCents)}

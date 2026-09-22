@@ -168,6 +168,15 @@ export function CheckoutPage() {
     return m
   }, [ck.catalogItems])
 
+  // Mapa lineId → vista staff de esa línea (precio público congelado + motivo
+  // de bloqueo). Mismo pipe que `excludedByCatalogItem`: la página deriva, la
+  // lista reparte por línea. Con el modo apagado `staffSale.lines` es [] y
+  // ninguna fila recibe nada, así que el carrito se ve como siempre.
+  const staffLinesByLineId = useMemo(
+    () => new Map(ck.staffSale.lines.map((l) => [l.lineId, l])),
+    [ck.staffSale.lines],
+  )
+
   const totals = computeTotals(ck.cartState.lines)
   const defaultBarber = ck.barbers.find((b) => b.id === ck.cartState.defaultBarberId) ?? ck.barbers[0]
   // Barbero atendiendo = el default barber REAL de la venta (no el fallback de
@@ -383,6 +392,7 @@ export function CheckoutPage() {
         lines={ck.cartState.lines}
         barbers={ck.barbers}
         excludedByCatalogItem={excludedByCatalogItem}
+        staffLines={staffLinesByLineId}
         onIncQty={(lineId) => ck.dispatch({ type: 'incQty', lineId })}
         onDecQty={(lineId) => ck.dispatch({ type: 'decQty', lineId })}
         onSetBarber={(lineId, barberId) => void ck.changeLineBarber(lineId, barberId)}
