@@ -1,5 +1,5 @@
-import { act, screen, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { AgendaPage } from './AgendaPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
@@ -28,6 +28,10 @@ const APPT_10AM = {
 describe('AgendaPage', () => {
   beforeEach(() => {
     window.localStorage.setItem('bb-pos-location-id', 'loc1')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders empty state when no appointments', async () => {
@@ -64,33 +68,92 @@ describe('AgendaPage', () => {
     expect(timeElements.length).toBeGreaterThan(0)
   })
 
-  // FIX 7: antes de que `appointments` tuviera keyArgs correctos (FIX 5),
-  // AgendaPage "funcionaba" por accidente compartiendo bucket de cache con
-  // Hoy/Mi Día. Con buckets separados, necesita su propio refetch en
-  // focus/visibilitychange (mismo patrón que CajaPage) o pinta el snapshot
-  // del mount inicial toda la sesión.
-  it('refetches appointments with force:true on window focus and visibilitychange', async () => {
+  // Clase VIVO sin dinero (spec § 3.1): la agenda puede pintarse de la memoria
+  // de esta sesión, pero SIEMPRE se revalida contra la red. Sin esto, el
+  // caché sirve el snapshot del primer mount toda la sesión y las citas
+  // creadas desde el admin o desde otra tablet no aparecen nunca.
+  it('pide las citas a la red al montar, aunque el caché tenga copia', async () => {
     const repos = createMockRepositories()
-    const getAppointments = vi.fn().mockResolvedValue([])
+    const getAppointments = vi.fn().mockResolvedValue([APPT_10AM])
     repos.agenda.getAppointments = getAppointments
     renderWithProviders(<AgendaPage />, {
       repos: { ...repos, auth: new TestAuthRepo() },
     })
 
-    await waitFor(() =>
-      expect(getAppointments).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), 'loc1', undefined, undefined,
-      ),
+    expect(await screen.findByText(/carlos méndez/i)).toBeInTheDocument()
+    expect(getAppointments).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), 'loc1', undefined, { force: true },
     )
+    // Ninguna lectura sin forzar: la agenda nunca se sirve del caché.
+    expect(getAppointments.mock.calls.every((c) => c[4]?.force === true)).toBe(true)
+  })
 
-    const forcedCalls = () =>
-      getAppointments.mock.calls.filter((c) => c[4]?.force === true).length
+  // El canal único de frescura sustituye a los listeners propios: la pantalla
+  // registra UNA carga por clase de dato ([D-019]), así que un aviso de citas
+  // la recarga y uno de ventas no la toca.
+  it('recarga con el aviso de citas del canal y no con el de ventas', async () => {
+    const repos = createMockRepositories()
+    const getAppointments = vi.fn().mockResolvedValue([APPT_10AM])
+    repos.agenda.getAppointments = getAppointments
+    const { announce } = renderWithProviders(<AgendaPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    expect(await screen.findByText(/carlos méndez/i)).toBeInTheDocument()
 
-    act(() => { window.dispatchEvent(new Event('focus')) })
-    await waitFor(() => expect(forcedCalls()).toBeGreaterThanOrEqual(1))
+    const afterMount = getAppointments.mock.calls.length
+    await announce('sales')
+    expect(getAppointments).toHaveBeenCalledTimes(afterMount)
 
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
-    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
-    await waitFor(() => expect(forcedCalls()).toBeGreaterThanOrEqual(2))
+    await announce('appointments')
+    expect(getAppointments).toHaveBeenCalledTimes(afterMount + 1)
+    expect(getAppointments.mock.calls.every((c) => c[4]?.force === true)).toBe(true)
+  })
+
+  // [D-018] (tirar el dato al fallar) es regla de DINERO: lo vivo se conserva,
+  // pero deja de presentarse como actual — se canta la hora del último dato
+  // bueno en la tz de la sucursal.
+  it('conserva las citas con aviso y hora cuando falla el refresco', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-05-04T16:05:00.000Z')) // 10:05 en America/Monterrey
+
+    const repos = createMockRepositories()
+    const getAppointments = vi
+      .fn()
+      .mockResolvedValueOnce([APPT_10AM])
+      .mockRejectedValue(new Error('Failed to fetch'))
+    repos.agenda.getAppointments = getAppointments
+    const { announce } = renderWithProviders(<AgendaPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    expect(await screen.findByText(/carlos méndez/i)).toBeInTheDocument()
+
+    await announce('appointments')
+
+    const aviso = await screen.findByText(/sin conexión · datos de las 10:05/i)
+    expect(aviso).toHaveAttribute('role', 'status')
+    // La lista sigue ahí: no se vacía la pantalla por un fallo de red.
+    expect(screen.getByText(/carlos méndez/i)).toBeInTheDocument()
+  })
+
+  it('retira el aviso cuando el refresco vuelve a funcionar', async () => {
+    const repos = createMockRepositories()
+    const getAppointments = vi
+      .fn()
+      .mockResolvedValueOnce([APPT_10AM])
+      .mockRejectedValueOnce(new Error('Failed to fetch'))
+      .mockResolvedValue([APPT_10AM])
+    repos.agenda.getAppointments = getAppointments
+    const { announce } = renderWithProviders(<AgendaPage />, {
+      repos: { ...repos, auth: new TestAuthRepo() },
+    })
+    expect(await screen.findByText(/carlos méndez/i)).toBeInTheDocument()
+
+    await announce('appointments')
+    expect(await screen.findByText(/sin conexión · datos de las/i)).toBeInTheDocument()
+
+    await announce('appointments')
+    await waitFor(() =>
+      expect(screen.queryByText(/sin conexión · datos de las/i)).not.toBeInTheDocument(),
+    )
   })
 })

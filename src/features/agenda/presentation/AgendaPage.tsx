@@ -1,14 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatMoney } from '@/shared/lib/money.ts'
 import { formatTimeInTz, minutesOfDayInTz } from '@/shared/lib/date'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
+import { useLiveRefresh } from '@/core/freshness/useLiveRefresh'
+import type { FreshnessTopic } from '@/core/freshness/FreshnessProvider'
 import { TouchButton } from '@/shared/pos-ui/TouchButton'
 import { SkeletonRow } from '@/shared/pos-ui/index'
 import { useAgenda } from '../application/useAgenda.ts'
 import type { Appointment, AppointmentStatus } from '../domain/agenda.types.ts'
+
+/**
+ * La agenda sólo se mueve con avisos de citas ([D-019]: un registro por CLASE
+ * de dato, no uno monolítico por pantalla). Constante de módulo: un literal
+ * nuevo en cada render re-registraría el cargador sin parar.
+ */
+const AGENDA_TOPICS: readonly FreshnessTopic[] = ['appointments']
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -377,31 +386,33 @@ export function AgendaPage() {
   // appointments.create / cancel / reschedule / prepay.cancel_link: el API
   // los gatea pero AgendaPage todavía no tiene botones UI para esas acciones.
   // Cuando se construyan, sumar las constantes aquí.
-  const { appointments, loading, error, checkIn, startService, complete, noShow, refresh } = useAgenda(
+  const { appointments, loading, error, lastLoadedAt, checkIn, startService, complete, noShow, refresh } = useAgenda(
     viewer?.staff.id ?? null,
     locationId,
   )
   const [payingAppt, setPayingAppt] = useState<Appointment | null>(null)
   const [confirmNoShowAppt, setConfirmNoShowAppt] = useState<Appointment | null>(null)
 
-  // Refetch on focus + visibilitychange — patrón espejo de CajaPage. Antes de
-  // que `appointments` tuviera keyArgs correctos (fix de cache), esta pantalla
-  // "funcionaba" por accidente: compartía bucket de cache con Hoy/Mi Día, que
-  // sí se force-refrescaban. Con keyArgs correctos, Agenda tiene su propio
-  // bucket y necesita su propio refresh — si no, queda pintando el snapshot
-  // del último mount toda la sesión. force:true fuerza network-only; en
-  // tablet, alternar apps no siempre dispara window.focus, así que sumamos
-  // visibilitychange.
-  useEffect(() => {
-    const onFocus = () => refresh({ force: true })
-    const onVisible = () => { if (document.visibilityState === 'visible') refresh({ force: true }) }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [refresh])
+  // Puesta al día por el canal ÚNICO del POS: esta pantalla ya no abre
+  // conexiones en vivo propias ni espía el estado de la ventana, y tampoco
+  // pregunta cada N segundos. El canal avisa cuando el servidor dice que una
+  // cita cambió (y al reconectar, al desbloquear o al tocar "Actualizar"); la
+  // carga inicial la hace el hook, porque `useLiveRefresh` no llama al
+  // cargador al montar (handoff T-007).
+  useLiveRefresh(refresh, AGENDA_TOPICS)
+
+  // Falló la red y hay citas en memoria: se conservan —esto es lo VIVO, no
+  // dinero— pero dejan de presentarse como actuales. Se canta la hora del
+  // último dato bueno en la tz de la SUCURSAL, nunca la del device. Sin nada
+  // previo que mostrar, manda el aviso de error de siempre.
+  const staleSinceTime =
+    error && appointments.length > 0 && lastLoadedAt
+      ? formatTimeInTz(lastLoadedAt.toISOString(), locationTimezone)
+      : null
+
+  // El esqueleto es sólo para la primera carga: un refresco del canal no debe
+  // vaciar una lista que ya está en pantalla.
+  const showSkeleton = loading && appointments.length === 0
 
   // sort by startAt asc
   const sorted = [...appointments].sort(
@@ -466,15 +477,23 @@ export function AgendaPage() {
         </button>
       </div>
 
-      {/* ── error ── */}
-      {error && (
+      {/* ── datos viejos / error ── */}
+      {staleSinceTime ? (
+        <div className="mb-4 border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/[0.06] px-4 py-3">
+          {/* role="status" y no "alert": no interrumpe, pero sí se anuncia —
+              operar a ciegas sobre citas viejas no es un detalle decorativo. */}
+          <p role="status" className="text-[13px] text-[var(--color-warning)]">
+            Sin conexión · datos de las {staleSinceTime}
+          </p>
+        </div>
+      ) : error ? (
         <div role="alert" className="mb-4 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/[0.06] px-4 py-3">
           <p className="text-[13px] text-[var(--color-bravo)]">{error}</p>
         </div>
-      )}
+      ) : null}
 
       {/* ── body ── */}
-      {loading ? (
+      {showSkeleton ? (
         <div>
           {[1, 2, 3, 4].map((i) => (
             <AgendaSkeletonRow key={i} />
@@ -547,7 +566,9 @@ export function AgendaPage() {
           onClose={() => setPayingAppt(null)}
           onPaid={() => {
             setPayingAppt(null)
-            refresh()
+            // El rechazo ya lo pintó el hook; se traga aquí para no dejar una
+            // promesa suelta.
+            void refresh().catch(() => {})
           }}
         />
       )}
