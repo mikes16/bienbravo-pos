@@ -1,13 +1,26 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { ApolloClient } from '@apollo/client'
+import type { MockedProviderProps } from '@apollo/client/testing/react'
 import { MyDayPage, computeWorkedMinutes } from './MyDayPage'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import { createMockRepositories, InMemoryAuthRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
+import {
+  FreshnessContext,
+  type FreshnessConnection,
+  type FreshnessContextValue,
+  type FreshnessLoader,
+  type FreshnessTopic,
+} from '@/core/freshness/FreshnessProvider'
+import type { Repositories } from '@/core/repositories/registry'
 import type { PosViewer } from '@/core/auth/auth.types'
 import type { SaleDetail } from '@/features/checkout/data/checkout.repository'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import { POS_MY_DAY_EARNINGS } from '@/features/home/data/home.queries'
+
+/** Nombre accesible del hero de ganancias (MoneyValue, [D-006]). */
+const EARNINGS_LABEL = 'Lo que llevas hoy'
 
 class TestAuthRepo extends InMemoryAuthRepository {
   override async getViewer() { return MOCK_VIEWER }
@@ -22,96 +35,83 @@ function authRepoWithPermissions(permissions: string[]): InMemoryAuthRepository 
   })()
 }
 
-/** Mock Apollo del query de earnings con una venta directa atribuida al viewer
- *  (sin walk-in ni appointment linkados → aparece como row de "Venta"). */
-function earningsMockWithOneSale(saleId: string) {
+type Mocks = MockedProviderProps['mocks']
+
+interface SaleEntryOptions {
+  saleId: string
+  customerName: string
+  earningsCents?: number
+  tipCents?: number
+  itemLabels?: string[]
+  soldAt?: string
+}
+
+/** Entrada del desglose per-sale: una venta directa (sin walk-in ni cita
+ *  linkados) atribuida al viewer → aparece como row de "Venta". */
+function saleEntry(o: SaleEntryOptions) {
+  const earnings = o.earningsCents ?? 12000
   return {
-    request: {
-      query: POS_MY_DAY_EARNINGS,
-      variables: {
-        staffUserId: MOCK_VIEWER.staff.id,
-        locationId: 'loc1',
-        date: new Date(
-          `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
-        )
-          .toISOString()
-          .slice(0, 10),
-      },
-    },
-    // Variables se matchean por igualdad profunda; usamos el mismo todayISO.
-    variableMatcher: () => true,
+    __typename: 'StaffDaySaleEarning',
+    saleId: o.saleId,
+    commissionCents: earnings - (o.tipCents ?? 0),
+    tipCents: o.tipCents ?? 0,
+    earningsCents: earnings,
+    soldAt: o.soldAt ?? new Date().toISOString(),
+    customerName: o.customerName,
+    linkedWalkInId: null,
+    linkedAppointmentId: null,
+    itemLabels: o.itemLabels ?? ['Corte clásico'],
+    attributedRevenueCents: 30000,
+  }
+}
+
+/**
+ * Ganancias del día. Las variables se matchean con función: la fecha la
+ * calcula la pantalla en la tz de la sucursal y no queremos que el test se
+ * rompa por el reloj de la máquina. `maxUsageCount` alto porque la pantalla
+ * re-consulta en cada aviso del canal.
+ */
+function earningsMock(
+  o: {
+    totalCommissionCents?: number
+    tipsCents?: number
+    perSale?: ReturnType<typeof saleEntry>[]
+    maxUsageCount?: number
+  } = {},
+) {
+  const total = o.totalCommissionCents ?? 12000
+  const tips = o.tipsCents ?? 0
+  return {
+    request: { query: POS_MY_DAY_EARNINGS, variables: () => true },
+    maxUsageCount: o.maxUsageCount ?? 20,
     result: {
       data: {
         staffDayEarnings: {
           __typename: 'StaffDayEarnings',
-          serviceCommissionCents: 12000,
+          serviceCommissionCents: total - tips,
           productCommissionCents: 0,
-          tipsCents: 0,
-          totalCommissionCents: 12000,
+          tipsCents: tips,
+          totalCommissionCents: total,
           serviceRevenueCents: 30000,
           productRevenueCents: 0,
-          perSale: [
-            {
-              __typename: 'StaffDaySaleEarning',
-              saleId,
-              commissionCents: 12000,
-              tipCents: 0,
-              earningsCents: 12000,
-              soldAt: new Date().toISOString(),
-              customerName: 'Juan Pérez',
-              linkedWalkInId: null,
-              linkedAppointmentId: null,
-              itemLabels: ['Corte clásico'],
-              attributedRevenueCents: 30000,
-            },
-          ],
+          perSale: o.perSale ?? [],
         },
       },
     },
   }
 }
 
-/** Mock de earnings con DOS ventas directas atribuidas al viewer → dos rows de
- *  "Venta". Cada una con su propio cliente para distinguir los botones. */
-function earningsMockWithTwoSales(a: { saleId: string; customerName: string }, b: { saleId: string; customerName: string }) {
-  const base = earningsMockWithOneSale(a.saleId)
+/** Mock que nunca responde — deja la cifra en vuelo. */
+function earningsInFlight() {
+  return { request: { query: POS_MY_DAY_EARNINGS, variables: () => true }, delay: Infinity }
+}
+
+/** Mock que falla — el servidor respondió con error. */
+function earningsError() {
   return {
-    ...base,
-    result: {
-      data: {
-        staffDayEarnings: {
-          ...base.result.data.staffDayEarnings,
-          perSale: [
-            {
-              __typename: 'StaffDaySaleEarning',
-              saleId: a.saleId,
-              commissionCents: 12000,
-              tipCents: 0,
-              earningsCents: 12000,
-              soldAt: new Date(Date.now() - 1000).toISOString(),
-              customerName: a.customerName,
-              linkedWalkInId: null,
-              linkedAppointmentId: null,
-              itemLabels: ['Corte clásico'],
-              attributedRevenueCents: 30000,
-            },
-            {
-              __typename: 'StaffDaySaleEarning',
-              saleId: b.saleId,
-              commissionCents: 9000,
-              tipCents: 0,
-              earningsCents: 9000,
-              soldAt: new Date().toISOString(),
-              customerName: b.customerName,
-              linkedWalkInId: null,
-              linkedAppointmentId: null,
-              itemLabels: ['Barba'],
-              attributedRevenueCents: 20000,
-            },
-          ],
-        },
-      },
-    },
+    request: { query: POS_MY_DAY_EARNINGS, variables: () => true },
+    maxUsageCount: 1,
+    error: new Error('boom'),
   }
 }
 
@@ -160,81 +160,242 @@ function evt(at: string, type: 'CLOCK_IN' | 'CLOCK_OUT'): TimeClockEvent {
   return { id: at, type, at }
 }
 
+interface Registration {
+  load: FreshnessLoader
+  topics: readonly FreshnessTopic[]
+}
+
+/**
+ * Canal de frescura de mentira: la pantalla ya no escucha el socket ni el
+ * foco de la ventana, así que el test hace de servidor avisando por tema.
+ * El objeto es estable (se crea una vez) para no re-registrar en cada render.
+ */
+function createFreshnessStub(connection: FreshnessConnection = 'connected') {
+  const registrations = new Set<Registration>()
+  const value: FreshnessContextValue = {
+    connection,
+    lastUpdatedAt: null,
+    refreshAll: () => {},
+    setPaused: () => {},
+    register: (load, topics) => {
+      const entry: Registration = { load, topics }
+      registrations.add(entry)
+      return () => {
+        registrations.delete(entry)
+      }
+    },
+  }
+  /** Avisa del tema y espera a que las cargas registradas terminen. */
+  async function announce(topic: FreshnessTopic) {
+    await act(async () => {
+      await Promise.allSettled(
+        [...registrations].filter((r) => r.topics.includes(topic)).map((r) => r.load()),
+      )
+    })
+  }
+  return { value, registrations, announce }
+}
+
+function renderMyDay(
+  options: {
+    repos?: Repositories
+    auth?: InMemoryAuthRepository
+    mocks?: Mocks
+    connection?: FreshnessConnection
+  } = {},
+) {
+  const fresh = createFreshnessStub(options.connection)
+  renderWithProviders(
+    <FreshnessContext.Provider value={fresh.value}>
+      <MyDayPage />
+    </FreshnessContext.Provider>,
+    {
+      repos: {
+        ...(options.repos ?? createMockRepositories()),
+        auth: options.auth ?? new TestAuthRepo(),
+      },
+      apolloMocks: options.mocks ?? [earningsMock()],
+    },
+  )
+  return fresh
+}
+
+/** Espía de `client.query` para contar (y auditar) lo que se pide a la red. */
+function spyOnQueries() {
+  const spy = vi.spyOn(ApolloClient.prototype, 'query')
+  return {
+    spy,
+    earningsCalls(): Array<{ query: unknown; fetchPolicy?: string }> {
+      const calls = spy.mock.calls as unknown as Array<[{ query: unknown; fetchPolicy?: string }]>
+      return calls.map(([opts]) => opts).filter((opts) => opts.query === POS_MY_DAY_EARNINGS)
+    },
+  }
+}
+
+function earningsFigure() {
+  return screen.getByRole('group', { name: EARNINGS_LABEL })
+}
+
 describe('MyDayPage', () => {
   beforeEach(() => {
     window.localStorage.setItem('bb-pos-location-id', 'loc1')
   })
+  afterEach(() => vi.restoreAllMocks())
 
   it('renders heading "Mi Día"', async () => {
-    renderWithProviders(<MyDayPage />, {
-      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
-    })
+    renderMyDay()
     expect(await screen.findByText(/mi día/i)).toBeInTheDocument()
   })
 
   it('renders staff name in viewer-aware copy', async () => {
-    renderWithProviders(<MyDayPage />, {
-      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
-    })
+    renderMyDay()
     expect(await screen.findByText(MOCK_VIEWER.staff.fullName)).toBeInTheDocument()
   })
 
   it('renders KPI sections', async () => {
-    renderWithProviders(<MyDayPage />, {
-      repos: { ...createMockRepositories(), auth: new TestAuthRepo() },
-    })
-    // Con el mock vacío (sin ventas) el subtitle "en ventas" del hero no se
-    // renderiza (grossRevenue=0), así que afirmamos sobre un KPI que SIEMPRE
-    // está presente: la sección de operación.
+    renderMyDay()
     expect(await screen.findByText(/citas completadas/i)).toBeInTheDocument()
     expect(screen.getByText(/tiempo trabajado/i)).toBeInTheDocument()
   })
 
-  // FIX 6: MyDayPage solo tenía window.focus, no visibilitychange — en tablet,
-  // alternar apps (ej. abrir Caja y volver) no siempre dispara focus. Mirror
-  // de HoyPage/CajaPage: ambos listeners deben forzar network-only.
-  it('reloads with force:true on window focus and visibilitychange', async () => {
+  // ── Dinero siempre de la red (spec § 3.1, regla del dueño) ─────────────
+
+  it('asks the network for the earnings on mount, never the cache', async () => {
+    const queries = spyOnQueries()
+    renderMyDay({ mocks: [earningsMock({ totalCommissionCents: 66000 })] })
+
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$660'))
+    const calls = queries.earningsCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].fetchPolicy).toBe('network-only')
+  })
+
+  it('a "sales" announcement reloads the money and not the list', async () => {
     const repos = createMockRepositories()
     const getAppointments = vi.fn().mockResolvedValue([])
     repos.agenda.getAppointments = getAppointments
-    renderWithProviders(<MyDayPage />, {
-      repos: { ...repos, auth: new TestAuthRepo() },
+    const queries = spyOnQueries()
+    const fresh = renderMyDay({ repos, mocks: [earningsMock({ totalCommissionCents: 66000 })] })
+
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$660'))
+    await waitFor(() => expect(getAppointments).toHaveBeenCalled())
+    const apptCalls = getAppointments.mock.calls.length
+
+    // Otra iPad cobró: el servidor avisa por el tema `sales`.
+    await fresh.announce('sales')
+
+    expect(queries.earningsCalls()).toHaveLength(2)
+    expect(queries.earningsCalls()[1].fetchPolicy).toBe('network-only')
+    // [D-019]: el tema del dinero no arrastra la lista.
+    expect(getAppointments.mock.calls.length).toBe(apptCalls)
+  })
+
+  it('a "walkins" announcement reloads the list and not the money', async () => {
+    const repos = createMockRepositories()
+    const getAppointments = vi.fn().mockResolvedValue([])
+    repos.agenda.getAppointments = getAppointments
+    const queries = spyOnQueries()
+    const fresh = renderMyDay({ repos, mocks: [earningsMock({ totalCommissionCents: 66000 })] })
+
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$660'))
+    await waitFor(() => expect(getAppointments).toHaveBeenCalled())
+    const apptCalls = getAppointments.mock.calls.length
+
+    await fresh.announce('walkins')
+
+    expect(getAppointments.mock.calls.length).toBeGreaterThan(apptCalls)
+    expect(queries.earningsCalls()).toHaveLength(1)
+  })
+
+  it('does not open live connections of its own (the channel is shared)', async () => {
+    const subscribeSpy = vi.spyOn(ApolloClient.prototype, 'subscribe')
+    const fresh = renderMyDay({ mocks: [earningsMock({ totalCommissionCents: 66000 })] })
+
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$660'))
+    expect(subscribeSpy).not.toHaveBeenCalled()
+    // Y sí quedó registrada en el canal único, con sus temas.
+    const topics = [...fresh.registrations].flatMap((r) => [...r.topics])
+    expect(topics).toEqual(expect.arrayContaining(['sales', 'walkins', 'appointments']))
+  })
+
+  // ── Estados de la cifra (spec § 3.1b) ──────────────────────────────────
+
+  it('shows a skeleton — no digits — while the earnings are in flight', async () => {
+    renderMyDay({ mocks: [earningsInFlight()] })
+
+    const figure = await screen.findByRole('group', { name: EARNINGS_LABEL })
+    expect(figure).toHaveAttribute('aria-busy', 'true')
+    expect(figure.textContent ?? '').not.toMatch(/\d/)
+    expect(figure.textContent ?? '').not.toContain('$')
+  })
+
+  it('a failed refresh drops the figure instead of showing the previous one', async () => {
+    const fresh = renderMyDay({
+      mocks: [
+        earningsMock({ totalCommissionCents: 66000, maxUsageCount: 1 }),
+        earningsError(),
+        earningsMock({ totalCommissionCents: 71000, maxUsageCount: 1 }),
+      ],
+    })
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$660'))
+
+    await fresh.announce('sales')
+
+    // [D-018]: nada de cifra vieja haciéndose pasar por la de ahora.
+    const figure = earningsFigure()
+    expect(figure).toHaveTextContent(/no se pudo cargar/i)
+    expect(figure.textContent ?? '').not.toMatch(/\d/)
+
+    // Y la salida es tocar Reintentar, no recargar la app.
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /reintentar/i }))
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$710'))
+  })
+
+  it('with the live channel down the figure says "sin conexión", not a stale amount', async () => {
+    renderMyDay({ connection: 'offline', mocks: [earningsError()] })
+
+    const figure = await screen.findByRole('group', { name: EARNINGS_LABEL })
+    await waitFor(() => expect(figure).toHaveTextContent(/sin conexión/i))
+    expect(figure.textContent ?? '').not.toMatch(/\d/)
+  })
+
+  it('a real zero renders as $0 with its empty-state copy', async () => {
+    renderMyDay({ mocks: [earningsMock({ totalCommissionCents: 0 })] })
+
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$0'))
+    expect(await screen.findByText(/aún no hay servicios cerrados hoy/i)).toBeInTheDocument()
+  })
+
+  it('paints the per-row amount with the money component, not a bare numeral', async () => {
+    renderMyDay({
+      mocks: [
+        earningsMock({
+          totalCommissionCents: 12000,
+          perSale: [saleEntry({ saleId: 'sale-abc', customerName: 'Juan Pérez' })],
+        }),
+      ],
     })
 
-    // El mount ya llama con force:true (walkIns/appointments siempre por red
-    // en MyDayPage — ver comentario en loadDay), así que contamos llamadas
-    // forzadas totales en vez de una transición false→true.
-    await waitFor(() => expect(getAppointments).toHaveBeenCalled())
-    const forcedCallsBefore = getAppointments.mock.calls.filter((c) => c[4]?.force === true).length
-
-    act(() => { window.dispatchEvent(new Event('focus')) })
-    await waitFor(() =>
-      expect(getAppointments.mock.calls.filter((c) => c[4]?.force === true).length).toBeGreaterThan(forcedCallsBefore),
-    )
-    const forcedCallsAfterFocus = getAppointments.mock.calls.filter((c) => c[4]?.force === true).length
-
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
-    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
-    await waitFor(() =>
-      expect(getAppointments.mock.calls.filter((c) => c[4]?.force === true).length).toBeGreaterThan(forcedCallsAfterFocus),
-    )
+    const row = await screen.findByRole('group', { name: /tu parte de juan pérez/i })
+    expect(row).toHaveTextContent('$120')
   })
 
   // ── Gate de pos.sale.read ──────────────────────────────────────────────
 
   it('WITHOUT pos.sale.read: la row de venta NO es clickable (sin button)', async () => {
-    const saleId = 'sale-abc'
-    renderWithProviders(<MyDayPage />, {
-      // MOCK_VIEWER no incluye pos.sale.read por default.
-      repos: { ...createMockRepositories(), auth: authRepoWithPermissions(['pos.sale.create']) },
-      apolloMocks: [earningsMockWithOneSale(saleId)],
+    renderMyDay({
+      // MOCK_VIEWER sí incluye pos.sale.read; acá recortamos los permisos.
+      auth: authRepoWithPermissions(['pos.sale.create']),
+      mocks: [
+        earningsMock({ perSale: [saleEntry({ saleId: 'sale-abc', customerName: 'Juan Pérez' })] }),
+      ],
     })
     // La venta aparece como row con el nombre del cliente.
     const customer = await screen.findByText('Juan Pérez')
     expect(customer).toBeInTheDocument()
     // La row NO debe ser un <button> ni tener role button — gate duro.
-    const row = customer.closest('button')
-    expect(row).toBeNull()
+    expect(customer.closest('button')).toBeNull()
     expect(
       screen.queryByRole('button', { name: /ver detalle de venta/i }),
     ).not.toBeInTheDocument()
@@ -242,37 +403,14 @@ describe('MyDayPage', () => {
 
   it('WITH pos.sale.read: la row es un button y al hacer tap abre el sheet con "Tu parte"', async () => {
     const saleId = 'sale-abc'
-    const checkout = createMockRepositories().checkout
+    const repos = createMockRepositories()
     // Override getSaleDetail para que el sheet tenga contenido.
-    checkout.getSaleDetail = async () => ({
-      id: saleId,
-      createdAt: new Date().toISOString(),
-      subtotalCents: 30000,
-      taxTotalCents: 0,
-      totalCents: 30000,
-      tipCents: 0,
-      customer: { id: 'c1', fullName: 'Juan Pérez' },
-      payments: [{ provider: 'CASH', amountCents: 30000 }],
-      items: [
-        {
-          id: `${saleId}-item-0`,
-          name: 'Corte clásico',
-          qty: 1,
-          unitPriceCents: 30000,
-          totalCents: 30000,
-          staffUser: { id: MOCK_VIEWER.staff.id, fullName: MOCK_VIEWER.staff.fullName },
-        },
-      ],
-      discounts: [],
-    })
+    repos.checkout.getSaleDetail = async () => saleDetail(saleId, 'Juan Pérez', 'Corte clásico')
 
-    renderWithProviders(<MyDayPage />, {
-      repos: {
-        ...createMockRepositories(),
-        checkout,
-        auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
-      },
-      apolloMocks: [earningsMockWithOneSale(saleId)],
+    renderMyDay({
+      repos,
+      auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
+      mocks: [earningsMock({ perSale: [saleEntry({ saleId, customerName: 'Juan Pérez' })] })],
     })
 
     const trigger = await screen.findByRole('button', { name: /ver detalle de venta/i })
@@ -304,21 +442,29 @@ describe('MyDayPage', () => {
       [saleB]: deferred<SaleDetail | null>(),
     }
 
-    const checkout = createMockRepositories().checkout
+    const repos = createMockRepositories()
     // Resolución controlada por id: el test decide el orden de resolución.
-    checkout.getSaleDetail = (id: string) => deferredById[id].promise
+    repos.checkout.getSaleDetail = (id: string) => deferredById[id].promise
 
-    renderWithProviders(<MyDayPage />, {
-      repos: {
-        ...createMockRepositories(),
-        checkout,
-        auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
-      },
-      apolloMocks: [
-        earningsMockWithTwoSales(
-          { saleId: saleA, customerName: 'Cliente Alpha' },
-          { saleId: saleB, customerName: 'Cliente Beta' },
-        ),
+    renderMyDay({
+      repos,
+      auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
+      mocks: [
+        earningsMock({
+          perSale: [
+            saleEntry({
+              saleId: saleA,
+              customerName: 'Cliente Alpha',
+              soldAt: new Date(Date.now() - 1000).toISOString(),
+            }),
+            saleEntry({
+              saleId: saleB,
+              customerName: 'Cliente Beta',
+              earningsCents: 9000,
+              itemLabels: ['Barba'],
+            }),
+          ],
+        }),
       ],
     })
 
@@ -347,18 +493,15 @@ describe('MyDayPage', () => {
   // (role="alert") en vez de quedarse en loading o crashear.
   it('error path: si getSaleDetail rechaza, el sheet muestra el estado de error', async () => {
     const saleId = 'sale-err'
-    const checkout = createMockRepositories().checkout
-    checkout.getSaleDetail = async () => {
+    const repos = createMockRepositories()
+    repos.checkout.getSaleDetail = async () => {
       throw new Error('boom')
     }
 
-    renderWithProviders(<MyDayPage />, {
-      repos: {
-        ...createMockRepositories(),
-        checkout,
-        auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
-      },
-      apolloMocks: [earningsMockWithOneSale(saleId)],
+    renderMyDay({
+      repos,
+      auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
+      mocks: [earningsMock({ perSale: [saleEntry({ saleId, customerName: 'Juan Pérez' })] })],
     })
 
     const trigger = await screen.findByRole('button', { name: /ver detalle de venta/i })

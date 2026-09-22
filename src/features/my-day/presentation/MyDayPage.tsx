@@ -1,16 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useApolloClient } from '@apollo/client/react'
-import { formatMoney } from '@/shared/lib/money.ts'
 import { localDayInTz, localDayRangeInTz, formatTimeInTz } from '@/shared/lib/date'
 import { usePosAuth } from '@/core/auth/usePosAuth.ts'
 import { useLocation } from '@/core/location/useLocation.ts'
 import { useRepositories } from '@/core/repositories/RepositoryProvider.tsx'
-import {
-  POS_MY_DAY_EARNINGS,
-  POS_HOME_WALK_IN_QUEUE_UPDATED,
-  POS_HOME_APPOINTMENT_UPDATED,
-  POS_HOME_SALE_EVENT,
-} from '@/features/home/data/home.queries'
+import { useFreshness, useLiveRefresh } from '@/core/freshness/useLiveRefresh'
+import type { FreshnessTopic } from '@/core/freshness/FreshnessProvider'
+import { MoneyValue, TouchButton, type MoneyValueStatus } from '@/shared/pos-ui'
+import { POS_MY_DAY_EARNINGS } from '@/features/home/data/home.queries'
 import type { Appointment } from '@/features/agenda/domain/agenda.types.ts'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository.ts'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types.ts'
@@ -64,13 +61,67 @@ interface UpcomingAppt {
 }
 
 interface DaySummary {
-  completedCount: number
+  /** `null` = "no sé": las ventas directas del día salen de la consulta de
+   *  dinero, así que sin ella el conteo es desconocido ([D-020]). */
+  completedCount: number | null
   hoursWorked: string
   clockedIn: boolean
   completedItems: CompletedItem[]
   upcomingAppts: UpcomingAppt[]
-  breakdown: EarningsBreakdown
 }
+
+/** Lo VIVO sin dinero de Mi Día (spec 2026-09-18 § 3.1): agenda, fila y reloj
+ *  del operador. Se revalida siempre contra la red, la carga de montaje
+ *  incluida. */
+interface MyDayBoard {
+  appointments: Appointment[]
+  walkIns: WalkIn[]
+  clockEvents: TimeClockEvent[]
+}
+
+/** Lo que Mi Día lee del día del barbero en clase DINERO: el desglose de
+ *  ganancias y el detalle por venta. */
+interface MyDayEarnings {
+  breakdown: EarningsBreakdown
+  perSale: Map<string, PerSaleEntry>
+}
+
+interface EarningsQueryData {
+  staffDayEarnings: {
+    serviceCommissionCents: number
+    productCommissionCents: number
+    tipsCents: number
+    totalCommissionCents: number
+    serviceRevenueCents: number
+    productRevenueCents: number
+    perSale: Array<{
+      saleId: string
+      commissionCents: number
+      tipCents: number
+      earningsCents: number
+      soldAt: string
+      customerName: string | null
+      linkedWalkInId: string | null
+      linkedAppointmentId: string | null
+      itemLabels: string[]
+      attributedRevenueCents: number
+    }>
+  } | null
+}
+
+// Temas del canal ÚNICO de avisos (src/core/freshness). Constantes de módulo:
+// un literal nuevo en cada render re-registraría el cargador sin parar.
+/** El dinero del barbero sólo se mueve con ventas. */
+const MONEY_TOPICS: readonly FreshnessTopic[] = ['sales']
+/** La lista de servicios y lo que viene se mueven con la fila y la agenda. */
+const BOARD_TOPICS: readonly FreshnessTopic[] = ['walkins', 'appointments']
+
+/** Nombres accesibles de las cifras de dinero ([D-006]: label obligatorio). */
+const EARNINGS_LABEL = 'Lo que llevas hoy'
+const GROSS_LABEL = 'Ventas que atendiste hoy'
+
+const LIST_ERROR_MESSAGE =
+  'No se pudo cargar tu día. Toca Reintentar o avisa al admin si persiste.'
 
 /**
  * Walk through clock events as a state machine instead of pairing by index.
@@ -131,9 +182,10 @@ function computeWorkSummary(
   walkIns: WalkIn[],
   clockEvents: TimeClockEvent[],
   staffUserId: string,
-  breakdown: EarningsBreakdown,
-  perSaleMap: Map<string, PerSaleEntry>,
+  /** `null` mientras el servidor no responda el dinero del día. */
+  earnings: MyDayEarnings | null,
 ): DaySummary {
+  const perSaleMap = earnings?.perSale ?? new Map<string, PerSaleEntry>()
   // Walk-ins ya vienen pre-filtrados por fecha del servidor (fromDate/toDate
   // del query). Solo aplicamos los filtros semánticos restantes: status DONE
   // y assignedStaffUser === viewer. Appointments y clock events también
@@ -149,7 +201,10 @@ function computeWorkSummary(
   const directSales = Array.from(perSaleMap.values()).filter(
     (e) => !e.linkedWalkInId && !e.linkedAppointmentId,
   )
-  const completedCount = completedAppts.length + completedWalkIns.length + directSales.length
+  // Sin la respuesta de dinero el conteo es desconocido: la vista lo pinta
+  // como esqueleto en vez de anunciar un total incompleto.
+  const completedCount =
+    earnings === null ? null : completedAppts.length + completedWalkIns.length + directSales.length
 
   // Timeline ordenado cronológicamente descendente — lo más reciente arriba.
   // Para cada row enriquezco con earnings derivado del per-sale del API:
@@ -245,24 +300,26 @@ function computeWorkSummary(
     clockedIn,
     completedItems,
     upcomingAppts,
-    breakdown,
   }
 }
 
 interface KPICardProps {
   label: string
-  value: string
-  loading?: boolean
+  /** `null` = todavía no se sabe: esqueleto, nunca un cero inventado. */
+  value: string | null
 }
 
-function KPICard({ label, value, loading = false }: KPICardProps) {
+function KPICard({ label, value }: KPICardProps) {
   return (
     <div className="border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-4">
       <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
         {label}
       </p>
-      {loading ? (
-        <div className="mt-2 h-7 w-16 animate-pulse rounded bg-[var(--color-leather-muted)]/20" />
+      {value === null ? (
+        <div
+          aria-hidden
+          className="mt-2 h-7 w-16 animate-pulse rounded bg-[var(--color-leather-muted)]/20 motion-reduce:animate-none"
+        />
       ) : (
         <p className="mt-2 font-[var(--font-pos-display)] text-[28px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
           {value}
@@ -272,14 +329,36 @@ function KPICard({ label, value, loading = false }: KPICardProps) {
   )
 }
 
+/**
+ * "Mi Día": lo que el barbero se lleva hoy y los servicios que atendió.
+ *
+ * Reglas del lote de frescura (spec 2026-09-18 §§ 3.1, 3.1b y 3.3):
+ * - El dinero (`staffDayEarnings`) se pide SIEMPRE a la red. No hay política
+ *   alternativa ni parámetro para pedirlo de la memoria ([D-017]): con varias
+ *   iPads cobrando, una cifra guardada está mal en cuanto otra terminal cobra.
+ * - Toda cifra de dinero se pinta con `MoneyValue` ([D-005]): esqueleto
+ *   mientras no hay respuesta, aviso si falló. Nunca `$0` falso ni la cifra
+ *   anterior haciéndose pasar por la de ahora ([D-018]).
+ * - Los avisos llegan por UN solo canal (`src/core/freshness`). Esta pantalla
+ *   ya no abre conexiones en vivo propias ni vigila el foco/visibilidad de la
+ *   ventana, y registra una carga POR CLASE de dato ([D-019]): el tema
+ *   `sales` recarga el dinero; `walkins`/`appointments` recargan la lista.
+ */
 export function MyDayPage() {
   const apollo = useApolloClient()
   const { viewer } = usePosAuth()
-  const { locationId, locationSlug, locationTimezone } = useLocation()
+  const { locationId, locationTimezone } = useLocation()
   const { agenda, clock, walkins } = useRepositories()
-  const [summary, setSummary] = useState<DaySummary | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  // Estado del canal en vivo: distingue "se cayó la red" de "el servidor
+  // respondió con error" para las cifras de dinero (spec § 3.1b).
+  const { connection } = useFreshness()
+
+  const [board, setBoard] = useState<MyDayBoard | null>(null)
+  const [boardError, setBoardError] = useState<string | null>(null)
+  const [boardRefreshing, setBoardRefreshing] = useState(false)
+  const [earnings, setEarnings] = useState<MyDayEarnings | null>(null)
+  const [earningsFailed, setEarningsFailed] = useState(false)
+  const [earningsRefreshing, setEarningsRefreshing] = useState(false)
   const [detailTarget, setDetailTarget] = useState<SaleDetailTarget | null>(null)
 
   const staffName = viewer?.staff?.fullName ?? ''
@@ -290,170 +369,198 @@ export function MyDayPage() {
   // pedida por el dueño. El API además gatea el resolver `sale(id)`.
   const canViewSaleDetail = (viewer?.permissions ?? []).includes('pos.sale.read')
 
-  // Extracted en un callback para que mount + focus refetch reusen la misma
-  // lógica. `showSpinner` = mount inicial muestra spinner; focus refetch hace
-  // background revalidation sin parpadeo. `force` = focus / post-mutation
-  // empuja network-only para asegurar freshness; mount inicial cache-first
-  // para pintar instant desde el cache persistido (boot subsecuente del POS).
-  const loadDay = useCallback((opts: { showSpinner: boolean; force: boolean }) => {
-    if (!viewer || !locationId) return
-    const d = localDayInTz(new Date(), locationTimezone)
-    const { startUtc: todayStart, endUtc: todayEnd } = localDayRangeInTz(
-      localDayInTz(new Date(), locationTimezone),
-      locationTimezone,
-    )
-    if (opts.showSpinner) setLoading(true)
+  // --- Lecturas puras (sin tocar estado) ------------------------------------
+  // Se usan tal cual en el montaje y detrás de los cargadores del canal de
+  // frescura; así ningún setState cuelga del cuerpo de un efecto.
 
-    setLoadError(null)
-    Promise.allSettled([
-      // walkIns + appointments siempre por red — son listas que cambian
-      // por mutaciones laterales (createPOSSale, assign, complete) y el
-      // cache stale mostraba data zombie tras cobrar (mismo bug que Hoy).
-      agenda.getAppointments(d, d, locationId, undefined, { force: true }),
-      clock.getEvents(viewer.staff.id, locationId, d, d),
-      walkins.getWalkIns(locationId, todayStart.toISOString(), todayEnd.toISOString(), { force: true }),
-      apollo.query<{
-        staffDayEarnings: {
-          serviceCommissionCents: number
-          productCommissionCents: number
-          tipsCents: number
-          totalCommissionCents: number
-          serviceRevenueCents: number
-          productRevenueCents: number
-          perSale: Array<{
-            saleId: string
-            commissionCents: number
-            tipCents: number
-            earningsCents: number
-            soldAt: string
-            customerName: string | null
-            linkedWalkInId: string | null
-            linkedAppointmentId: string | null
-            itemLabels: string[]
-            attributedRevenueCents: number
-          }>
-        }
-      }>({
-        query: POS_MY_DAY_EARNINGS,
-        variables: { staffUserId: viewer.staff.id, locationId, date: d },
-        fetchPolicy: opts.force ? 'network-only' : 'cache-first',
-      }),
+  const fetchBoard = useCallback(async (): Promise<MyDayBoard | null> => {
+    if (!viewer || !locationId) return null
+    const day = localDayInTz(new Date(), locationTimezone)
+    const { startUtc, endUtc } = localDayRangeInTz(day, locationTimezone)
+    // `Promise.all`: si alguna de las tres falla, la carga entera falla. Una
+    // lista a medias en una pantalla de dinero es peor que decir "no pude".
+    const [appointments, clockEvents, walkInRows] = await Promise.all([
+      // walkIns y appointments SIEMPRE por red: son listas que cambian por
+      // mutaciones laterales (createPOSSale, assign, complete) y lo guardado
+      // mostraba data zombie tras cobrar (mismo bug que Hoy).
+      agenda.getAppointments(day, day, locationId, undefined, { force: true }),
+      clock.getEvents(viewer.staff.id, locationId, day, day),
+      walkins.getWalkIns(locationId, startUtc.toISOString(), endUtc.toISOString(), { force: true }),
     ])
-      .then(([apptsRes, eventsRes, walkinsRes, earningsRes]) => {
-        const appts = apptsRes.status === 'fulfilled' ? apptsRes.value : []
-        const events = eventsRes.status === 'fulfilled' ? eventsRes.value : []
-        const wkins = walkinsRes.status === 'fulfilled' ? walkinsRes.value : []
-        const earnings =
-          earningsRes.status === 'fulfilled' ? earningsRes.value.data?.staffDayEarnings : null
-        const breakdown: EarningsBreakdown = earnings
-          ? {
-              serviceCommissionCents: earnings.serviceCommissionCents,
-              productCommissionCents: earnings.productCommissionCents,
-              tipsCents: earnings.tipsCents,
-              totalCommissionCents: earnings.totalCommissionCents,
-              serviceRevenueCents: earnings.serviceRevenueCents,
-              productRevenueCents: earnings.productRevenueCents,
-            }
-          : {
-              serviceCommissionCents: 0,
-              productCommissionCents: 0,
-              tipsCents: 0,
-              totalCommissionCents: 0,
-              serviceRevenueCents: 0,
-              productRevenueCents: 0,
-            }
-        const perSaleMap = new Map<string, PerSaleEntry>()
-        earnings?.perSale.forEach((entry) => {
-          perSaleMap.set(entry.saleId, {
-            commissionCents: entry.commissionCents,
-            tipCents: entry.tipCents,
-            earningsCents: entry.earningsCents,
-            soldAt: entry.soldAt,
-            customerName: entry.customerName,
-            linkedWalkInId: entry.linkedWalkInId,
-            linkedAppointmentId: entry.linkedAppointmentId,
-            itemLabels: entry.itemLabels,
-            attributedRevenueCents: entry.attributedRevenueCents,
-          })
-        })
-        setSummary(
-          computeWorkSummary(appts, wkins, events, viewer.staff.id, breakdown, perSaleMap),
-        )
+    return { appointments, walkIns: walkInRows, clockEvents }
+  }, [agenda, clock, walkins, viewer, locationId, locationTimezone])
 
-        // Surface partial failures so the operator doesn't see "$0 ventas" silently
-        // when the network/server actually failed. The view still renders with
-        // whatever data did come through.
-        const failures: string[] = []
-        if (apptsRes.status === 'rejected') failures.push('citas')
-        if (eventsRes.status === 'rejected') failures.push('reloj')
-        if (walkinsRes.status === 'rejected') failures.push('fila')
-        if (earningsRes.status === 'rejected') failures.push('ganancias')
-        if (failures.length > 0) {
-          setLoadError(`No se pudo cargar: ${failures.join(', ')}. Refresca o avisa al admin si persiste.`)
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.error('[MyDayPage] partial load failure', { apptsRes, eventsRes, walkinsRes, earningsRes })
-          }
-        }
+  const fetchEarnings = useCallback(async (): Promise<MyDayEarnings | null> => {
+    if (!viewer || !locationId) return null
+    const day = localDayInTz(new Date(), locationTimezone)
+    const res = await apollo.query<EarningsQueryData>({
+      query: POS_MY_DAY_EARNINGS,
+      variables: { staffUserId: viewer.staff.id, locationId, date: day },
+      // DINERO: siempre de la red, sin política alternativa (spec § 3.1 y
+      // [D-017]). El costo es un esqueleto de carga; el beneficio es que la
+      // cifra en pantalla es la que acaba de responder el servidor.
+      fetchPolicy: 'network-only',
+    })
+    const data = res.data?.staffDayEarnings
+    // Sin dato NO es cero: se trata como fallo para que las cifras caigan a
+    // "no se pudo cargar" en vez de anunciar $0 de ganancias.
+    if (!data) throw new Error('El servidor no devolvió tus ganancias del día.')
+    const perSale = new Map<string, PerSaleEntry>()
+    data.perSale.forEach((entry) => {
+      perSale.set(entry.saleId, {
+        commissionCents: entry.commissionCents,
+        tipCents: entry.tipCents,
+        earningsCents: entry.earningsCents,
+        soldAt: entry.soldAt,
+        customerName: entry.customerName,
+        linkedWalkInId: entry.linkedWalkInId,
+        linkedAppointmentId: entry.linkedAppointmentId,
+        itemLabels: entry.itemLabels,
+        attributedRevenueCents: entry.attributedRevenueCents,
       })
-      .finally(() => setLoading(false))
-  }, [agenda, clock, walkins, viewer, locationId, locationTimezone, apollo])
+    })
+    return {
+      breakdown: {
+        serviceCommissionCents: data.serviceCommissionCents,
+        productCommissionCents: data.productCommissionCents,
+        tipsCents: data.tipsCents,
+        totalCommissionCents: data.totalCommissionCents,
+        serviceRevenueCents: data.serviceRevenueCents,
+        productRevenueCents: data.productRevenueCents,
+      },
+      perSale,
+    }
+  }, [apollo, viewer, locationId, locationTimezone])
 
-  // Single load en mount. Antes hacíamos dos pases (cache-first → network-only)
-  // para revalidar al instante, pero eso causaba flash de números viejos
-  // (e.g. comisiones de ayer) → corrección a los 400ms. Para refrescar data
-  // rancia: window.focus listener abajo + el refetch post-mutación que se
-  // dispara desde el flujo de cobro.
-  useEffect(() => {
-    loadDay({ showSpinner: true, force: false })
-  }, [loadDay])
+  // --- Cargas registradas en el canal de frescura ---------------------------
+  // Devuelven su promesa y dejan pasar el error: el canal sólo mueve la hora
+  // del último dato si TODAS las cargas resolvieron.
 
-  // Real-time push: subscribe a walk-in, appointment y sale events de la
-  // sucursal. Cuando llega cualquiera, dispara refetch silencioso (sin
-  // spinner). Caso de uso clave: el dueño está mirando "Mi Día" en otro
-  // POS mientras otro barbero cobra una venta — las comisiones del barbero
-  // afectado se actualizan en <1s sin tener que tocar nada.
-  useEffect(() => {
-    if (!locationSlug) return
-    const onEvent = () => loadDay({ showSpinner: false, force: true })
-    const subscribeTo = (query: typeof POS_HOME_WALK_IN_QUEUE_UPDATED, label: string) => {
-      const obs = apollo.subscribe({ query, variables: { slug: locationSlug } })
-      return obs.subscribe({
-        next: onEvent,
-        error: (err) => {
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.warn(`[MyDayPage] ${label} subscription error`, err)
-          }
-        },
+  const loadBoard = useCallback((): Promise<void> => {
+    if (!viewer || !locationId) return Promise.resolve()
+    setBoardRefreshing(true)
+    return fetchBoard()
+      .then((next) => {
+        if (!next) return
+        setBoardError(null)
+        setBoard(next)
       })
-    }
-    const walkInSub = subscribeTo(POS_HOME_WALK_IN_QUEUE_UPDATED as never, 'walk-in')
-    const apptSub = subscribeTo(POS_HOME_APPOINTMENT_UPDATED as never, 'appointment')
-    const saleSub = subscribeTo(POS_HOME_SALE_EVENT as never, 'sale')
-    return () => {
-      walkInSub.unsubscribe()
-      apptSub.unsubscribe()
-      saleSub.unsubscribe()
-    }
-  }, [apollo, locationSlug, loadDay])
+      .catch((err: unknown) => {
+        // [D-018]: al fallar se tira la lista. Nunca queda la anterior
+        // acompañada de un banner, haciéndose pasar por la de ahora.
+        setBoard(null)
+        setBoardError(LIST_ERROR_MESSAGE)
+        throw err
+      })
+      .finally(() => {
+        setBoardRefreshing(false)
+      })
+  }, [fetchBoard, viewer, locationId])
 
-  // Refetch al volver a la tab — patrón espejo de HoyPage/CajaPage. Sin
-  // spinner + network-only para asegurar datos frescos sin parpadear.
-  // visibilitychange además de focus: en el tablet el operador alterna entre
-  // pantallas/apps (ej. abrir Caja y volver) sin que dispare window.focus —
-  // sin este listener, Mi Día se queda pintando el snapshot de antes del
-  // app-switch hasta el siguiente focus real.
+  const loadEarnings = useCallback((): Promise<void> => {
+    if (!viewer || !locationId) return Promise.resolve()
+    setEarningsRefreshing(true)
+    return fetchEarnings()
+      .then((next) => {
+        if (!next) return
+        setEarningsFailed(false)
+        setEarnings(next)
+      })
+      .catch((err: unknown) => {
+        setEarnings(null)
+        setEarningsFailed(true)
+        throw err
+      })
+      .finally(() => {
+        setEarningsRefreshing(false)
+      })
+  }, [fetchEarnings, viewer, locationId])
+
+  // Un solo canal de avisos para todo el POS: esta pantalla ya no abre sus
+  // propias conexiones en vivo ni escucha focus/visibilitychange (de eso se
+  // encarga FreshnessProvider una vez por sucursal). Cada tema mueve lo suyo
+  // ([D-019]): una venta de otra iPad recarga el dinero; la fila y la agenda
+  // recargan la lista de servicios.
+  useLiveRefresh(loadEarnings, MONEY_TOPICS)
+  useLiveRefresh(loadBoard, BOARD_TOPICS)
+
+  // Carga inicial. El efecto sólo lanza las lecturas: no llama a los `load*`
+  // ni escribe estado en su cuerpo — todo setState vive en los callbacks de
+  // la promesa, con `cancelled` para no pintar sobre un componente desmontado.
   useEffect(() => {
-    const onFocus = () => loadDay({ showSpinner: false, force: true })
-    const onVisible = () => { if (document.visibilityState === 'visible') loadDay({ showSpinner: false, force: true }) }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisible)
+    if (!viewer || !locationId) return
+    let cancelled = false
+    void fetchBoard()
+      .then((next) => {
+        if (cancelled || !next) return
+        setBoard(next)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setBoardError(LIST_ERROR_MESSAGE)
+      })
+    void fetchEarnings()
+      .then((next) => {
+        if (cancelled || !next) return
+        setEarnings(next)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setEarningsFailed(true)
+      })
     return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisible)
+      cancelled = true
     }
-  }, [loadDay])
+  }, [viewer, locationId, fetchBoard, fetchEarnings])
+
+  const retryEarnings = useCallback(() => {
+    // El fallo ya se pinta en la cifra; acá sólo se evita la promesa suelta.
+    void loadEarnings().catch(() => {})
+  }, [loadEarnings])
+
+  const retryBoard = useCallback(() => {
+    void loadBoard().catch(() => {})
+  }, [loadBoard])
+
+  // Estados de una cifra de dinero (spec § 3.1b). "No sé" nunca se disfraza
+  // de $0: sin respuesta del servidor es esqueleto y, si falló, es aviso.
+  // `updating` sólo cuando YA hay una cifra del servidor y se pidió la nueva.
+  const moneyStatus: MoneyValueStatus = earningsFailed
+    ? connection === 'offline'
+      ? 'offline'
+      : 'error'
+    : earnings === null
+      ? 'loading'
+      : earningsRefreshing
+        ? 'updating'
+        : 'fresh'
+
+  // Los montos que vienen de la agenda/fila (el total de una venta linkada a
+  // un walk-in) siguen la suerte de esa carga, no la del desglose de dinero.
+  const listMoneyStatus: MoneyValueStatus = boardError
+    ? connection === 'offline'
+      ? 'offline'
+      : 'error'
+    : board === null
+      ? 'loading'
+      : boardRefreshing
+        ? 'updating'
+        : 'fresh'
+
+  const summary = useMemo<DaySummary | null>(() => {
+    if (!board || !viewer) return null
+    return computeWorkSummary(
+      board.appointments,
+      board.walkIns,
+      board.clockEvents,
+      viewer.staff.id,
+      earnings,
+    )
+  }, [board, earnings, viewer])
+
+  const grossRevenueCents = earnings
+    ? earnings.breakdown.serviceRevenueCents + earnings.breakdown.productRevenueCents
+    : null
 
   return (
     // overflow-y-auto en el container hace que TODO el contenido scrollee
@@ -470,34 +577,26 @@ export function MyDayPage() {
         </p>
       </div>
 
-      {loadError && (
-        <div className="border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/10 px-4 py-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--color-bravo)]">
-            {loadError}
-          </p>
-        </div>
-      )}
-
       {/* HERO: ganancias del barbero, no ventas brutas. El barbero quiere
           saber CUÁNTO se lleva hoy, no cuánto vendió el negocio. */}
-      <EarningsHero summary={summary} loading={loading} />
+      <EarningsHero
+        commissionCents={earnings?.breakdown.totalCommissionCents ?? null}
+        grossRevenueCents={grossRevenueCents}
+        status={moneyStatus}
+        onRetry={retryEarnings}
+      />
 
       {/* DESGLOSE: de dónde viene el total — servicios, productos, propinas. */}
-      <EarningsBreakdownRow summary={summary} loading={loading} />
+      <EarningsBreakdownRow breakdown={earnings?.breakdown ?? null} status={moneyStatus} />
 
       {/* OPERACIÓN: stats secundarios — citas + tiempo. Más chicos, no compiten
           con el hero. */}
       <div className="grid grid-cols-2 gap-3">
         <KPICard
           label="Citas completadas"
-          value={summary ? String(summary.completedCount) : '—'}
-          loading={loading}
+          value={summary?.completedCount != null ? String(summary.completedCount) : null}
         />
-        <KPICard
-          label="Tiempo trabajado"
-          value={summary ? summary.hoursWorked : '—'}
-          loading={loading}
-        />
+        <KPICard label="Tiempo trabajado" value={summary ? summary.hoursWorked : null} />
       </div>
 
       {/* Próximas citas — solo si hay alguna pendiente del día asignada al
@@ -528,24 +627,38 @@ export function MyDayPage() {
       <section className="flex flex-1 flex-col">
         <SectionEyebrow
           label={
-            loading
+            summary?.completedCount == null
               ? 'Servicios de hoy'
-              : `Servicios de hoy · ${summary?.completedCount ?? 0} ${
-                  summary?.completedCount === 1 ? 'realizado' : 'realizados'
+              : `Servicios de hoy · ${summary.completedCount} ${
+                  summary.completedCount === 1 ? 'realizado' : 'realizados'
                 }`
           }
           tone="bone"
         />
-        {loading ? (
+        {boardError ? (
+          // La lista vieja no se queda haciéndose pasar por la de ahora.
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-3 border border-[var(--color-bravo)]/40 bg-[var(--color-bravo)]/10 px-4 py-3"
+          >
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--color-bravo)]">
+              {boardError}
+            </p>
+            <TouchButton variant="secondary" size="min" onClick={retryBoard}>
+              Reintentar
+            </TouchButton>
+          </div>
+        ) : summary === null ? (
+          // Filas esqueleto, nunca una lista vacía que parezca "no atendí a nadie".
           <ul className="flex flex-col gap-px border border-[var(--color-leather-muted)]/40">
             {[1, 2, 3].map((i) => (
               <li
                 key={i}
-                className="h-16 animate-pulse bg-[var(--color-cuero-viejo)]/30"
+                className="h-16 animate-pulse bg-[var(--color-cuero-viejo)]/30 motion-reduce:animate-none"
               />
             ))}
           </ul>
-        ) : !summary || summary.completedItems.length === 0 ? (
+        ) : summary.completedItems.length === 0 ? (
           <div className="border border-[var(--color-leather-muted)]/40 px-5 py-8 text-center">
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
               Aún no hay servicios cerrados hoy.
@@ -558,6 +671,8 @@ export function MyDayPage() {
                 <CompletedRow
                   item={item}
                   tz={locationTimezone}
+                  moneyStatus={moneyStatus}
+                  listMoneyStatus={listMoneyStatus}
                   onOpenDetail={
                     canViewSaleDetail && item.saleId
                       ? () =>
@@ -613,12 +728,18 @@ function SectionEyebrow({ label, tone }: { label: string; tone: 'bone' | 'leathe
 function CompletedRow({
   item,
   tz,
+  moneyStatus,
+  listMoneyStatus,
   onOpenDetail,
 }: {
   item: CompletedItem
   /** Tz de la sucursal — la hora de la row se lee en esta tz, no en la del
    *  device. */
   tz: string
+  /** Estado del desglose de ganancias (de dónde sale "Tu parte"). */
+  moneyStatus: MoneyValueStatus
+  /** Estado de la agenda/fila (de dónde sale el total de la venta linkada). */
+  listMoneyStatus: MoneyValueStatus
   /** Definido SOLO cuando la row es tappable: el viewer tiene `pos.sale.read`
    *  y la row tiene saleId. Si es undefined, la row se renderiza como un div
    *  no interactivo (sin cursor, sin onClick) — el gate duro. */
@@ -634,9 +755,20 @@ function CompletedRow({
   const interactive = !!onOpenDetail
   const Tag = interactive ? 'button' : 'div'
 
-  // "Tu parte" es el protagonista visual; el total es contexto. Cuando no
-  // tenemos el earnings (sin sale linkado), mostramos solo el total como
-  // fallback — pasa para citas pre-sale linkada en este modelo.
+  // UNA sola cifra por fila y siempre con MoneyValue ([D-005]): "Tu parte"
+  // cuando el desglose del servidor la conoce, el total de la venta cuando
+  // todavía no hay comisión atribuida. El desglose completo (total, propina,
+  // items) vive en la hoja de detalle, a un tap de distancia.
+  const showsEarnings = earningsCents != null
+  const amountCents = showsEarnings ? earningsCents : totalCents
+  const amountStatus = showsEarnings ? moneyStatus : listMoneyStatus
+  const amountLabel = showsEarnings
+    ? `Tu parte de ${customerName}`
+    : `Total de la venta de ${customerName}`
+  const amountCaption = showsEarnings
+    ? `Tu parte${tipCents && tipCents > 0 ? ' · incluye propina' : ''}`
+    : 'Total venta'
+
   return (
     <Tag
       {...(interactive
@@ -664,30 +796,26 @@ function CompletedRow({
         </p>
       </div>
       <div className="flex flex-col items-end gap-0.5">
-        {earningsCents != null ? (
+        {amountCents != null ? (
           <>
-            <span className="font-[var(--font-pos-display)] text-[20px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
-              {formatMoney(earningsCents)}
-            </span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
-              Tu parte{tipCents && tipCents > 0 ? ` · incl. ${formatMoney(tipCents)} propina` : ''}
-            </span>
-            {totalCents != null && totalCents !== earningsCents && (
-              <span className="font-mono text-[9px] tabular-nums text-[var(--color-leather)]">
-                Total {formatMoney(totalCents)}
-              </span>
-            )}
-          </>
-        ) : totalCents != null ? (
-          <>
-            <span className="font-[var(--font-pos-display)] text-[18px] font-extrabold tabular-nums leading-none text-[var(--color-bone-muted)]">
-              {formatMoney(totalCents)}
-            </span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-leather)]">
-              Total venta
+            <MoneyValue
+              status={amountStatus}
+              cents={amountCents}
+              label={amountLabel}
+              size="S"
+              className="items-end"
+            />
+            <span
+              className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
+                showsEarnings ? 'text-[var(--color-bone-muted)]' : 'text-[var(--color-leather)]'
+              }`}
+            >
+              {amountCaption}
             </span>
           </>
         ) : (
+          // Cita cerrada sin venta linkada: no hay monto que mostrar. No es
+          // "no sé" (no habría qué cargar), así que tampoco va un esqueleto.
           <span aria-hidden />
         )}
       </div>
@@ -696,84 +824,83 @@ function CompletedRow({
 }
 
 /**
- * Hero principal: lo que el barbero se lleva hoy. Display monumental
- * carbón sobre bone, subtitle muted con contexto de ventas brutas.
+ * Hero principal: lo que el barbero se lleva hoy. Dos cifras del servidor —
+ * su comisión del día y las ventas que atendió — ambas con MoneyValue, así
+ * que mientras el servidor no responda son esqueleto y un fallo nunca deja
+ * la cifra anterior en pantalla.
  */
 function EarningsHero({
-  summary,
-  loading,
+  commissionCents,
+  grossRevenueCents,
+  status,
+  onRetry,
 }: {
-  summary: DaySummary | null
-  loading: boolean
+  commissionCents: number | null
+  grossRevenueCents: number | null
+  status: MoneyValueStatus
+  onRetry: () => void
 }) {
-  const totalEarnings = summary?.breakdown.totalCommissionCents ?? 0
-  const grossRevenue =
-    (summary?.breakdown.serviceRevenueCents ?? 0) +
-    (summary?.breakdown.productRevenueCents ?? 0)
   return (
     <div className="border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-5 py-6">
       <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-bone-muted)]">
         Lo que llevas hoy
       </p>
-      {loading ? (
-        <div className="mt-2 h-12 w-48 animate-pulse rounded bg-[var(--color-leather-muted)]/20" />
-      ) : (
-        <p className="mt-2 font-[var(--font-pos-display)] text-[48px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-[var(--color-bone)]">
-          {formatMoney(totalEarnings)}
-        </p>
-      )}
-      {!loading && grossRevenue > 0 && (
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-leather)]">
-          De {formatMoney(grossRevenue)} en ventas
-        </p>
+      <MoneyValue
+        status={status}
+        cents={commissionCents}
+        label={EARNINGS_LABEL}
+        size="M"
+        onRetry={onRetry}
+        className="mt-2"
+      />
+      {grossRevenueCents !== null && grossRevenueCents > 0 && (
+        <div className="mt-4 flex items-baseline gap-3">
+          <MoneyValue status={status} cents={grossRevenueCents} label={GROSS_LABEL} size="S" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-leather)]">
+            en ventas
+          </span>
+        </div>
       )}
     </div>
   )
 }
 
 /**
- * Desglose 3 categorías: Servicios · Productos · Propinas. Cada columna
- * muestra cuánto del total viene de esa fuente. Si una categoría es 0 se
- * muestra apagada para no romper el grid pero quede claro el aporte.
+ * Desglose 3 categorías: Servicios · Propinas · Productos. Cada columna
+ * muestra cuánto del total viene de esa fuente. Sin respuesta del servidor
+ * las tres son esqueleto: un cero real ("hoy no llevo propinas") sólo se
+ * pinta cuando el desglose llegó.
  */
 function EarningsBreakdownRow({
-  summary,
-  loading,
+  breakdown,
+  status,
 }: {
-  summary: DaySummary | null
-  loading: boolean
+  breakdown: EarningsBreakdown | null
+  status: MoneyValueStatus
 }) {
-  if (loading || !summary) {
-    return (
-      <div className="grid grid-cols-3 gap-3">
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-20 animate-pulse border border-[var(--color-leather-muted)]/40 bg-[var(--color-cuero-viejo)]/20"
-          />
-        ))}
-      </div>
-    )
-  }
-  const { serviceCommissionCents, productCommissionCents, tipsCents, totalCommissionCents } =
-    summary.breakdown
   return (
     <div className="grid grid-cols-3 gap-3">
       <BreakdownCard
         label="Servicios"
-        valueCents={serviceCommissionCents}
-        totalCents={totalCommissionCents}
+        moneyLabel="Comisión por servicios"
+        valueCents={breakdown?.serviceCommissionCents ?? null}
+        totalCents={breakdown?.totalCommissionCents ?? null}
+        status={status}
       />
       <BreakdownCard
         label="Propinas"
-        valueCents={tipsCents}
-        totalCents={totalCommissionCents}
+        moneyLabel="Propinas"
+        valueCents={breakdown?.tipsCents ?? null}
+        totalCents={breakdown?.totalCommissionCents ?? null}
+        status={status}
         accent
       />
       <BreakdownCard
         label="Productos"
-        valueCents={productCommissionCents}
-        totalCents={totalCommissionCents}
+        moneyLabel="Comisión por productos"
+        valueCents={breakdown?.productCommissionCents ?? null}
+        totalCents={breakdown?.totalCommissionCents ?? null}
+        status={status}
       />
     </div>
   )
@@ -781,17 +908,25 @@ function EarningsBreakdownRow({
 
 function BreakdownCard({
   label,
+  moneyLabel,
   valueCents,
   totalCents,
+  status,
   accent,
 }: {
   label: string
-  valueCents: number
-  totalCents: number
+  /** Nombre accesible de la cifra ([D-006]); el rótulo visible es `label`. */
+  moneyLabel: string
+  valueCents: number | null
+  totalCents: number | null
+  status: MoneyValueStatus
   accent?: boolean
 }) {
-  const pct = totalCents > 0 ? Math.round((valueCents / totalCents) * 100) : 0
   const isZero = valueCents === 0
+  const pct =
+    valueCents !== null && totalCents !== null && totalCents > 0 && !isZero
+      ? Math.round((valueCents / totalCents) * 100)
+      : null
   return (
     <div
       className={`border border-[var(--color-leather-muted)]/40 bg-[var(--color-carbon-elevated)] px-4 py-4 ${
@@ -801,14 +936,14 @@ function BreakdownCard({
       <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
         {label}
       </p>
-      <p
-        className={`mt-2 font-[var(--font-pos-display)] text-[22px] font-extrabold leading-none tabular-nums ${
-          isZero ? 'text-[var(--color-leather)]' : 'text-[var(--color-bone)]'
-        }`}
-      >
-        {formatMoney(valueCents)}
-      </p>
-      {totalCents > 0 && !isZero && (
+      <MoneyValue
+        status={status}
+        cents={valueCents}
+        label={moneyLabel}
+        size="S"
+        className="mt-2"
+      />
+      {pct !== null && (
         <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-leather)]">
           {pct}% del día
         </p>
