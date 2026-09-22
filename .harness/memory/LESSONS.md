@@ -17,3 +17,4 @@
 - [build] (x1, T-002b) Estado derivado de una prop se ajusta en el render comparando contra un prevProp guardado en state; el useEffect solo programa/cancela el timer y el setState vive en su callback.
 - [build] (x1, T-002c) Un script npm con target fijo (eslint .) no se puede acotar con -- <ruta>: npm anexa los args y lintea el repo entero; usa npm run lint:path -- <ruta> (script gemelo sin target) para medir un feature.
 - [build] (x1, T-009) Exportar un helper que no es componente desde un .tsx de componente dispara react-refresh/only-export-components: ponlo en su propio módulo o duplícalo local.
+- [test] (x1, T-010) userEvent con timers falsos en este repo: vi.useFakeTimers({ shouldAdvanceTime: true }) + userEvent.setup({ delay: null }); con timers falsos puros el await de userEvent/act nunca resuelve y el test muere por timeout.

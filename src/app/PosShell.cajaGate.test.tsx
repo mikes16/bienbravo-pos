@@ -2,6 +2,7 @@ import { screen, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Routes, Route } from 'react-router-dom'
 import { PosShell } from './PosShell'
+import { FreshnessContext, type FreshnessContextValue } from '@/core/freshness/FreshnessProvider'
 import { renderWithProviders } from '@/test/helpers/renderWithProviders'
 import {
   createMockRepositories,
@@ -46,15 +47,28 @@ function cajaRepo(status: CajaStatus) {
 const CAN_CORTE = ['pos.tab.today', 'pos.tab.register', 'pos.register.open', 'pos.register.close']
 const NO_CORTE = ['pos.tab.today', 'pos.tab.clock']
 
+/** El shell pinta el control "Actualizar" de la barra, que exige contexto de
+ *  frescura. Aquí basta un contexto inerte: este archivo mide el gate de caja,
+ *  y el provider real abriría suscripciones contra el MockedProvider. */
+const INERT_FRESHNESS: FreshnessContextValue = {
+  connection: 'connected',
+  lastUpdatedAt: null,
+  refreshAll: () => {},
+  setPaused: () => {},
+  register: () => () => {},
+}
+
 function renderShell(permissions: string[], register: InMemoryRegisterRepository, initialRoute = '/hoy') {
   renderWithProviders(
-    <Routes>
-      <Route element={<PosShell />}>
-        <Route path="/hoy" element={<p>PAGE HOY</p>} />
-        <Route path="/caja" element={<p>PAGE CAJA</p>} />
-        <Route path="/reloj" element={<p>PAGE RELOJ</p>} />
-      </Route>
-    </Routes>,
+    <FreshnessContext.Provider value={INERT_FRESHNESS}>
+      <Routes>
+        <Route element={<PosShell />}>
+          <Route path="/hoy" element={<p>PAGE HOY</p>} />
+          <Route path="/caja" element={<p>PAGE CAJA</p>} />
+          <Route path="/reloj" element={<p>PAGE RELOJ</p>} />
+        </Route>
+      </Routes>
+    </FreshnessContext.Provider>,
     {
       repos: { ...createMockRepositories(), auth: authWith(permissions), register },
       initialRoute,

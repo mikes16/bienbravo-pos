@@ -11,15 +11,28 @@ import { ToastViewport } from '@/core/toast/ToastViewport'
 // metería al bundle inicial.
 import { useCajaGate } from '@/features/register/application/useCajaGate.ts'
 import { StaleCajaBlocker, StaleCajaBanner } from '@/features/register/presentation/StaleCajaBlocker.tsx'
+import { RefreshControl } from '@/core/freshness/RefreshControl.tsx'
 import { IdentityStripV2 } from './IdentityStripV2.tsx'
 import { RouteLoader } from './RouteLoader.tsx'
 import { routePrefetchers } from './router.tsx'
 
+/**
+ * Reloj de pared de la barra. No consulta NADA: solo vuelve a leer la hora del
+ * device cada 30 s. Se reprograma con temporizadores de una sola vez
+ * encadenados —igual que el motor de frescura— porque en el POS no existe
+ * ningún temporizador periódico: el dato se refresca por eventos del servidor,
+ * nunca por reloj (spec § 3.3, D-009).
+ */
 function useLiveClock() {
   const [now, setNow] = useState(new Date())
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000)
-    return () => clearInterval(id)
+    let id: ReturnType<typeof setTimeout>
+    const tick = () => {
+      setNow(new Date())
+      id = setTimeout(tick, 30_000)
+    }
+    id = setTimeout(tick, 30_000)
+    return () => clearTimeout(id)
   }, [])
   return now
 }
@@ -119,6 +132,11 @@ export function PosShell() {
         staffPhotoUrl={viewer.staff.photoUrl ?? null}
         onLock={lock}
         timezone={locationTimezone}
+        // Botón "Actualizar" + hora del último dato + aviso de canal caído.
+        // Va aquí y no dentro de la barra para que IdentityStripV2 siga siendo
+        // presentacional (no depende del FreshnessProvider) y para que un
+        // refresco no re-renderice la identidad del operador.
+        trailing={<RefreshControl timezone={locationTimezone} />}
       />
       <main className="flex-1 overflow-hidden">{main}</main>
       {showTabs && <BottomTabNav tabs={tabs} activeTo={activeTo} />}
