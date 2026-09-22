@@ -13,7 +13,7 @@ import {
   type FreshnessTopic,
 } from '@/core/freshness/FreshnessProvider'
 import { useLiveRefresh } from '@/core/freshness/useLiveRefresh'
-import { STATIC_ROOT_FIELDS, rootFieldName } from '@/core/apollo/dataClasses'
+import { CATALOG_EVICTION_FIELDS, rootFieldName } from '@/core/apollo/dataClasses'
 
 // La sucursal y la sesión vienen de contexto; aquí sólo importa que haya una
 // sucursal estable y sesión abierta (el gate no corre sin ninguna de las dos).
@@ -57,23 +57,23 @@ function createServerLink(server: FakeServer): ApolloLink {
 }
 
 /**
- * Store de catálogo generado DESDE la lista fuente de campos ESTÁTICOS: si
- * mañana `STATIC_ROOT_FIELDS` crece, el caso cubre el campo nuevo sin tocar
- * este test.
+ * Store de catálogo generado DESDE la lista fuente de la evicción: si mañana
+ * `CATALOG_EVICTION_FIELDS` crece, el caso cubre el campo nuevo sin tocar este
+ * test. Incluye los singulares `service`/`catalogCombo` del precio por línea,
+ * que se sirven cache-first al cobrar.
  */
-function seedStaticCatalog(cache: InMemoryCache): void {
+function seedCatalog(cache: InMemoryCache): void {
   const rootQuery: Record<string, string> = { __typename: 'Query' }
-  for (const field of STATIC_ROOT_FIELDS) {
+  for (const field of CATALOG_EVICTION_FIELDS) {
     rootQuery[`${field}({"locationId":"loc1"})`] = `${SEED}-${field}`
   }
   cache.restore({ ROOT_QUERY: rootQuery })
 }
 
-/** Campos ESTÁTICOS que siguen en el store (con o sin argumentos pegados). */
-function staticFieldsLeft(cache: InMemoryCache): string[] {
+/** Campos de catálogo que siguen en el store (con o sin argumentos pegados). */
+function catalogFieldsLeft(cache: InMemoryCache): string[] {
   const root = cache.extract().ROOT_QUERY ?? {}
-  const statics: readonly string[] = STATIC_ROOT_FIELDS
-  return Object.keys(root).filter((key) => statics.includes(rootFieldName(key)))
+  return Object.keys(root).filter((key) => CATALOG_EVICTION_FIELDS.includes(rootFieldName(key)))
 }
 
 function Probe({ load, topics }: { load: () => void; topics: readonly FreshnessTopic[] }) {
@@ -96,7 +96,7 @@ const engines: FreshnessEngine[] = []
 function setup(options: { stored: string | null; version: string; fails?: boolean }) {
   const server: FakeServer = { version: options.version, fails: options.fails ?? false, calls: 0 }
   const cache = new InMemoryCache()
-  seedStaticCatalog(cache)
+  seedCatalog(cache)
   const client = new ApolloClient({ link: createServerLink(server), cache })
   if (options.stored !== null) window.localStorage.setItem(VERSION_KEY, options.stored)
 
@@ -166,11 +166,17 @@ describe('BootstrapProvider · versión de catálogo', () => {
     vi.restoreAllMocks()
   })
 
-  it('versión distinta: evicta los campos ESTÁTICOS y avisa al canal UNA vez', async () => {
+  it('versión distinta: evicta el catálogo (con service/catalogCombo) y avisa al canal UNA vez', async () => {
     const { server, cache, loaders } = setup({ stored: 'v1', version: 'v2' })
     await settle()
 
-    expect(staticFieldsLeft(cache)).toEqual([])
+    expect(catalogFieldsLeft(cache)).toEqual([])
+    // Los singulares del precio por línea entran en la MISMA evicción que los
+    // plurales: un par (servicio/combo, barbero) ya resuelto cache-first no
+    // puede seguir comiteando el precio viejo tras el cambio de versión.
+    const rootKeys = Object.keys(cache.extract().ROOT_QUERY ?? {})
+    expect(rootKeys.map(rootFieldName)).not.toContain('service')
+    expect(rootKeys.map(rootFieldName)).not.toContain('catalogCombo')
     // Aserción por contenido, no por llaves: ningún precio viejo sobrevive.
     expect(JSON.stringify(cache.extract())).not.toContain(SEED)
     expect(window.localStorage.getItem(VERSION_KEY)).toBe('v2')
@@ -187,7 +193,7 @@ describe('BootstrapProvider · versión de catálogo', () => {
     const { server, cache, loaders } = setup({ stored: 'v1', version: 'v1' })
     await settle()
 
-    expect(staticFieldsLeft(cache)).toHaveLength(STATIC_ROOT_FIELDS.length)
+    expect(catalogFieldsLeft(cache)).toHaveLength(CATALOG_EVICTION_FIELDS.length)
     expect(JSON.stringify(cache.extract())).toContain(SEED)
     expect(loaders.catalog).not.toHaveBeenCalled()
     expect(loaders.sales).not.toHaveBeenCalled()
@@ -212,7 +218,7 @@ describe('BootstrapProvider · versión de catálogo', () => {
       await announce(topic)
 
       expect(server.calls).toBe(2)
-      expect(staticFieldsLeft(cache)).toEqual([])
+      expect(catalogFieldsLeft(cache)).toEqual([])
       expect(window.localStorage.getItem(VERSION_KEY)).toBe('v3')
       expect(loaders.catalog).toHaveBeenCalledTimes(catalogCalls)
     },
@@ -230,7 +236,7 @@ describe('BootstrapProvider · versión de catálogo', () => {
     })
     await settle()
 
-    expect(staticFieldsLeft(cache)).toEqual([])
+    expect(catalogFieldsLeft(cache)).toEqual([])
     // Arranque + desbloqueo. La tercera consulta sería el ciclo (y con el
     // motor real, una recursión infinita).
     expect(server.calls).toBe(2)
@@ -243,7 +249,7 @@ describe('BootstrapProvider · versión de catálogo', () => {
     await settle()
 
     expect(server.calls).toBe(1)
-    expect(staticFieldsLeft(cache)).toHaveLength(STATIC_ROOT_FIELDS.length)
+    expect(catalogFieldsLeft(cache)).toHaveLength(CATALOG_EVICTION_FIELDS.length)
     expect(JSON.stringify(cache.extract())).toContain(SEED)
     // La versión persistida no se mueve: seguimos sirviendo el cache de antes.
     expect(window.localStorage.getItem(VERSION_KEY)).toBe('v1')
@@ -254,7 +260,7 @@ describe('BootstrapProvider · versión de catálogo', () => {
     const seen: Array<() => Promise<void>> = []
     const server: FakeServer = { version: 'v2', fails: false, calls: 0 }
     const cache = new InMemoryCache()
-    seedStaticCatalog(cache)
+    seedCatalog(cache)
     const client = new ApolloClient({ link: createServerLink(server), cache })
     window.localStorage.setItem(VERSION_KEY, 'v1')
 
@@ -271,9 +277,16 @@ describe('BootstrapProvider · versión de catálogo', () => {
     rerender(tree)
     await settle()
 
-    expect(staticFieldsLeft(cache)).toEqual([])
+    expect(catalogFieldsLeft(cache)).toEqual([])
     // Identidad estable ⇒ el efecto de montaje de la pantalla no se repite.
     expect(new Set(seen).size).toBe(1)
+  })
+
+  it('la lista de evicción es la compartida e incluye los singulares de precio por línea', () => {
+    // Si alguien saca `service`/`catalogCombo` de la lista, los casos de arriba
+    // seguirían en verde (el fixture se genera de la misma lista): este guard
+    // es el que lo detecta.
+    expect(CATALOG_EVICTION_FIELDS).toEqual(expect.arrayContaining(['service', 'catalogCombo']))
   })
 
   it('sin provider arriba la revisión es un no-op estable (pantalla montada suelta)', async () => {

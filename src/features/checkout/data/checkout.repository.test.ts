@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { ApolloClient, ApolloLink, InMemoryCache, Observable, gql } from '@apollo/client'
 import { print } from 'graphql'
 import { ApolloCheckoutRepository } from './checkout.repository'
+import { CATALOG_EVICTION_FIELDS, rootFieldName } from '@/core/apollo/dataClasses'
 import { CheckoutRejectedError } from '../domain/checkout.types'
 
 /**
@@ -398,8 +399,18 @@ describe('ApolloCheckoutRepository.addItemsToAppointmentSale — rechazos tipado
 })
 
 describe('ApolloCheckoutRepository.evictCatalogCache', () => {
-  it('tira catálogo y precios por línea del cache, y deja lo demás intacto', async () => {
+  it('tira EXACTAMENTE CATALOG_EVICTION_FIELDS (la misma lista que el gate de versión) y deja lo demás intacto', () => {
     const cache = new InMemoryCache()
+    // Store de catálogo generado DESDE la lista fuente (incluye los singulares
+    // `service`/`catalogCombo` del precio por línea): si la lista crece, el
+    // caso cubre el campo nuevo sin tocar este test.
+    const rootQuery: Record<string, string> = { __typename: 'Query' }
+    for (const field of CATALOG_EVICTION_FIELDS) {
+      rootQuery[`${field}({"locationId":"loc-1"})`] = `viejo-${field}`
+    }
+    cache.restore({ ROOT_QUERY: rootQuery })
+    // Encima, catálogo y dinero con la forma REAL de sus llaves (el documento
+    // `Seed` se deja tal cual: está commiteado en el codegen, T-028).
     cache.writeQuery({
       query: gql`query Seed($locationId: ID!, $date: String!) { services(locationId: $locationId) { id } posDaySales(locationId: $locationId, date: $date) { id } }`,
       variables: { locationId: 'loc-1', date: '2026-01-01' },
@@ -408,13 +419,18 @@ describe('ApolloCheckoutRepository.evictCatalogCache', () => {
         posDaySales: [{ __typename: 'Sale', id: 'sale-1' }],
       },
     })
+    const before = Object.keys(cache.extract()['ROOT_QUERY'] as Record<string, unknown>)
+
     const repo = new ApolloCheckoutRepository(new ApolloClient({ link: ApolloLink.empty(), cache }))
     repo.evictCatalogCache()
-    const root = cache.extract()['ROOT_QUERY'] as Record<string, unknown>
-    expect(Object.keys(root).some((k) => k.startsWith('services'))).toBe(false)
-    // Lo que no es catálogo no se toca: evictar de más borraría dinero que
-    // otra pantalla acaba de traer de la red.
-    expect(Object.keys(root).some((k) => k.startsWith('posDaySales'))).toBe(true)
+
+    const after = Object.keys(cache.extract()['ROOT_QUERY'] as Record<string, unknown>)
+    // Ni de menos (queda catálogo viejo) ni de más: evictar de más borraría
+    // dinero que otra pantalla acaba de traer de la red.
+    expect(after).toEqual(before.filter((k) => !CATALOG_EVICTION_FIELDS.includes(rootFieldName(k))))
+    expect(after.some((k) => rootFieldName(k) === 'posDaySales')).toBe(true)
+    // Por contenido, no sólo por llaves: ningún precio viejo sobrevive.
+    expect(JSON.stringify(cache.extract())).not.toContain('viejo-')
   })
 })
 

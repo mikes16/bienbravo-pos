@@ -3009,6 +3009,143 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-042",
+      "title": "Evicción de catálogo por versión: una sola lista que incluye los singulares service/catalogCombo",
+      "description": "Hallazgo Important del Principal (3ª pasada, run 2026-09-19-a). src/core/bootstrap/BootstrapProvider.tsx (~231, `evictStaticCatalog`) al detectar cambio de versión de catálogo evicta solo STATIC_ROOT_FIELDS (plurales), pero los singulares `service` y `catalogCombo` se sirven cache-first para el precio de línea (src/features/checkout/data/checkout.repository.ts ~1090 y ~1106, `resolve*PriceForBarber`): un par ya resuelto en la sesión sigue cobrando el precio viejo después de que el gate ya supo del cambio, y el cobro termina en el PRICE_MISMATCH que el gate de § 3.4 existe para evitar. `ApolloCheckoutRepository.evictCatalogCache` (T-026) sí cubre los singulares: hay dos listas. Cambios: (1) En src/core/apollo/dataClasses.ts exporta `CATALOG_EVICTION_FIELDS: readonly string[]` = STATIC_ROOT_FIELDS + 'service' + 'catalogCombo' (única fuente; docblock: qué se evicta en memoria al cambiar la versión y por qué los singulares entran aunque NO se persistan, [D-004]). No cambies STATIC_ROOT_FIELDS ni PERSISTED_ROOT_FIELDS: la persistencia no se toca. (2) `evictStaticCatalog` en BootstrapProvider.tsx y `evictCatalogCache` en checkout.repository.ts usan esa lista (evict por fieldName sobre ROOT_QUERY sin args + gc), sin listas locales. (3) Tests: BootstrapProvider.test.tsx — con versión distinta se evictan también `service` y `catalogCombo` (fixture generado desde CATALOG_EVICTION_FIELDS, no a mano) y la notificación 'catalog' sigue siendo una sola; checkout.repository.test.ts — evictCatalogCache evicta exactamente CATALOG_EVICTION_FIELDS. No cambies el flujo de recuperación de T-026 ni la política de fetch de los singulares.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "El cambio de versión evicta también service/catalogCombo; ambas evicciones salen de la misma lista",
+          "check": "npm test -- src/core/bootstrap/BootstrapProvider.test.tsx src/features/checkout/data/checkout.repository.test.ts",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Lista única en dataClasses consumida por los dos evictores",
+          "check": "grep -q 'CATALOG_EVICTION_FIELDS' src/core/apollo/dataClasses.ts && grep -q 'CATALOG_EVICTION_FIELDS' src/core/bootstrap/BootstrapProvider.tsx && grep -q 'CATALOG_EVICTION_FIELDS' src/features/checkout/data/checkout.repository.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck, eslint y persistencia intacta",
+          "check": "npm run typecheck && npx eslint src/core/apollo src/core/bootstrap src/features/checkout/data && npm test -- src/core/apollo/persistence.test.ts",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-19-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #1 (3ª pasada): la costura T-021 ↔ T-026 y el fix de lista compartida (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/apollo/dataClasses.ts",
+          "reason": "Única fuente de clases de datos; aquí nace CATALOG_EVICTION_FIELDS (AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/core/bootstrap/BootstrapProvider.tsx",
+          "reason": "evictStaticCatalog y la notificación 'catalog' post-evicción ([D-028]) (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/data/checkout.repository.ts",
+          "reason": "evictCatalogCache y resolve*PriceForBarber cache-first sobre service/catalogCombo (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-004] singulares no persistidos; [D-003] lista de permitidos; [D-028] aviso post-evicción (AC-1)"
+        }
+      ],
+      "files": [
+        "src/core/apollo/dataClasses.ts",
+        "src/core/bootstrap/BootstrapProvider.tsx",
+        "src/core/bootstrap/BootstrapProvider.test.tsx",
+        "src/features/checkout/data/checkout.repository.ts",
+        "src/features/checkout/data/checkout.repository.test.ts"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-043",
+      "title": "El checkout se registra en el tema 'catalog' y recarga precios en la misma visita",
+      "description": "Hallazgo Important del Principal (3ª pasada, run 2026-09-19-a). El efecto de entrada de src/features/checkout/presentation/CheckoutPage.tsx (~131) afirma que tras el evict el gate 'avisa al canal para que esta misma pantalla lo vuelva a pedir', pero ningún cargador del checkout está registrado en el tema `catalog` (`useCheckout` solo lee FreshnessContext para setPaused/refreshAll): en la visita que detecta el cambio, el grid y el overlay de precios ya cargados quedan viejos y la puesta al día solo beneficia a la siguiente visita; el único respaldo es el ciclo rechazo+recuperación de T-026. Cambios: (1) En src/features/checkout/application/useCheckout.ts registra en el tema `catalog` una carga que vuelve a pedir catálogo (servicios, productos, combos) y el overlay de precios por barbero a la red; usa el patrón tolerante a canal ausente de [D-030] (`freshness?.register`, sin lanzar si no hay provider) porque el hook se monta en tests sin canal; el cargador devuelve su promesa y rechaza en error (contrato T-007); NO se invoca al montar (la carga inicial existente se conserva). (2) NO re-precies las líneas del carrito desde este cargador: [D-035]/T-026 exigen confirmación explícita del operador ante un cambio de precio; el cargador solo refresca grid y overlay. Si el catálogo recargado ya no contiene un producto/servicio de una línea, deja la línea tal cual (el API la rechazará y T-026 la recupera). (3) Corrige el comentario de CheckoutPage.tsx para describir lo que ocurre de verdad. (4) Respeta la pausa del canal durante el cobro ([D-008]: el canal ya no entrega avisos con setPaused(true); no añadas lógica propia). Tests: CheckoutPage.test.tsx — tras `announce('catalog')` (stub de renderWithProviders, [D-023]) el catálogo se vuelve a pedir a la red y el grid muestra el precio nuevo; las líneas del carrito conservan su precio; `announce('sales')` no recarga el catálogo; el cargador no corre al montar (conteo de consultas de catálogo = 1 antes del aviso).",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Un aviso 'catalog' recarga grid y overlay en la misma visita sin re-preciar el carrito; 'sales' no; no corre al montar",
+          "check": "npm test -- src/features/checkout/presentation/CheckoutPage.test.tsx src/features/checkout/application",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El registro en el tema catalog vive en useCheckout",
+          "check": "grep -q \"'catalog'\" src/features/checkout/application/useCheckout.ts",
+          "kind": "lint"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck y eslint",
+          "check": "npm run typecheck && npx eslint src/features/checkout/application src/features/checkout/presentation/CheckoutPage.tsx",
+          "kind": "build"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-19-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #2 (3ª pasada): por qué la visita que detecta el cambio sigue con precios viejos (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/application/useCheckout.ts",
+          "reason": "Cargas de catálogo/overlay existentes y el uso actual de FreshnessContext (AC-1, AC-2)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/CheckoutPage.tsx",
+          "reason": "Efecto de entrada con checkCatalogVersion y el comentario a corregir (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": ".harness/handoffs/T-007.md",
+          "reason": "Contrato del canal: register/topics, el cargador devuelve promesa y rechaza en error (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-019] un cargador por clase; [D-030] patrón tolerante a canal ausente; [D-035] confirmación explícita (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/home/presentation/HoyPage.tsx",
+          "reason": "Pantalla ya migrada: cómo registra cargadores por tema sin invocarlos al montar (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/checkout/application/useCheckout.ts",
+        "src/features/checkout/presentation/CheckoutPage.tsx",
+        "src/features/checkout/presentation/CheckoutPage.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }

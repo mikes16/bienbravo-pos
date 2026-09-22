@@ -11,7 +11,7 @@ import { useApolloClient } from '@apollo/client/react'
 import type { ApolloClient } from '@apollo/client'
 import { useLocation } from '@/core/location/useLocation'
 import { usePosAuth } from '@/core/auth/usePosAuth'
-import { STATIC_ROOT_FIELDS } from '@/core/apollo/dataClasses'
+import { CATALOG_EVICTION_FIELDS } from '@/core/apollo/dataClasses'
 import { FreshnessContext, type FreshnessTopic } from '@/core/freshness/FreshnessProvider'
 import { useLiveRefresh } from '@/core/freshness/useLiveRefresh'
 import { POS_CATALOG_VERSION } from './catalogVersion.queries'
@@ -223,13 +223,17 @@ function persistVersion(version: string): void {
 }
 
 /**
- * Qué se tira cuando cambia la versión: la clase ESTÁTICO de
- * `core/apollo/dataClasses.ts`, que es la única lista de campos del POS
- * ([D-003]) — aquí no vive una copia. Lo vivo (stock, `posAvailableBarbers`)
- * no se evicta porque no se sirve de cache de todos modos.
+ * Qué se tira cuando cambia la versión: `CATALOG_EVICTION_FIELDS` de
+ * `core/apollo/dataClasses.ts`, la única lista de campos del POS ([D-003]) —
+ * aquí no vive una copia. Es la clase ESTÁTICO **más** los singulares
+ * `service`/`catalogCombo` del precio por línea, que se sirven cache-first al
+ * cobrar; la MISMA lista que usa `ApolloCheckoutRepository.evictCatalogCache`
+ * al recuperarse de un rechazo, para que las dos vías tiren exactamente lo
+ * mismo. Lo demás vivo (stock, `posAvailableBarbers`) no se evicta porque no
+ * se sirve de cache de todos modos.
  */
 function evictStaticCatalog(client: ApolloClient): void {
-  for (const fieldName of STATIC_ROOT_FIELDS) {
+  for (const fieldName of CATALOG_EVICTION_FIELDS) {
     client.cache.evict({ id: 'ROOT_QUERY', fieldName })
   }
   client.cache.gc()

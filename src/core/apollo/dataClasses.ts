@@ -91,9 +91,11 @@ export const SENSITIVE_ROOT_FIELDS = [
  * `posAvailableBarbers` incluye el estado laboral (`hasClockedIn`,
  * `isOccupied`) — por eso deja de ser "estático" pese a parecer catálogo.
  * `service`/`catalogCombo` (singulares) resuelven el precio de UNA línea al
- * cobrar: no se persisten porque el evict por versión de catálogo solo cubre
- * los campos raíz plurales, así que un singular guardado dejaría vivo un
- * precio viejo tras un cambio de catálogo. La autoridad final del precio es el
+ * cobrar. No se persisten ([D-004]) aunque el evict por versión de catálogo sí
+ * los alcance (ver `CATALOG_EVICTION_FIELDS`): ese evict corre en memoria y
+ * sólo cuando el gate logra hablar con el API, así que un singular guardado
+ * volvería a cargarse con su precio viejo en cada arranque — incluso sin red —
+ * antes de que nadie pueda invalidarlo. La autoridad final del precio es el
  * API (PRICE_MISMATCH server-side).
  *
  * `posSettings` (ajustes del negocio, spec §3.2: bloqueo automático) tampoco
@@ -124,6 +126,29 @@ export const LIVE_ROOT_FIELDS = [
   // Ajustes del negocio (bloqueo automático): ver docstring de arriba.
   'posSettings',
 ] as const
+
+/**
+ * Qué se tira del cache EN MEMORIA cuando cambia la versión del catálogo:
+ * ÚNICA lista, la comparten el gate de versión (`evictStaticCatalog` del
+ * `BootstrapProvider`) y la recuperación de un rechazo del cobro
+ * (`ApolloCheckoutRepository.evictCatalogCache`). Se evicta por `fieldName`
+ * sobre `ROOT_QUERY`, así que cubre el campo con cualesquiera argumentos.
+ *
+ * Es STATIC (lo que el admin publica) **más los dos singulares de precio por
+ * línea**, `service` y `catalogCombo`. Los singulares entran aunque NO se
+ * persistan ([D-004]): `resolve*PriceForBarber` los lee cache-first, así que
+ * un par (servicio/combo, barbero) ya resuelto en ESTA sesión seguiría
+ * comiteando el precio viejo después de que el gate ya supo del cambio — y el
+ * cobro terminaría en el PRICE_MISMATCH que el gate existe para evitar.
+ *
+ * Persistir ≠ evictar: esta lista NO decide qué se guarda en el dispositivo.
+ * Eso es `PERSISTED_ROOT_FIELDS` (STATIC ∪ SESSION) y no se toca desde aquí.
+ */
+export const CATALOG_EVICTION_FIELDS: readonly string[] = [
+  ...STATIC_ROOT_FIELDS,
+  'service',
+  'catalogCombo',
+]
 
 /**
  * La lista de permitidos de la persistencia: STATIC ∪ SESSION. Todo lo demás

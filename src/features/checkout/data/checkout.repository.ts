@@ -3,7 +3,7 @@ import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { graphql } from '@/core/graphql/generated'
 import { PaymentProvider } from '@/core/graphql/generated/graphql'
 import type { PosSaleDetailQuery } from '@/core/graphql/generated/graphql'
-import { STATIC_ROOT_FIELDS } from '@/core/apollo/dataClasses'
+import { CATALOG_EVICTION_FIELDS } from '@/core/apollo/dataClasses'
 import { toCustomerNameTakenException } from '@/shared/lib/customer-errors'
 import type { CustomerReputationTag } from '@/shared/lib/reputation'
 import {
@@ -802,11 +802,12 @@ export interface CheckoutRepository {
    */
   getComboPricing(locationId: string, staffUserId: string | null, opts?: { force?: boolean }): Promise<ComboPricingOverlay[]>
   /**
-   * Tira del cache el catálogo (clase ESTÁTICO de `core/apollo/dataClasses` —
-   * la MISMA lista que evicta el control de versión del `BootstrapProvider`,
-   * [D-003]) más los dos campos de precio por línea (`service`,
-   * `catalogCombo`), que no están en esa lista porque no se persisten pero sí
-   * se sirven cache-first dentro de la sesión.
+   * Tira del cache el catálogo: `CATALOG_EVICTION_FIELDS` de
+   * `core/apollo/dataClasses` ([D-003], nada de copias locales), que es la
+   * clase ESTÁTICO más los dos campos de precio por línea (`service`,
+   * `catalogCombo`) — no se persisten ([D-004]) pero sí se sirven cache-first
+   * dentro de la sesión. Es LA MISMA lista que evicta el control de versión
+   * del `BootstrapProvider`: las dos vías tiran exactamente lo mismo.
    *
    * Lo usa la recuperación de un rechazo del API por datos viejos
    * (PRICE_MISMATCH / BARBER_EXCLUDED): sin esto, volver a pedir precios
@@ -1118,13 +1119,13 @@ export class ApolloCheckoutRepository implements CheckoutRepository {
 
   /**
    * Evicta el catálogo cacheado. Ver el contrato en `CheckoutRepository`: la
-   * lista de campos es `STATIC_ROOT_FIELDS` ([D-003], nada de copias locales)
-   * más `service`/`catalogCombo`, los singulares que alimentan la ruta única
-   * de precio de línea.
+   * lista de campos es `CATALOG_EVICTION_FIELDS` ([D-003], nada de copias
+   * locales), que ya incluye `service`/`catalogCombo`, los singulares que
+   * alimentan la ruta única de precio de línea.
    */
   evictCatalogCache(): void {
     const cache = this.#client.cache
-    for (const fieldName of [...STATIC_ROOT_FIELDS, 'service', 'catalogCombo']) {
+    for (const fieldName of CATALOG_EVICTION_FIELDS) {
       cache.evict({ id: 'ROOT_QUERY', fieldName })
     }
     cache.gc()
