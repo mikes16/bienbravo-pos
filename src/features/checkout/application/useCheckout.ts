@@ -140,6 +140,14 @@ const STAFF_SALE_MESSAGE = {
   noServices: 'Una venta a staff no admite servicios ni combos en este ticket',
   quotaExceeded: 'Se pasó un tope de la venta a staff de este mes.',
   noBuyer: 'No se pudo identificar al comprador de la venta a staff.',
+  /**
+   * Cobro de extras de una cita que resultó PREPAGADA con el modo todavía
+   * encendido. Nombra la salida que la build sí ofrece ([D-065]): el modo ya
+   * quedó apagado, así que el siguiente toque a Cobrar pasa — con los extras de
+   * vuelta a su precio público ([D-072]), que es lo que hay que revisar.
+   */
+  prepaidExtras:
+    'Esta cita ya está pagada: se apagó la venta a staff y los extras vuelven a precio normal. Revisa el total y vuelve a cobrar.',
 } as const
 
 /** Por qué un concepto no entra al ticket en modo venta a staff. */
@@ -953,6 +961,37 @@ export function useCheckout() {
     setStaffLinePrices(new Map())
   }
 
+  /* ── Una cita PREPAGADA apaga el modo venta a staff ──────────────────────
+   *
+   * El prepago se lee a la red y puede resolver DESPUÉS de que el operador
+   * encendió el modo. Cuando resuelve "prepagada", el cobro deja de ser
+   * `createSale` y pasa a `submitExtras`, cuya mutation no lleva `staffSale`
+   * ([D-056]), y la barra —único interruptor— se desmonta (`CheckoutPage` la
+   * gatea por `!isPrepaid`). Un modo encendido sin interruptor mandaría las
+   * líneas a precio staff dentro de un cobro que el API lee como venta normal:
+   * PRICE_MISMATCH, y la recuperación las volvería a comitear a precio staff
+   * ([D-073]) — rechazo en bucle y sin salida para el operador.
+   *
+   * Apagarlo devuelve cada línea a su precio público congelado ([D-072]) y la
+   * pantalla a un estado coherente con el flujo que sí se puede cobrar.
+   *
+   * Va en un efecto y no dentro de `refetchPrepayState` a propósito: ése es un
+   * `useCallback` estable (lo consume el efecto de montaje; meterle deps nuevas
+   * lo recrearía en cada render y volvería a pedir el prepago en bucle), así
+   * que desde su clausura `disableStaffSale` leería un mapa de precios viejo.
+   * Aquí se lee el mapa del render vigente. Es idempotente: apagar el modo
+   * vuelve falsa su propia condición.
+   */
+  useEffect(() => {
+    if (!prepayState.isPrepaid || !staffSaleEnabled) return
+    disableStaffSale()
+    // `disableStaffSale` se recrea en cada render (lee el mapa de precios staff
+    // y despacha al carrito): listarlo en deps correría el efecto en cada
+    // render. El disparador real es la transición del prepago con el modo
+    // encendido, que son exactamente las dos deps de abajo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepayState.isPrepaid, staffSaleEnabled])
+
   /**
    * Interruptor "Venta a staff". Encenderlo pide el cupo ANTES de tocar nada:
    * con la política apagada (`quota.enabled === false`) el modo no se activa
@@ -1673,6 +1712,18 @@ export function useCheckout() {
           ? `El barbero ${unavailableBarber.fullName} no tiene turno iniciado — pídele que fiche entrada.`
           : 'Uno de los barberos asignados ya no está disponible. Vuelve a asignarlo antes de cobrar.',
       )
+      return null
+    }
+    // Espejo de la guarda de venta a staff de `submit`, con el motivo propio de
+    // este camino: los extras de una cita prepagada NO admiten precio staff
+    // (esta mutation no manda `staffSale`, [D-056]), así que mandarlos sería un
+    // PRICE_MISMATCH que la recuperación re-comitearía a precio staff ([D-073]).
+    // El efecto de arriba apaga el modo en cuanto el prepago resuelve; aquí sólo
+    // cae la carrera (el toque de cobrar que le gana al efecto): cinturón y
+    // tirantes. Si el modo ya bloqueaba el cobro por su cuenta gana ESE motivo,
+    // igual que en `submit`.
+    if (staffSaleEnabled) {
+      setError(staffSale.blockMessage ?? STAFF_SALE_MESSAGE.prepaidExtras)
       return null
     }
     setSubmitting(true)

@@ -11,6 +11,8 @@ import type { Repositories } from '@/core/repositories/registry'
 import { createMockRepositories, InMemoryCheckoutRepository, MOCK_VIEWER } from '@/test/mocks/repositories'
 import { CheckoutRejectedError } from '../domain/checkout.types'
 import type { CatalogProduct, SaleResult as ApiSaleResult } from '../domain/checkout.types'
+import type { AppointmentPrepayState } from '../data/checkout.repository'
+import { PaymentProvider } from '@/core/graphql/generated/graphql'
 import { useCheckout } from './useCheckout'
 import type { AddCatalogItemResult } from './useCheckout'
 
@@ -84,6 +86,22 @@ const CORTE_TILE = { kind: 'service' as const, id: 'svc-1', name: 'Corte Clásic
 const CASH = { payments: [{ provider: 'CASH' as const, amountCents: 12000 }], tipCents: 0 }
 const SALE_OK: ApiSaleResult = { id: 'sale-1', status: 'PAID', paymentStatus: 'PAID', totalCents: 12000, paidTotalCents: 12000 }
 
+/* ── Cita prepagada: el cobro entra por `?completeAppointmentId` y el prepago
+      se lee A LA RED, así que puede resolver DESPUÉS de encender el modo. ── */
+
+const APPOINTMENT_ROUTE = '/checkout?completeAppointmentId=appt-1'
+const NOT_PREPAID: AppointmentPrepayState = {
+  isPrepaid: false, hasPendingLink: false, prepaidSaleId: null, prepaidMethod: null,
+  prepaidAt: null, staffNote: null, prepaidItems: [], prepaidTotalCents: null,
+}
+const PREPAID: AppointmentPrepayState = {
+  ...NOT_PREPAID, isPrepaid: true, prepaidSaleId: 'sale-prepaid-9',
+  prepaidMethod: PaymentProvider.Stripe, prepaidAt: '2026-09-22T14:00:00.000Z', prepaidTotalCents: 50000,
+}
+/** El delta de los extras ya a precio PÚBLICO (una Cera de $250, sin propina). */
+const CASH_EXTRAS = { payments: [{ provider: 'CASH' as const, amountCents: 25000 }], tipCents: 0 }
+const EXTRAS_OK: ApiSaleResult = { id: 'sale-prepaid-9', status: 'PAID', paymentStatus: 'PAID', totalCents: 75000, paidTotalCents: 75000 }
+
 const withoutPermissions = (...denied: string[]): PosViewer => ({
   ...MOCK_VIEWER,
   permissions: MOCK_VIEWER.permissions.filter((p) => !denied.includes(p)),
@@ -101,10 +119,20 @@ function makeRepos(viewer: PosViewer = MOCK_VIEWER) {
   return { repos, checkout }
 }
 
-function renderCheckout(repos: Repositories) {
+/**
+ * `route` entra al MemoryRouter: el cobro de una CITA se abre con
+ * `?completeAppointmentId=...`. `onRender` recibe el valor del hook en CADA
+ * render — así se puede tomar la vista de un render intermedio (el que ve el
+ * operador antes de que corra un efecto) y llamar a SUS funciones.
+ */
+function renderCheckout(
+  repos: Repositories,
+  route = '/checkout',
+  onRender?: (hook: ReturnType<typeof useCheckout>) => void,
+) {
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter initialEntries={['/checkout']}>
+      <MemoryRouter initialEntries={[route]}>
         <RepositoryProvider value={repos}>
           <LocationProvider>
             <PosAuthProvider>
@@ -115,12 +143,23 @@ function renderCheckout(repos: Repositories) {
       </MemoryRouter>
     )
   }
-  return renderHook(() => useCheckout(), { wrapper: Wrapper })
+  return renderHook(
+    () => {
+      const hook = useCheckout()
+      onRender?.(hook)
+      return hook
+    },
+    { wrapper: Wrapper },
+  )
 }
 
 /** Monta el cobro con catálogo, caja y SESIÓN ya resueltos. */
-async function mountLoaded(repos: Repositories) {
-  const view = renderCheckout(repos)
+async function mountLoaded(
+  repos: Repositories,
+  route?: string,
+  onRender?: (hook: ReturnType<typeof useCheckout>) => void,
+) {
+  const view = renderCheckout(repos, route, onRender)
   await waitFor(() => expect(view.result.current.loaded).toBe(true))
   // El viewer resuelve en un efecto y vuelve a disparar la carga del catálogo.
   await waitFor(() => expect(view.result.current.staffSale.buyerStaffUserId).toBe('staff-1'))
@@ -908,5 +947,103 @@ describe('useCheckout · venta a staff', () => {
 
     await enable(result, false)
     expect(result.current.staffSale.catalogViews.size).toBe(0)
+  })
+
+  /* ── 8. Cita PREPAGADA: el modo no sobrevive al prepago ──────────────────
+   *
+   * El prepago se lee a la red y puede resolver DESPUÉS de encender el modo.
+   * A partir de ahí el cobro sale por `submitExtras`, que no manda `staffSale`
+   * ([D-056]), y la barra —único interruptor— se desmonta: un modo encendido
+   * ahí manda precios staff sin marcarlos (PRICE_MISMATCH) y la recuperación
+   * los vuelve a comitear ([D-073]) — rechazo en bucle sin salida.
+   */
+
+  /** Cita cuyo prepago podemos resolver cuando queramos (`prepay`). */
+  function makePrepaidRepos() {
+    const { repos, checkout } = makeRepos()
+    const prepay = vi.fn().mockResolvedValue(NOT_PREPAID)
+    checkout.getAppointmentPrepayState = prepay
+    checkout.addItemsToAppointmentSale = vi.fn().mockResolvedValue(EXTRAS_OK)
+    return { repos, checkout, prepay }
+  }
+
+  it('si la cita resulta prepagada, el modo se apaga y los extras se cobran a precio público', async () => {
+    const { repos, checkout, prepay } = makePrepaidRepos()
+    const { result } = await mountLoaded(repos, APPOINTMENT_ROUTE)
+
+    await enable(result)
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    expect(result.current.isPrepaid).toBe(false)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(12000)
+
+    // Se resuelve el prepago con el modo YA encendido (la lectura viajaba, o la
+    // cita se pagó desde la web mientras el operador armaba el ticket).
+    prepay.mockResolvedValue(PREPAID)
+    await act(async () => {
+      await result.current.refetchPrepayState()
+    })
+
+    expect(result.current.isPrepaid).toBe(true)
+    // El modo se apagó solo y la línea volvió a su precio público congelado.
+    expect(result.current.staffSale.enabled).toBe(false)
+    expect(result.current.staffSale.lines).toHaveLength(0)
+    expect(result.current.cartState.lines[0].unitPriceCents).toBe(25000)
+
+    await act(async () => {
+      await result.current.submitExtras(CASH_EXTRAS)
+    })
+
+    const addItems = vi.mocked(checkout.addItemsToAppointmentSale)
+    expect(addItems).toHaveBeenCalledTimes(1)
+    const input = addItems.mock.calls[0][0]
+    expect(input.saleId).toBe('sale-prepaid-9')
+    // Precio PÚBLICO: es lo único que esta mutation puede sostener.
+    expect(input.items).toEqual([
+      expect.objectContaining({ productId: 'prod-cera', unitPriceCents: 25000 }),
+    ])
+    // Y el payload no declara venta a staff por ningún lado ([D-056]).
+    expect(input).not.toHaveProperty('staffSale')
+    expect(result.current.error).toBeNull()
+    expect(result.current.successSale).not.toBeNull()
+  })
+
+  it('en la carrera, cobrar extras con el modo aún encendido se niega en vez de mandar precios staff', async () => {
+    const { repos, checkout, prepay } = makePrepaidRepos()
+    const renders: Array<ReturnType<typeof useCheckout>> = []
+    const { result } = await mountLoaded(repos, APPOINTMENT_ROUTE, (hook) => {
+      renders.push(hook)
+    })
+
+    await enable(result)
+    act(() => {
+      result.current.addCatalogItem(tile(CERA))
+    })
+    renders.length = 0
+
+    prepay.mockResolvedValue(PREPAID)
+    await act(async () => {
+      await result.current.refetchPrepayState()
+    })
+
+    // El render que el operador alcanza a tocar ENTRE el commit del prepago y
+    // el efecto que apaga el modo: la hoja de pago ya montada cobra con ESTA
+    // vista, con las líneas todavía a precio staff.
+    const racing = renders.find((r) => r.isPrepaid && r.staffSale.enabled)
+    if (!racing) throw new Error('no hubo render con el prepago resuelto y el modo aún encendido')
+    expect(racing.cartState.lines[0].unitPriceCents).toBe(12000)
+
+    await act(async () => {
+      await racing.submitExtras(CASH_EXTRAS)
+    })
+
+    // Ni una llamada al repositorio: el ticket habría ido a precio staff sin
+    // declararlo. Y el operador ve por qué y qué hacer.
+    expect(checkout.addItemsToAppointmentSale).not.toHaveBeenCalled()
+    expect(result.current.successSale).toBeNull()
+    expect(result.current.error).toBe(
+      'Esta cita ya está pagada: se apagó la venta a staff y los extras vuelven a precio normal. Revisa el total y vuelve a cobrar.',
+    )
   })
 })
