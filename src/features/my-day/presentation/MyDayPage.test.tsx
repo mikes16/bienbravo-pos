@@ -18,6 +18,7 @@ import type { PosViewer } from '@/core/auth/auth.types'
 import type { SaleDetail } from '@/features/checkout/data/checkout.repository'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
 import type { WalkIn } from '@/features/walkins/domain/walkins.types'
+import type { Appointment } from '@/features/agenda/domain/agenda.types'
 import { POS_MY_DAY_EARNINGS } from '@/features/home/data/home.queries'
 
 /** Nombre accesible del hero de ganancias (MoneyValue, [D-006]). */
@@ -53,6 +54,38 @@ function reposWithDoneWalkIn(customerName: string): Repositories {
   return repos
 }
 
+/** Cita COMPLETED del viewer ($300). Su venta, si la hay, llega sólo por el
+ *  desglose per-sale (`linkedAppointmentId`): el shape de Appointment no la trae. */
+function completedAppointment(id: string, customerName: string): Appointment {
+  const endAt = new Date().toISOString()
+  return {
+    id,
+    status: 'COMPLETED',
+    salePaymentStatus: 'PAID',
+    startAt: new Date(Date.now() - 45 * 60_000).toISOString(),
+    endAt,
+    totalCents: 30000,
+    staffNote: null,
+    customer: {
+      id: `c-${id}`,
+      fullName: customerName,
+      phone: null,
+      reputationTag: null,
+      reputationNote: null,
+    },
+    staffUser: { id: MOCK_VIEWER.staff.id, fullName: MOCK_VIEWER.staff.fullName },
+    items: [{ label: 'Corte clásico', serviceId: 'svc-1', qty: 1, unitPriceCents: 30000 }],
+    locationId: 'loc1',
+    locationName: 'Centro',
+  }
+}
+
+function reposWithCompletedAppointment(id: string, customerName: string): Repositories {
+  const repos = createMockRepositories()
+  repos.agenda.getAppointments = vi.fn().mockResolvedValue([completedAppointment(id, customerName)])
+  return repos
+}
+
 class TestAuthRepo extends InMemoryAuthRepository {
   override async getViewer() { return MOCK_VIEWER }
 }
@@ -75,10 +108,13 @@ interface SaleEntryOptions {
   tipCents?: number
   itemLabels?: string[]
   soldAt?: string
+  /** Cita de la que nació la venta: la entrada ya no es venta directa. */
+  linkedAppointmentId?: string
 }
 
-/** Entrada del desglose per-sale: una venta directa (sin walk-in ni cita
- *  linkados) atribuida al viewer → aparece como row de "Venta". */
+/** Entrada del desglose per-sale: por defecto una venta directa (sin walk-in
+ *  ni cita linkados) atribuida al viewer → aparece como row de "Venta". Con
+ *  `linkedAppointmentId` es la venta de esa cita. */
 function saleEntry(o: SaleEntryOptions) {
   const earnings = o.earningsCents ?? 12000
   return {
@@ -90,7 +126,7 @@ function saleEntry(o: SaleEntryOptions) {
     soldAt: o.soldAt ?? new Date().toISOString(),
     customerName: o.customerName,
     linkedWalkInId: null,
-    linkedAppointmentId: null,
+    linkedAppointmentId: o.linkedAppointmentId ?? null,
     itemLabels: o.itemLabels ?? ['Corte clásico'],
     attributedRevenueCents: 30000,
   }
@@ -496,6 +532,94 @@ describe('MyDayPage', () => {
     })
     expect(rowTotal).toHaveTextContent('$300')
     expect(screen.getByText('Total venta')).toBeInTheDocument()
+  })
+
+  // ── Citas completadas: "Tu parte" desde perSale.linkedAppointmentId ────
+
+  it('una cita COMPLETED con venta linkada muestra "Tu parte" del API, sin fila "Venta" duplicada', async () => {
+    renderMyDay({
+      repos: reposWithCompletedAppointment('appt-1', 'Laura Ruiz'),
+      mocks: [
+        earningsMock({
+          perSale: [
+            saleEntry({
+              saleId: 'sale-appt-1',
+              customerName: 'Laura Ruiz',
+              earningsCents: 9500,
+              linkedAppointmentId: 'appt-1',
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const amount = await screen.findByRole('group', { name: /tu parte de laura ruiz/i })
+    expect(amount).toHaveTextContent('$95')
+    // Una sola fila, y es la de la cita: la entrada linkada no es venta directa.
+    expect(screen.getAllByText('Laura Ruiz')).toHaveLength(1)
+    expect(screen.getByText(/^Cita · /)).toBeInTheDocument()
+    expect(screen.queryByText(/^Venta · /)).not.toBeInTheDocument()
+    // Cuenta una vez: la cita, no además su venta.
+    expect(screen.getByText('Servicios de hoy · 1 realizado')).toBeInTheDocument()
+    // Sin el permiso del bruto nada pinta el total de la cita.
+    expect(screen.queryByText('$300')).not.toBeInTheDocument()
+  })
+
+  it('WITH pos.sale.read: la cita con venta linkada es un button y abre el detalle con su saleId', async () => {
+    const repos = reposWithCompletedAppointment('appt-1', 'Laura Ruiz')
+    const getSaleDetail = vi.fn(async (id: string) => saleDetail(id, 'Laura Ruiz', 'Corte clásico'))
+    repos.checkout.getSaleDetail = getSaleDetail
+
+    renderMyDay({
+      repos,
+      auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
+      mocks: [
+        earningsMock({
+          perSale: [
+            saleEntry({
+              saleId: 'sale-appt-1',
+              customerName: 'Laura Ruiz',
+              earningsCents: 9500,
+              linkedAppointmentId: 'appt-1',
+            }),
+          ],
+        }),
+      ],
+    })
+
+    const trigger = await screen.findByRole('button', {
+      name: /ver detalle de venta de laura ruiz/i,
+    })
+    const user = userEvent.setup()
+    await user.click(trigger)
+
+    await waitFor(() => expect(getSaleDetail).toHaveBeenCalledWith('sale-appt-1'))
+    const dialog = await screen.findByRole('dialog', { name: /detalle de venta/i })
+    // "Tu parte" del sheet es la de la entrada linkada.
+    expect(await within(dialog).findByText('$95')).toBeInTheDocument()
+  })
+
+  it('una cita COMPLETED sin entrada per-sale sigue sin monto y no es clickable', async () => {
+    renderMyDay({
+      repos: reposWithCompletedAppointment('appt-1', 'Laura Ruiz'),
+      // Con pos.sale.read: lo que la deja sin tap es la falta de venta, no el permiso.
+      auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
+      mocks: [earningsMock()],
+    })
+
+    // El dinero ya respondió (el eyebrow sólo cuenta con él): la ausencia es real.
+    expect(await screen.findByText('Servicios de hoy · 1 realizado')).toBeInTheDocument()
+    const customer = screen.getByText('Laura Ruiz')
+    expect(customer.closest('button')).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: /ver detalle de venta/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('group', { name: /tu parte de laura ruiz/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('group', { name: /total de la venta de laura ruiz/i }),
+    ).not.toBeInTheDocument()
   })
 
   // ── Carrera A→B (fast-tap) ─────────────────────────────────────────────

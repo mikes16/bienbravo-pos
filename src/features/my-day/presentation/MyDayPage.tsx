@@ -214,29 +214,40 @@ function computeWorkSummary(
   const completedCount =
     earnings === null ? null : completedAppts.length + completedWalkIns.length + directSales.length
 
+  // Venta de cada cita, resuelta desde el desglose per-sale: en el API
+  // `Sale.appointmentId` es único (una venta por cita), así que
+  // `linkedAppointmentId` identifica a lo más UNA entrada por cita.
+  const saleByAppointmentId = new Map<string, { saleId: string; entry: PerSaleEntry }>()
+  perSaleMap.forEach((entry, saleId) => {
+    if (entry.linkedAppointmentId) saleByAppointmentId.set(entry.linkedAppointmentId, { saleId, entry })
+  })
+
   // Timeline ordenado cronológicamente descendente — lo más reciente arriba.
   // Para cada row enriquezco con earnings derivado del per-sale del API:
   // si esta cita/walk-in tiene sale linkado, busco su entrada y muestro
   // "Tu parte". Si no hay sale aún (cita completada sin cerrar venta),
   // los campos quedan null y la UI lo señala.
   const completedItems: CompletedItem[] = [
-    // Citas: el shape de Appointment del POS no incluye `sale.id`, así que
-    // por ahora dejamos earnings en null para appointments. El total del UI
-    // sale del totalCents de la cita; la comisión se ve agregada en el hero.
-    // Si en una futura iteración expandimos la query de agenda con sale.id,
-    // las citas también mostrarán "Tu parte" per-row.
-    ...completedAppts.map((a): CompletedItem => ({
-      id: `appt-${a.id}`,
-      kind: 'appt',
-      timeAt: a.endAt,
-      customerName: a.customer?.fullName ?? 'Mostrador',
-      serviceLabel: apptServiceLabel(a),
-      totalCents: a.totalCents,
-      saleId: null,
-      commissionCents: null,
-      tipCents: null,
-      earningsCents: null,
-    })),
+    // Citas: el shape de Appointment del POS no trae `sale.id`; la venta se
+    // encuentra por `linkedAppointmentId` en el per-sale, así que una cita
+    // cobrada muestra "Tu parte" y abre su detalle igual que un walk-in. Sin
+    // entrada (cita cerrada sin venta, o dinero aún sin responder) todo queda
+    // en null. La hora sigue siendo `endAt`, no el soldAt de la venta.
+    ...completedAppts.map((a): CompletedItem => {
+      const linked = saleByAppointmentId.get(a.id)
+      return {
+        id: `appt-${a.id}`,
+        kind: 'appt',
+        timeAt: a.endAt,
+        customerName: a.customer?.fullName ?? 'Mostrador',
+        serviceLabel: apptServiceLabel(a),
+        totalCents: a.totalCents,
+        saleId: linked?.saleId ?? null,
+        commissionCents: linked?.entry.commissionCents ?? null,
+        tipCents: linked?.entry.tipCents ?? null,
+        earningsCents: linked?.entry.earningsCents ?? null,
+      }
+    }),
     ...completedWalkIns.map((w): CompletedItem => {
       const saleId = w.sale?.id ?? null
       const e = saleId ? perSaleMap.get(saleId) : undefined
@@ -834,7 +845,7 @@ function CompletedRow({
             </span>
           </>
         ) : (
-          // Cita cerrada sin venta linkada, o fila sin "Tu parte" para un
+          // Cita cerrada sin venta (sin entrada per-sale), o fila sin "Tu parte" para un
           // viewer sin permiso del bruto: no hay monto que mostrar. No es
           // "no sé" (no habría qué cargar), así que tampoco va un esqueleto.
           <span aria-hidden />
