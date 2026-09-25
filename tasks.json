@@ -4453,6 +4453,146 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-060",
+      "title": "Mi Día: el total en ventas del barbero solo se muestra con el permiso pos.my_sales.revenue.read",
+      "description": "Pedido del dueño (WhatsApp 2026-09-24): el barbero no debe ver cuánto vendió, solo su comisión. Decisión del equipo: NO quitar la cifra sino gatearla por permiso (quien lo tenga la ve) y sin tocar queries. Inventario del bruto en el POS: solo src/features/my-day/presentation/MyDayPage.tsx — (a) `EarningsHero`: línea `grossRevenueCents` con label 'Ventas que atendiste hoy' y caption 'en ventas'; (b) `CompletedRow`: fallback 'Total venta' (`totalCents`, label 'Total de la venta de …') cuando la fila no tiene 'Tu parte'. Hoy, Agenda, Caja, Ventas del día y SaleDetailSheet quedan como están (operativos o ya gateados). Cambios: declara la clave `pos.my_sales.revenue.read` como constante de módulo en MyDayPage.tsx (patrón STAFF_SALE_CREATE de useCheckout.ts) y léela como ya se lee `pos.sale.read` en la misma página (o con `usePermission`). Sin el permiso: el hero pinta solo la comisión (MoneyValue 'Lo que llevas hoy' con esqueleto/aviso/Reintentar intactos, [D-069]/[D-060]) y una fila sin 'Tu parte' no pinta monto (misma rama vacía que hoy usa la cita sin venta). Con el permiso: comportamiento idéntico al actual. NO toques `POS_MY_DAY_EARNINGS` ni corras codegen; NO agregues la clave a MOCK_VIEWER (el default del mock es 'barbero sin permiso'). Tests en MyDayPage.test.tsx (arnés `renderMyDay`; `earningsMock` ya trae serviceRevenueCents 30000; `authRepoWithPermissions`): (1) viewer por defecto + una walk-in DONE del viewer con `sale {id,totalCents}` y sin entrada perSale → hero $120, no existe grupo 'Ventas que atendiste hoy' ni texto 'en ventas', y la fila no muestra 'Total venta' (queryBy*); (2) viewer con `[...MOCK_VIEWER.permissions, 'pos.my_sales.revenue.read']` → el hero muestra el grupo 'Ventas que atendiste hoy' con $300 y 'en ventas', y esa fila muestra 'Total venta'; (3) los escenarios existentes siguen en verde.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Sin el permiso: hero solo con la comisión (sin grupo 'Ventas que atendiste hoy' ni texto 'en ventas') y filas sin 'Tu parte' sin monto; con pos.my_sales.revenue.read: bruto en el hero y 'Total venta' por fila; escenarios existentes en verde",
+          "check": "npm test -- src/features/my-day/presentation/MyDayPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Eslint limpio en la página y su test",
+          "check": "npx eslint src/features/my-day/presentation/MyDayPage.tsx src/features/my-day/presentation/MyDayPage.test.tsx",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "interface",
+          "path": "src/features/my-day/presentation/MyDayPage.tsx",
+          "reason": "EarningsHero (~830-865) y CompletedRow (~700-800): las dos salidas del bruto; gate existente de pos.sale.read en ~370 (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/my-day/presentation/MyDayPage.test.tsx",
+          "reason": "Arnés renderMyDay/earningsMock/authRepoWithPermissions y earningsFigure (getByRole group) a extender (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/core/permissions/usePermission.ts",
+          "reason": "Hook que lee un permiso del viewer; alternativa a viewer.permissions.includes (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/walkins/domain/walkins.types.ts",
+          "reason": "Shape de WalkIn con `sale {id,totalCents}`: fixture de la fila DONE sin entrada perSale (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/home/data/home.queries.ts",
+          "reason": "POS_MY_DAY_EARNINGS es compartida con Hoy y la pantalla de bloqueo: no se toca ni se corre codegen (AC-2)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-069] MoneyValue con label obligatorio; [D-060]/[D-020] null = no sé, nunca $0: la comisión conserva sus estados (AC-1)"
+        },
+        {
+          "type": "doc",
+          "path": "../bienbravo-api/docs/PERMISSIONS.md",
+          "reason": "Convención de claves pos.* (pos.tab.my_sales, pos.sales.day.read); la clave nueva la da de alta el API, aquí solo se lee (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/my-day/presentation/MyDayPage.tsx",
+        "src/features/my-day/presentation/MyDayPage.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "feature",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
+    },
+    {
+      "id": "T-061",
+      "title": "Mi Día: las citas completadas resuelven 'Tu parte' desde perSale.linkedAppointmentId",
+      "description": "Complemento de T-060 (bruto gateado por permiso): sin `pos.my_sales.revenue.read` una cita completada queda sin monto, porque `computeWorkSummary` (src/features/my-day/presentation/MyDayPage.tsx ~200-230) deja `saleId/commissionCents/tipCents/earningsCents` en null para appointments ('el shape de Appointment no incluye sale.id'). Pero el desglose `staffDayEarnings.perSale` ya trae `linkedAppointmentId`, y en el API `Sale.appointmentId` es único (una venta por cita), así que no hace falta tocar queries: para cada cita COMPLETED del viewer busca la entrada de `perSaleMap` cuyo `linkedAppointmentId === a.id` y llena `saleId`, `commissionCents`, `tipCents` y `earningsCents` (misma forma que las walk-ins). Efectos: la fila pinta 'Tu parte de <cliente>' (MoneyValue con `moneyStatus`) y, con `pos.sale.read`, se vuelve tappable y abre SaleDetailSheet con ese saleId y `tuParteCents`. Sin entrada (cita cerrada sin venta) todo sigue null. No cambies `completedCount` (las entradas linkadas a cita ya no cuentan como venta directa) ni el orden cronológico (`timeAt` sigue siendo `endAt`). Actualiza el comentario que decía que las citas no muestran 'Tu parte'. Tests en MyDayPage.test.tsx (arnés `renderMyDay`; extiende `saleEntry` para aceptar `linkedAppointmentId`): (1) `repos.agenda.getAppointments` devuelve una cita COMPLETED del viewer (Appointment de src/features/agenda/domain/agenda.types.ts) y `earningsMock` una entrada con `linkedAppointmentId` igual a su id → la fila muestra 'Tu parte de <cliente>' con esa cifra, no aparece una fila 'Venta' duplicada y el eyebrow dice 'Servicios de hoy · 1 realizado'; (2) con un viewer que tenga `pos.sale.read` (patrón del test 'WITH pos.sale.read') la fila es un button y al tap `getSaleDetail` recibe ese saleId; (3) cita COMPLETED sin entrada → sin monto y no clickable; (4) escenarios existentes en verde.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Una cita COMPLETED con entrada perSale linkada muestra 'Tu parte' con la cifra del API, no se duplica como 'Venta', cuenta una vez y abre el detalle con su saleId; sin entrada sigue sin monto; escenarios existentes en verde",
+          "check": "npm test -- src/features/my-day/presentation/MyDayPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Eslint limpio en la página y su test",
+          "check": "npx eslint src/features/my-day/presentation/MyDayPage.tsx src/features/my-day/presentation/MyDayPage.test.tsx",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "interface",
+          "path": "src/features/my-day/presentation/MyDayPage.tsx",
+          "reason": "computeWorkSummary (~185-270): mapeo de citas con earnings en null y perSaleMap con linkedAppointmentId ya disponible (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/my-day/presentation/MyDayPage.test.tsx",
+          "reason": "Helpers saleEntry/earningsMock y el test 'WITH pos.sale.read' (tap abre el sheet) a reutilizar (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/agenda/domain/agenda.types.ts",
+          "reason": "Shape de Appointment (status, staffUser, customer, items, totalCents) para la fixture COMPLETED (AC-1)"
+        },
+        {
+          "type": "doc",
+          "path": "../bienbravo-api/src/modules/payroll/types/staff-day-earnings.type.ts",
+          "reason": "Semántica de perSale.linkedAppointmentId en el API (solo lectura) (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-020] null = no sé en montos y conteos derivados; [D-069] MoneyValue con label obligatorio (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/my-day/presentation/MyDayPage.tsx",
+        "src/features/my-day/presentation/MyDayPage.test.tsx"
+      ],
+      "depends_on": [
+        "T-060"
+      ],
+      "priority": 2,
+      "type": "feature",
+      "status": "pending",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }

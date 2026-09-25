@@ -120,6 +120,14 @@ const BOARD_TOPICS: readonly FreshnessTopic[] = ['walkins', 'appointments']
 const EARNINGS_LABEL = 'Lo que llevas hoy'
 const GROSS_LABEL = 'Ventas que atendiste hoy'
 
+/**
+ * Ver cuánto VENDIÓ el barbero (el bruto: ventas del hero y "Total venta" de
+ * cada fila). Pedido del dueño: el barbero ve su comisión, no lo que facturó;
+ * quien tenga este permiso (lo da de alta el API) sigue viendo el bruto. Sólo
+ * gatea lo que se PINTA: la consulta de ganancias no cambia.
+ */
+const MY_SALES_REVENUE_READ = 'pos.my_sales.revenue.read'
+
 const LIST_ERROR_MESSAGE =
   'No se pudo cargar tu día. Toca Reintentar o avisa al admin si persiste.'
 
@@ -369,6 +377,10 @@ export function MyDayPage() {
   // pedida por el dueño. El API además gatea el resolver `sale(id)`.
   const canViewSaleDetail = (viewer?.permissions ?? []).includes('pos.sale.read')
 
+  // Gate del bruto (`MY_SALES_REVENUE_READ`). Sin el permiso el hero pinta
+  // sólo la comisión y una fila sin "Tu parte" no pinta monto alguno.
+  const canViewRevenue = (viewer?.permissions ?? []).includes(MY_SALES_REVENUE_READ)
+
   // --- Lecturas puras (sin tocar estado) ------------------------------------
   // Se usan tal cual en el montaje y detrás de los cargadores del canal de
   // frescura; así ningún setState cuelga del cuerpo de un efecto.
@@ -558,9 +570,11 @@ export function MyDayPage() {
     )
   }, [board, earnings, viewer])
 
-  const grossRevenueCents = earnings
-    ? earnings.breakdown.serviceRevenueCents + earnings.breakdown.productRevenueCents
-    : null
+  // Sin el permiso del bruto la cifra ni se calcula: el hero no la recibe.
+  const grossRevenueCents =
+    canViewRevenue && earnings
+      ? earnings.breakdown.serviceRevenueCents + earnings.breakdown.productRevenueCents
+      : null
 
   return (
     // overflow-y-auto en el container hace que TODO el contenido scrollee
@@ -673,6 +687,7 @@ export function MyDayPage() {
                   tz={locationTimezone}
                   moneyStatus={moneyStatus}
                   listMoneyStatus={listMoneyStatus}
+                  showsSaleTotal={canViewRevenue}
                   onOpenDetail={
                     canViewSaleDetail && item.saleId
                       ? () =>
@@ -730,6 +745,7 @@ function CompletedRow({
   tz,
   moneyStatus,
   listMoneyStatus,
+  showsSaleTotal,
   onOpenDetail,
 }: {
   item: CompletedItem
@@ -740,6 +756,9 @@ function CompletedRow({
   moneyStatus: MoneyValueStatus
   /** Estado de la agenda/fila (de dónde sale el total de la venta linkada). */
   listMoneyStatus: MoneyValueStatus
+  /** El viewer tiene `pos.my_sales.revenue.read`: sin "Tu parte" la fila cae
+   *  al total de la venta. Sin el permiso esa fila no pinta monto. */
+  showsSaleTotal: boolean
   /** Definido SOLO cuando la row es tappable: el viewer tiene `pos.sale.read`
    *  y la row tiene saleId. Si es undefined, la row se renderiza como un div
    *  no interactivo (sin cursor, sin onClick) — el gate duro. */
@@ -758,9 +777,10 @@ function CompletedRow({
   // UNA sola cifra por fila y siempre con MoneyValue ([D-005]): "Tu parte"
   // cuando el desglose del servidor la conoce, el total de la venta cuando
   // todavía no hay comisión atribuida. El desglose completo (total, propina,
-  // items) vive en la hoja de detalle, a un tap de distancia.
+  // items) vive en la hoja de detalle, a un tap de distancia. El total de la
+  // venta (bruto) sólo se pinta con `pos.my_sales.revenue.read`.
   const showsEarnings = earningsCents != null
-  const amountCents = showsEarnings ? earningsCents : totalCents
+  const amountCents = showsEarnings ? earningsCents : showsSaleTotal ? totalCents : null
   const amountStatus = showsEarnings ? moneyStatus : listMoneyStatus
   const amountLabel = showsEarnings
     ? `Tu parte de ${customerName}`
@@ -814,7 +834,8 @@ function CompletedRow({
             </span>
           </>
         ) : (
-          // Cita cerrada sin venta linkada: no hay monto que mostrar. No es
+          // Cita cerrada sin venta linkada, o fila sin "Tu parte" para un
+          // viewer sin permiso del bruto: no hay monto que mostrar. No es
           // "no sé" (no habría qué cargar), así que tampoco va un esqueleto.
           <span aria-hidden />
         )}
@@ -827,7 +848,9 @@ function CompletedRow({
  * Hero principal: lo que el barbero se lleva hoy. Dos cifras del servidor —
  * su comisión del día y las ventas que atendió — ambas con MoneyValue, así
  * que mientras el servidor no responda son esqueleto y un fallo nunca deja
- * la cifra anterior en pantalla.
+ * la cifra anterior en pantalla. Las ventas (bruto) sólo llegan con
+ * `pos.my_sales.revenue.read`; sin él `grossRevenueCents` es null y el hero
+ * queda con la comisión sola (estados de carga/aviso/Reintentar intactos).
  */
 function EarningsHero({
   commissionCents,

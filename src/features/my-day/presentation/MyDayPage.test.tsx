@@ -17,10 +17,41 @@ import type { Repositories } from '@/core/repositories/registry'
 import type { PosViewer } from '@/core/auth/auth.types'
 import type { SaleDetail } from '@/features/checkout/data/checkout.repository'
 import type { TimeClockEvent } from '@/features/clock/data/clock.repository'
+import type { WalkIn } from '@/features/walkins/domain/walkins.types'
 import { POS_MY_DAY_EARNINGS } from '@/features/home/data/home.queries'
 
 /** Nombre accesible del hero de ganancias (MoneyValue, [D-006]). */
 const EARNINGS_LABEL = 'Lo que llevas hoy'
+/** Nombre accesible del bruto del hero (sólo con el permiso de abajo). */
+const GROSS_LABEL = 'Ventas que atendiste hoy'
+/** Permiso que deja ver el bruto (hero + "Total venta" por fila). */
+const REVENUE_READ = 'pos.my_sales.revenue.read'
+
+/** Walk-in DONE del viewer con venta linkada ($300) — sin entrada per-sale en
+ *  las ganancias, así que la fila no conoce "Tu parte". */
+function doneWalkInWithSale(customerName: string): WalkIn {
+  const now = new Date().toISOString()
+  return {
+    id: 'w-done-1',
+    status: 'DONE',
+    customerName,
+    customerPhone: null,
+    customerEmail: null,
+    createdAt: now,
+    assignedAt: now,
+    assignedStaffUser: { id: MOCK_VIEWER.staff.id, fullName: MOCK_VIEWER.staff.fullName },
+    customer: null,
+    requestedServices: [{ id: 'svc-1', name: 'Corte clásico' }],
+    sortOrder: 0,
+    sale: { id: 'sale-w1', totalCents: 30000 },
+  }
+}
+
+function reposWithDoneWalkIn(customerName: string): Repositories {
+  const repos = createMockRepositories()
+  repos.walkins.getWalkIns = vi.fn().mockResolvedValue([doneWalkInWithSale(customerName)])
+  return repos
+}
 
 class TestAuthRepo extends InMemoryAuthRepository {
   override async getViewer() { return MOCK_VIEWER }
@@ -425,6 +456,46 @@ describe('MyDayPage', () => {
     expect(inDialog.getByText('$120')).toBeInTheDocument()
     // El cuerpo compartido (SaleTicketBody) renderiza el item de la venta.
     expect(inDialog.getByText(/corte clásico/i)).toBeInTheDocument()
+  })
+
+  // ── Gate de pos.my_sales.revenue.read (el bruto) ───────────────────────
+
+  it('WITHOUT pos.my_sales.revenue.read: el hero pinta sólo la comisión y la fila sin "Tu parte" no pinta monto', async () => {
+    // Viewer por defecto: MOCK_VIEWER no trae el permiso del bruto.
+    expect(MOCK_VIEWER.permissions).not.toContain(REVENUE_READ)
+    renderMyDay({ repos: reposWithDoneWalkIn('Pedro Gómez'), mocks: [earningsMock()] })
+
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$120'))
+    expect(await screen.findByText('Pedro Gómez')).toBeInTheDocument()
+
+    // Hero: nada de ventas brutas.
+    expect(screen.queryByRole('group', { name: GROSS_LABEL })).not.toBeInTheDocument()
+    expect(screen.queryByText('en ventas')).not.toBeInTheDocument()
+    // Fila: sin "Tu parte" y sin permiso no cae al total de la venta.
+    expect(screen.queryByText('Total venta')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('group', { name: /total de la venta de pedro gómez/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('$300')).not.toBeInTheDocument()
+  })
+
+  it('WITH pos.my_sales.revenue.read: el hero muestra las ventas y la fila su "Total venta"', async () => {
+    renderMyDay({
+      repos: reposWithDoneWalkIn('Pedro Gómez'),
+      auth: authRepoWithPermissions([...MOCK_VIEWER.permissions, REVENUE_READ]),
+      mocks: [earningsMock()],
+    })
+
+    await waitFor(() => expect(earningsFigure()).toHaveTextContent('$120'))
+    const gross = await screen.findByRole('group', { name: GROSS_LABEL })
+    expect(gross).toHaveTextContent('$300')
+    expect(screen.getByText('en ventas')).toBeInTheDocument()
+
+    const rowTotal = await screen.findByRole('group', {
+      name: /total de la venta de pedro gómez/i,
+    })
+    expect(rowTotal).toHaveTextContent('$300')
+    expect(screen.getByText('Total venta')).toBeInTheDocument()
   })
 
   // ── Carrera A→B (fast-tap) ─────────────────────────────────────────────
