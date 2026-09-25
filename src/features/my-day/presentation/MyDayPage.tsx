@@ -722,6 +722,7 @@ export function MyDayPage() {
         open={!!detailTarget}
         saleId={detailTarget?.saleId}
         tuParteCents={detailTarget?.tuParteCents}
+        canViewRevenue={canViewRevenue}
         onClose={() => setDetailTarget(null)}
       />
     </div>

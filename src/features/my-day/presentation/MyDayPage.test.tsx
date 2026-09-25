@@ -207,6 +207,35 @@ function saleDetail(saleId: string, customerName: string, itemName: string): Sal
   }
 }
 
+/**
+ * Ticket de $300 con todos los montos agregados: 2 × Corte clásico ($100 c/u,
+ * línea $200) + Barba $100, cupón −$20, propina $20 y pago dividido ($200
+ * efectivo + $100 tarjeta). Ningún precio unitario coincide con el total.
+ */
+function saleDetailWithBreakdown(saleId: string): SaleDetail {
+  const base = saleDetail(saleId, 'Juan Pérez', 'Corte clásico')
+  return {
+    ...base,
+    tipCents: 2000,
+    discounts: [{ code: 'BRAVO20', name: 'Bravo 20', discountAmountCents: 2000 }],
+    payments: [
+      { provider: 'CASH', amountCents: 20000 },
+      { provider: 'CARD_TERMINAL', amountCents: 10000 },
+    ],
+    items: [
+      { ...base.items[0], qty: 2, unitPriceCents: 10000, totalCents: 20000 },
+      {
+        ...base.items[0],
+        id: `${saleId}-item-1`,
+        name: 'Barba',
+        qty: 1,
+        unitPriceCents: 10000,
+        totalCents: 10000,
+      },
+    ],
+  }
+}
+
 /** Promesa controlable: el test decide cuándo (y con qué) resuelve. */
 interface Deferred<T> {
   promise: Promise<T>
@@ -532,6 +561,67 @@ describe('MyDayPage', () => {
     })
     expect(rowTotal).toHaveTextContent('$300')
     expect(screen.getByText('Total venta')).toBeInTheDocument()
+  })
+
+  it('WITH pos.sale.read y SIN pos.my_sales.revenue.read: la hoja pinta items y "Tu parte", no los totales del ticket', async () => {
+    const saleId = 'sale-abc'
+    const repos = createMockRepositories()
+    repos.checkout.getSaleDetail = async () => saleDetailWithBreakdown(saleId)
+
+    renderMyDay({
+      repos,
+      auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read']),
+      mocks: [earningsMock({ perSale: [saleEntry({ saleId, customerName: 'Juan Pérez' })] })],
+    })
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: /ver detalle de venta/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /detalle de venta/i })
+    const inDialog = within(dialog)
+    // Items (nombre, cantidad, precio unitario) y "Tu parte" sí.
+    expect(await inDialog.findByText(/corte clásico/i)).toBeInTheDocument()
+    expect(inDialog.getByText(/barba/i)).toBeInTheDocument()
+    expect(inDialog.getByText('2 ×')).toBeInTheDocument()
+    expect(inDialog.getAllByText('$100')).toHaveLength(2)
+    expect(inDialog.getByText(/tu parte/i)).toBeInTheDocument()
+    expect(inDialog.getByText('$120')).toBeInTheDocument()
+    // Nada del bloque de totales: ni rótulos ni grupo de dinero con "total".
+    expect(inDialog.queryByText(/^total$/i)).not.toBeInTheDocument()
+    expect(inDialog.queryByRole('group', { name: /total/i })).not.toBeInTheDocument()
+    expect(inDialog.queryByText(/^descuentos$/i)).not.toBeInTheDocument()
+    expect(inDialog.queryByText(/^propina$/i)).not.toBeInTheDocument()
+    // Ni el total del ticket ($300), ni la línea ($200), ni cupón/propina
+    // ($20), en ningún nodo del sheet — tampoco dentro de "Pagado con".
+    expect(dialog).not.toHaveTextContent('$300')
+    expect(dialog).not.toHaveTextContent('$200')
+    expect(dialog).not.toHaveTextContent('$20')
+    expect(inDialog.getByText('Pagado con Efectivo + Tarjeta')).toBeInTheDocument()
+  })
+
+  it('WITH pos.sale.read y pos.my_sales.revenue.read: la hoja muestra el total del ticket', async () => {
+    const saleId = 'sale-abc'
+    const repos = createMockRepositories()
+    repos.checkout.getSaleDetail = async () => saleDetailWithBreakdown(saleId)
+
+    renderMyDay({
+      repos,
+      auth: authRepoWithPermissions(['pos.sale.create', 'pos.sale.read', REVENUE_READ]),
+      mocks: [earningsMock({ perSale: [saleEntry({ saleId, customerName: 'Juan Pérez' })] })],
+    })
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: /ver detalle de venta/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /detalle de venta/i })
+    const inDialog = within(dialog)
+    expect(await inDialog.findByText(/^total$/i)).toBeInTheDocument()
+    expect(inDialog.getByText('$300')).toBeInTheDocument()
+    expect(inDialog.getByText(/^descuentos$/i)).toBeInTheDocument()
+    expect(inDialog.getByText(/^propina$/i)).toBeInTheDocument()
+    expect(inDialog.getByText('Pagado con Efectivo $200 + Tarjeta $100')).toBeInTheDocument()
+    expect(inDialog.getByText(/tu parte/i)).toBeInTheDocument()
+    expect(inDialog.getByText('$120')).toBeInTheDocument()
   })
 
   // ── Citas completadas: "Tu parte" desde perSale.linkedAppointmentId ────

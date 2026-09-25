@@ -18,15 +18,23 @@ interface SaleDetailSheetProps {
    * viewer (p.ej. una venta de otro barbero abierta por el dueño).
    */
   tuParteCents?: number | null
+  /**
+   * El viewer tiene `pos.my_sales.revenue.read` (el bruto). Sin él la hoja
+   * NO pinta los montos agregados del ticket (descuentos, desglose, Total,
+   * importes por forma de pago): solo items con su precio unitario y "Tu
+   * parte". Obligatoria para que ningún caller abra la hoja sin decidirlo
+   * (T-062: sin esto el gate del bruto de la fila se evitaba con un tap).
+   */
+  canViewRevenue: boolean
   onClose: () => void
 }
 
 const EXIT_MS = 240
 
 /**
- * Bottom sheet con el desglose completo de una venta del día — items,
- * descuentos, total, forma de pago — más "Tu parte: $X" (la comisión del
- * viewer para esa venta).
+ * Bottom sheet con el desglose de una venta del día — items y forma de pago;
+ * descuentos, total e importes solo con el permiso del bruto — más "Tu
+ * parte: $X" (la comisión del viewer para esa venta).
  *
  * El cuerpo del ticket se renderiza con `SaleTicketBody`, el mismo componente
  * que usa `ReceiptScreen` (DRY). Este sheet solo añade la sección de
@@ -41,8 +49,18 @@ const EXIT_MS = 240
  * el API rechaza el resolver `sale(id)` sin él, y MyDayPage no hace la row
  * clickable (no abre este sheet) si el viewer no lo tiene. Este componente
  * asume que el caller ya validó el permiso.
+ *
+ * El bruto de la venta es otro permiso (`pos.my_sales.revenue.read`, T-060):
+ * sin `canViewRevenue` el ticket se pinta con `hideTotals` (T-062). Como el
+ * resto del gate del bruto en Mi Día es de presentación ([D-077]).
  */
-export function SaleDetailSheet({ open, saleId, tuParteCents, onClose }: SaleDetailSheetProps) {
+export function SaleDetailSheet({
+  open,
+  saleId,
+  tuParteCents,
+  canViewRevenue,
+  onClose,
+}: SaleDetailSheetProps) {
   const { checkout } = useRepositories()
   const { locationTimezone } = useLocation()
   const [mounted, setMounted] = useState(open)
@@ -190,7 +208,7 @@ export function SaleDetailSheet({ open, saleId, tuParteCents, onClose }: SaleDet
 
           {!loading && !error && detail && (
             <>
-              <SaleTicketBody sale={detail} />
+              <SaleTicketBody sale={detail} hideTotals={!canViewRevenue} />
 
               {tuParteCents != null && (
                 <div className="flex items-baseline justify-between border-t border-[var(--color-bravo)]/40 pt-3">

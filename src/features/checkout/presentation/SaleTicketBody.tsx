@@ -86,10 +86,14 @@ export interface SaleTicketData {
   tipCents?: number | null
 }
 
-function formatPayments(payments: SaleTicketPayment[]): string {
+function formatPayments(payments: SaleTicketPayment[], withAmounts: boolean): string {
   if (payments.length === 0) return '—'
   if (payments.length === 1) {
     return providerLabel(payments[0].provider)
+  }
+  if (!withAmounts) {
+    // Sin importes: solo las formas de pago, sin repetir la misma dos veces.
+    return [...new Set(payments.map((p) => providerLabel(p.provider)))].join(' + ')
   }
   return payments
     .map((p) => `${providerLabel(p.provider)} ${formatMoney(p.amountCents)}`)
@@ -98,9 +102,18 @@ function formatPayments(payments: SaleTicketPayment[]): string {
 
 interface SaleTicketBodyProps {
   sale: SaleTicketData
+  /**
+   * Omite los montos agregados del ticket: descuentos, desglose (subtotal /
+   * impuesto / propina), Total y el importe de cada forma de pago. Cada item
+   * pinta su precio unitario (el público del catálogo) en lugar del total de
+   * la línea. Lo usa Mi Día cuando el viewer NO tiene
+   * `pos.my_sales.revenue.read` (T-062): el bruto de la venta no se pinta.
+   * Default `false`: checkout y Ventas del día no cambian.
+   */
+  hideTotals?: boolean
 }
 
-export function SaleTicketBody({ sale }: SaleTicketBodyProps) {
+export function SaleTicketBody({ sale, hideTotals = false }: SaleTicketBodyProps) {
   const discounts = sale.discounts ?? []
   const hasDiscounts = discounts.length > 0
   const tipCents = sale.tipCents ?? 0
@@ -130,7 +143,12 @@ export function SaleTicketBody({ sale }: SaleTicketBodyProps) {
               <span className="text-[var(--color-bone-muted)]">{item.qty} ×</span> {item.name}
             </span>
             <span className="text-right tabular-nums text-[14px] font-bold text-[var(--color-bone)]">
-              {formatMoney(item.totalCents)}
+              {formatMoney(hideTotals ? item.unitPriceCents : item.totalCents)}
+              {hideTotals && (
+                <span className="ml-1 font-mono text-[10px] font-normal uppercase tracking-[0.16em] text-[var(--color-bone-muted)]">
+                  c/u
+                </span>
+              )}
             </span>
             {item.staffUser && (
               <span className="col-start-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
@@ -141,7 +159,9 @@ export function SaleTicketBody({ sale }: SaleTicketBodyProps) {
         ))}
       </div>
 
-      {hasDiscounts && (
+      {/* Con hideTotals ningún monto agregado se pinta (ni como $0): el bloque
+          entero no existe, no se rellena. */}
+      {!hideTotals && hasDiscounts && (
         <div className="flex flex-col gap-1.5 border-t border-[var(--color-leather-muted)]/40 pt-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
             Descuentos
@@ -165,7 +185,7 @@ export function SaleTicketBody({ sale }: SaleTicketBodyProps) {
       {/* Desglose previo al total. Subtotal + Impuesto SOLO cuando la venta
           trae impuesto (R5: con tasa 0 el ticket muestra únicamente Total);
           la propina se sigue mostrando siempre que exista. */}
-      {(hasTax || hasTip) && (
+      {!hideTotals && (hasTax || hasTip) && (
         <div className="flex flex-col gap-1.5 border-t border-[var(--color-leather-muted)]/40 pt-3">
           {hasTax && (
             <>
@@ -200,17 +220,19 @@ export function SaleTicketBody({ sale }: SaleTicketBodyProps) {
         </div>
       )}
 
-      <div className="flex items-baseline justify-between border-t border-[var(--color-leather-muted)]/40 pt-3">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
-          Total
-        </span>
-        <span className="font-[var(--font-pos-display)] text-[24px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
-          {formatMoney(sale.totalCents)}
-        </span>
-      </div>
+      {!hideTotals && (
+        <div className="flex items-baseline justify-between border-t border-[var(--color-leather-muted)]/40 pt-3">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--color-bone-muted)]">
+            Total
+          </span>
+          <span className="font-[var(--font-pos-display)] text-[24px] font-extrabold tabular-nums leading-none text-[var(--color-bone)]">
+            {formatMoney(sale.totalCents)}
+          </span>
+        </div>
+      )}
 
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-bone-muted)]">
-        Pagado con {formatPayments(sale.payments)}
+        Pagado con {formatPayments(sale.payments, !hideTotals)}
       </p>
     </>
   )

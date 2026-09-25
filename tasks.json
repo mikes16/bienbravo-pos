@@ -4593,6 +4593,84 @@
       "redispatches": 0,
       "split_from": null,
       "review_feedback": []
+    },
+    {
+      "id": "T-062",
+      "title": "Mi Día: la hoja de detalle de venta oculta los totales del ticket sin el permiso pos.my_sales.revenue.read",
+      "description": "Hallazgo Important #2 del Principal (run 2026-09-25-a, .harness/runs/2026-09-25-a/PRINCIPAL-REVIEW.md). Costura T-060×T-061: sin `pos.my_sales.revenue.read` la fila de Mi Día oculta 'Total venta', pero con `pos.sale.read` (que tras T-061 también vuelve tappables las citas) un tap abre src/features/my-day/presentation/SaleDetailSheet.tsx con el ticket completo vía `SaleTicketBody` (subtotal, descuentos, total, pagos): el gate del bruto es evitable venta por venta. Cambios: (1) MyDayPage.tsx ya calcula si el viewer tiene el permiso del bruto (constante MY_SALES_REVENUE_READ, T-060): pásalo a `SaleDetailSheet` como prop `canViewRevenue: boolean`; (2) sin el permiso, la hoja NO pinta los montos agregados del ticket (subtotal, descuentos, total, forma de pago con importe) y conserva la lista de items (nombre, cantidad y precio unitario público, que el barbero conoce del catálogo) y 'Tu parte'; con el permiso, todo igual que hoy. Si `SaleTicketBody` (src/features/checkout/presentation/SaleTicketBody.tsx, compartido con el ticket impreso del checkout) no permite omitir el bloque de totales, agrégale una prop opcional `hideTotals?: boolean` con default false para no alterar el checkout ni la impresión; no dupliques el render de items en la hoja. Respeta [D-069] (MoneyValue con label) y no toques queries ni codegen. Tests en src/features/my-day/presentation/MyDayPage.test.tsx (patrón del test 'WITH pos.sale.read: la row es un button y al hacer tap abre el sheet' con `saleDetail(...)` y `authRepoWithPermissions`): (a) viewer con `pos.sale.read` y SIN el permiso del bruto → al abrir la hoja se ven 'Tu parte' y el nombre del item, y no existe texto/grupo de 'Total' ni el importe total del ticket ($300 de la fixture); (b) viewer con ambos permisos → la hoja muestra el total $300; (c) si tocas SaleTicketBody, su spec src/features/checkout/presentation/SaleTicketBody.test.tsx sigue en verde y cubre `hideTotals` en ambos valores; (d) escenarios existentes en verde.",
+      "acceptance_criteria": [
+        {
+          "id": "AC-1",
+          "desc": "Con pos.sale.read y sin pos.my_sales.revenue.read la hoja de detalle no muestra el total del ticket pero sí items y 'Tu parte'; con ambos permisos muestra el total; escenarios existentes en verde",
+          "check": "npm test -- src/features/my-day/presentation/MyDayPage.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-2",
+          "desc": "El ticket del checkout no cambia por default (spec de SaleTicketBody en verde, con cobertura de hideTotals si se agregó)",
+          "check": "npm test -- src/features/checkout/presentation/SaleTicketBody.test.tsx",
+          "kind": "test"
+        },
+        {
+          "id": "AC-3",
+          "desc": "Typecheck limpio",
+          "check": "npm run typecheck",
+          "kind": "build"
+        },
+        {
+          "id": "AC-4",
+          "desc": "Eslint limpio en los archivos tocados",
+          "check": "npx eslint src/features/my-day/presentation/SaleDetailSheet.tsx src/features/my-day/presentation/MyDayPage.tsx src/features/checkout/presentation/SaleTicketBody.tsx",
+          "kind": "lint"
+        }
+      ],
+      "context": [
+        {
+          "type": "doc",
+          "path": ".harness/runs/2026-09-25-a/PRINCIPAL-REVIEW.md",
+          "reason": "Important #2: la hoja de detalle revela el total por venta a quien tiene pos.sale.read sin el permiso del bruto (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/my-day/presentation/SaleDetailSheet.tsx",
+          "reason": "Hoja de detalle: props open/saleId/tuParteCents y render del ticket vía SaleTicketBody (~194) (AC-1)"
+        },
+        {
+          "type": "interface",
+          "path": "src/features/checkout/presentation/SaleTicketBody.tsx",
+          "reason": "Cuerpo de ticket compartido con checkout e impresión: bloque de totales a omitir con prop opcional (AC-2)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/my-day/presentation/MyDayPage.test.tsx",
+          "reason": "Tests 'WITH pos.sale.read' (tap abre el sheet, saleDetail fixture $300) y authRepoWithPermissions a reutilizar (AC-1)"
+        },
+        {
+          "type": "code_pattern",
+          "path": "src/features/my-day/presentation/MyDayPage.tsx",
+          "reason": "MY_SALES_REVENUE_READ y el gate de T-060; punto donde se monta SaleDetailSheet con detailTarget (AC-1)"
+        },
+        {
+          "type": "decision",
+          "path": ".harness/memory/DECISIONS.md",
+          "reason": "[D-069] MoneyValue con label obligatorio; [D-060] null = no sé: los montos ocultos no se disfrazan de $0 (AC-1)"
+        }
+      ],
+      "files": [
+        "src/features/my-day/presentation/SaleDetailSheet.tsx",
+        "src/features/my-day/presentation/MyDayPage.tsx",
+        "src/features/my-day/presentation/MyDayPage.test.tsx",
+        "src/features/checkout/presentation/SaleTicketBody.tsx",
+        "src/features/checkout/presentation/SaleTicketBody.test.tsx"
+      ],
+      "depends_on": [],
+      "priority": 1,
+      "type": "fix",
+      "status": "done",
+      "attempts": 0,
+      "redispatches": 0,
+      "split_from": null,
+      "review_feedback": []
     }
   ]
 }
